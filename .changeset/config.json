@@ -5,7 +5,7 @@
   "fixed": [["@astrojs/compiler-rs", "@astrojs/compiler-binding"]],
   "linked": [],
   "access": "public",
-  "baseBranch": "main",
+  "baseBranch": "next",
   "updateInternalDependencies": "patch",
   "ignore": []
 }
