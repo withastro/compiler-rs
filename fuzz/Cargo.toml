@@ -1,0 +1,44 @@
+[package]
+name = "astro-compiler-fuzz"
+version = "0.0.1"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[[bin]]
+name = "transform_no_panic"
+path = "fuzz_targets/transform_no_panic.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "css_scope_no_panic"
+path = "fuzz_targets/css_scope_no_panic.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "transform_valid_js_output"
+path = "fuzz_targets/transform_valid_js_output.rs"
+test = false
+doc = false
+bench = false
+
+[dependencies]
+libfuzzer-sys = "0.4"
+astro_codegen = { path = "../crates/astro_codegen" }
+oxc_allocator = { git = "https://github.com/withastro/oxc", branch = "feat/astro" }
+oxc_parser = { git = "https://github.com/withastro/oxc", branch = "feat/astro", features = [
+  "regular_expression",
+] }
+oxc_span = { git = "https://github.com/withastro/oxc", branch = "feat/astro" }
+
+# Prevent this from being included in the normal workspace build.
+[workspace]
+
+[profile.release]
+debug = true

@@ -1,0 +1,70 @@
+name: Fuzz
+
+on:
+  schedule:
+    # Run nightly at 2am UTC
+    - cron: "0 2 * * *"
+  push:
+    branches: [main, next, feat/rust]
+    paths:
+      - "fuzz/**"
+  pull_request:
+    branches: [main, next, feat/rust]
+    paths:
+      - "fuzz/**"
+  workflow_dispatch:
+    inputs:
+      fuzz_time:
+        description: "Seconds to fuzz per target"
+        default: "300"
+        required: false
+
+env:
+  FUZZ_TIME: ${{ github.event.inputs.fuzz_time || '300' }}
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    name: Fuzz - ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - transform_no_panic
+          - css_scope_no_panic
+          - transform_valid_js_output
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install nightly Rust
+        uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: llvm-tools
+
+      - name: Cache cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            fuzz/target/
+          key: fuzz-${{ matrix.target }}-cargo-${{ hashFiles('fuzz/Cargo.toml') }}
+
+      - name: Install cargo-fuzz
+        run: cargo install cargo-fuzz
+
+      - name: Fuzz ${{ matrix.target }}
+        run: cargo +nightly fuzz run ${{ matrix.target }} -- -max_total_time=${{ env.FUZZ_TIME }} -rss_limit_mb=4096
+
+      - name: Upload artifacts on failure
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}
+          path: fuzz/artifacts/${{ matrix.target }}/

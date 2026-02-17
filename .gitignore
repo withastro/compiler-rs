@@ -10,4 +10,5 @@ packages/compiler/sourcemap.mjs
 
 # Rust
 /target
+/fuzz/target
 Cargo.lock
