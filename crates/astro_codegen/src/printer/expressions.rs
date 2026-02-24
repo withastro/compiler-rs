@@ -27,9 +27,7 @@ impl<'a> AstroCodegen<'a> {
         self.print(&format!(",{{}},{{\"default\": {async_prefix}{slot_params}"));
         self.print(runtime::RENDER);
         self.print("`");
-        for child in &frag.children {
-            self.print_jsx_child(child);
-        }
+        self.print_jsx_children_compact(&frag.children);
         // Map the closing fragment tag (</>) to the `)` that closes
         // $$renderComponent(...) — the semantic equivalent in generated code.
         if !frag.closing_fragment.span.is_empty() {
@@ -118,9 +116,7 @@ impl<'a> AstroCodegen<'a> {
                     ));
                     self.print(runtime::RENDER);
                     self.print("`");
-                    for child in &frag.children {
-                        self.print_jsx_child(child);
-                    }
+                    self.print_jsx_children_compact(&frag.children);
                     // Map closing fragment tag (</>) before the closing boilerplate.
                     if !frag.closing_fragment.span.is_empty() {
                         self.add_source_mapping_for_span(frag.closing_fragment.span);
@@ -130,9 +126,7 @@ impl<'a> AstroCodegen<'a> {
                     // Implicit fragments (multiple JSX siblings) are just wrapped in $$render`...`
                     self.print(runtime::RENDER);
                     self.print("`");
-                    for child in &frag.children {
-                        self.print_jsx_child(child);
-                    }
+                    self.print_jsx_children_compact(&frag.children);
                     self.print("`");
                 }
             }

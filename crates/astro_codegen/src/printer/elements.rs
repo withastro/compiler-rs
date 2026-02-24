@@ -10,9 +10,10 @@ use super::escape::{escape_double_quotes, escape_html_attribute};
 use super::runtime;
 use super::{AstroCodegen, expr_to_string};
 use crate::css_scoping;
-use crate::options::ScopedStyleStrategy;
+use crate::options::{CompactMode, ScopedStyleStrategy};
 use crate::scanner::get_jsx_attribute_name;
 use oxc_ast::ast::*;
+use super::whitespace::{has_is_raw_attr, is_raw_element_name};
 
 /// Scope identifier for an element — either a CSS class or a data attribute,
 /// depending on the `scopedStyleStrategy`.
@@ -114,6 +115,16 @@ impl<'a> AstroCodegen<'a> {
             self.has_explicit_head = true;
         }
 
+        // Track raw element depth for compact whitespace collapsing.
+        // Raw elements are those whose text content must never be modified:
+        // <pre>, <textarea>, <script>, <style>, etc., and any element with `is:raw`.
+        let is_raw = self.options.compact != CompactMode::Disabled
+            && (is_raw_element_name(name)
+                || has_is_raw_attr(&el.opening_element.attributes));
+        if is_raw {
+            self.raw_element_depth += 1;
+        }
+
         // Insert $$maybeRenderHead before the first body HTML element
         self.maybe_insert_render_head(name);
 
@@ -150,10 +161,8 @@ impl<'a> AstroCodegen<'a> {
 
         // Handle special head insertion
         if is_head {
-            // Children
-            for child in &el.children {
-                self.print_jsx_child(child);
-            }
+            // Children (use compact-aware printing)
+            self.print_jsx_children_compact(&el.children);
             // Insert renderHead before closing head tag
             self.print(&format!(
                 "${{{}({})}}",
@@ -178,10 +187,8 @@ impl<'a> AstroCodegen<'a> {
                 self.print(&format!("${{{value}}}"));
             }
         } else {
-            // Regular children
-            for child in &el.children {
-                self.print_jsx_child(child);
-            }
+            // Regular children with compact-aware printing
+            self.print_jsx_children_compact(&el.children);
         }
 
         // Closing tag (skip for void elements like <meta>, <input>, <br>, etc.)
@@ -195,6 +202,9 @@ impl<'a> AstroCodegen<'a> {
             self.print(">");
         }
 
+        if is_raw {
+            self.raw_element_depth -= 1;
+        }
         if is_head {
             self.in_head = was_in_head;
         }

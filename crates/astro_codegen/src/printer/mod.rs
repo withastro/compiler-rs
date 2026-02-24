@@ -21,12 +21,14 @@ use oxc_span::{GetSpan, Span};
 use oxc_syntax::precedence::Precedence;
 
 use crate::css_scoping;
+use crate::options::CompactMode;
 use crate::scanner::{
     AstroScanner, HoistedScriptType as InternalHoistedScriptType, ScanResult,
     get_jsx_attribute_name, get_jsx_element_name, is_component_name, is_custom_element,
     should_hoist_script,
 };
 use crate::{SourcemapOption, TransformOptions};
+use whitespace::{TextPosition, collapse_html, collapse_jsx};
 
 mod components;
 mod elements;
@@ -34,6 +36,7 @@ mod escape;
 mod expressions;
 pub mod result;
 mod slots;
+mod whitespace;
 
 mod sourcemap_builder;
 #[cfg(test)]
@@ -289,6 +292,10 @@ pub struct AstroCodegen<'a> {
     /// Tracks whether we're inside an element that prevents style hoisting
     /// (svg, noscript, template).
     in_non_hoistable: bool,
+    /// Depth counter for raw elements (`<pre>`, `<textarea>`, `<script>`,
+    /// `<style>`, `is:raw`, …). When > 0, whitespace collapsing is disabled
+    /// for all descendant text nodes.
+    raw_element_depth: usize,
     /// Collected `define:vars` expression values from `<style>` elements.
     /// Each entry is the raw JS expression string (e.g., `{color:'green'}`).
     define_vars_values: Vec<String>,
@@ -374,6 +381,7 @@ impl<'a> AstroCodegen<'a> {
             extracted_css: Vec::new(),
             has_scoped_styles: false,
             in_non_hoistable: false,
+            raw_element_depth: 0,
             define_vars_values: Vec::new(),
             define_vars_injected: false,
             style_extraction_index: 0,
@@ -1295,23 +1303,38 @@ impl<'a> AstroCodegen<'a> {
 
     // --- JSX dispatch ---
 
-    /// Print JSX children, skipping leading whitespace-only text nodes.
+    /// Print JSX children, skipping leading (and in compact mode, trailing)
+    /// whitespace-only text nodes.
     fn print_jsx_children_skip_leading_whitespace(&mut self, children: &[JSXChild<'a>]) {
-        let mut started = false;
-        for child in children {
-            if !started {
-                if let JSXChild::Text(text) = child
-                    && text.value.trim().is_empty()
-                {
-                    continue;
-                }
-                if matches!(child, JSXChild::AstroDoctype(_)) {
-                    continue;
-                }
-                started = true;
-            }
-            self.print_jsx_child(child);
-        }
+        // Find the index of the first non-whitespace-only non-doctype child
+        let first_real_idx = children.iter().position(|c| match c {
+            JSXChild::Text(t) => !t.value.trim().is_empty(),
+            JSXChild::AstroDoctype(_) => false,
+            _ => true,
+        });
+        let remaining = match first_real_idx {
+            Some(i) => &children[i..],
+            None => return, // all whitespace / doctypes
+        };
+
+        // In compact mode, also skip trailing whitespace-only text nodes at the
+        // template root level (matching Go compiler's TrimTrailingSpace behaviour).
+        let remaining = if self.options.compact != CompactMode::Disabled {
+            let last_real_idx = remaining
+                .iter()
+                .rposition(|c| match c {
+                    JSXChild::Text(t) => !t.value.trim().is_empty(),
+                    JSXChild::AstroDoctype(_) | JSXChild::AstroScript(_) => false,
+                    _ => true,
+                })
+                .map(|i| i + 1) // exclusive end
+                .unwrap_or(remaining.len());
+            &remaining[..last_real_idx]
+        } else {
+            remaining
+        };
+
+        self.print_jsx_children_compact(remaining);
     }
 
     /// Check if we need to insert `$$maybeRenderHead` at the start of the template.
@@ -1427,9 +1450,70 @@ impl<'a> AstroCodegen<'a> {
     }
 
     fn print_jsx_text(&mut self, text: &JSXText<'a>) {
+        self.print_jsx_text_with_pos(text, TextPosition {
+            is_lone_child: false,
+            is_first_in_expression: false,
+            is_last_in_expression: false,
+        });
+    }
+
+    fn print_jsx_text_with_pos(&mut self, text: &JSXText<'a>, pos: TextPosition) {
         self.add_source_mapping_for_span(text.span);
-        let escaped = escape_template_literal(text.value.as_str());
-        self.print(&escaped);
+        let value = text.value.as_str();
+        match self.options.compact {
+            CompactMode::Disabled => {
+                self.print(&escape_template_literal(value));
+            }
+            CompactMode::Html => {
+                let in_raw = self.raw_element_depth > 0;
+                let in_insensitive = self.in_head;
+                if let Some(collapsed) = collapse_html(value, in_raw, in_insensitive, pos) {
+                    self.print(&escape_template_literal(&collapsed));
+                }
+            }
+            CompactMode::Jsx => {
+                let in_raw = self.raw_element_depth > 0;
+                if let Some(collapsed) = collapse_jsx(value, in_raw) {
+                    self.print(&escape_template_literal(&collapsed));
+                }
+            }
+        }
+    }
+
+    /// Print JSX children with compact-mode sibling awareness.
+    ///
+    /// When compact mode is active, this method provides each text node with
+    /// context about its siblings (lone child detection, whitespace-insensitive
+    /// parent).  When compact is disabled, it falls through to `print_jsx_child`.
+    fn print_jsx_children_compact(&mut self, children: &[JSXChild<'a>]) {
+        let compact = self.options.compact;
+        if compact == CompactMode::Disabled {
+            for child in children {
+                self.print_jsx_child(child);
+            }
+            return;
+        }
+
+        // Count non-ignored siblings for lone-child detection.
+        // A text node is "lone" if it's the only visible child.
+        let visible_count = children
+            .iter()
+            .filter(|c| !matches!(c, JSXChild::AstroScript(_) | JSXChild::AstroDoctype(_)))
+            .count();
+
+        for child in children {
+            if let JSXChild::Text(text) = child {
+                let is_lone = visible_count == 1;
+                let pos = TextPosition {
+                    is_lone_child: is_lone,
+                    is_first_in_expression: false,
+                    is_last_in_expression: false,
+                };
+                self.print_jsx_text_with_pos(text, pos);
+            } else {
+                self.print_jsx_child(child);
+            }
+        }
     }
 
     /// Dispatch a JSX element to either component or HTML element printing.

@@ -74,12 +74,17 @@ export interface CompileOptions {
    */
   astroGlobalArgs?: string
   /**
-   * Whether to collapse whitespace in the HTML output.
-   * **Stub**: not yet implemented.
+   * Controls whitespace collapsing in the HTML output.
+   *
+   * - `false` (default): no whitespace modification.
+   * - `true`: HTML-aware whitespace collapsing (collapses runs of whitespace,
+   *   preserves significant whitespace, follows HTML whitespace rules).
+   * - `"jsx"`: strips all whitespace-only text nodes and leading/trailing
+   *   whitespace from text content (JSX-style whitespace removal).
    *
    * @default false
    */
-  compact?: boolean
+  compact?: boolean | 'jsx'
   /**
    * Enable scoped slot result handling.
    * When `true`, slot callbacks receive the `$$result` render context parameter.

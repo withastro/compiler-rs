@@ -9,8 +9,9 @@ use super::elements::ScopeId;
 use super::escape::{decode_html_entities, escape_double_quotes};
 use super::expr_to_string;
 use super::runtime;
+use super::whitespace::has_is_raw_attr;
 use crate::css_scoping;
-use crate::options::ScopedStyleStrategy;
+use crate::options::{CompactMode, ScopedStyleStrategy};
 use crate::scanner::{get_jsx_attribute_name, is_custom_element};
 use oxc_ast::ast::*;
 
@@ -94,13 +95,21 @@ impl<'a> AstroCodegen<'a> {
     }
 
     /// Print a component element via `$$renderComponent`.
-    pub(super) fn print_component_element(&mut self, el: &JSXElement<'a>, name: &str) {
+     pub(super) fn print_component_element(&mut self, el: &JSXElement<'a>, name: &str) {
         self.add_source_mapping_for_span(el.opening_element.span);
         // Check for client:* directives
         let mut hydration_info = Self::extract_hydration_info(&el.opening_element.attributes);
 
         // Check if this is a custom element (has dash in name)
         let is_custom = is_custom_element(name);
+
+        // Track raw element depth for compact whitespace collapsing.
+        // A component with `is:raw` has its slot children treated as raw text.
+        let is_raw = self.options.compact != CompactMode::Disabled
+            && has_is_raw_attr(&el.opening_element.attributes);
+        if is_raw {
+            self.raw_element_depth += 1;
+        }
 
         // Check for server:defer directive
         let mut server_defer_info = if Self::has_server_defer(&el.opening_element.attributes) {
@@ -270,6 +279,10 @@ impl<'a> AstroCodegen<'a> {
             self.add_source_mapping_for_span(closing.span);
         }
         self.print(")}");
+
+        if is_raw {
+            self.raw_element_depth -= 1;
+        }
     }
 
     /// Extract `set:html` or `set:text` value from component attributes.

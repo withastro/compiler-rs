@@ -31,13 +31,17 @@ export function mapOptions(
 		}
 	}
 
+	// Convert compact boolean/string to the string form the NAPI layer expects.
+	// Rust receives: "true" → Html mode, "jsx" → Jsx mode, else → Disabled.
+	const compact = options.compact === true ? 'true' : options.compact === 'jsx' ? 'jsx' : undefined;
+
 	return {
 		filename: options.filename,
 		normalizedFilename: options.normalizedFilename,
 		internalURL: options.internalURL,
 		sourcemap: options.sourcemap,
 		astroGlobalArgs: options.astroGlobalArgs,
-		compact: options.compact,
+		compact,
 		resultScopedSlot: options.resultScopedSlot,
 		scopedStyleStrategy: options.scopedStyleStrategy,
 		transitionsAnimationURL: options.transitionsAnimationURL,
