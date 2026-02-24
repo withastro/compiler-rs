@@ -47,7 +47,6 @@ const $$Component = $$createComponent(($$result, $$props, $$slots) => {
 	}
 	const filteredPreloadData = filterPreloads(data.preloads, preload);
 	return $$render`<style>${$$unescapeHTML(data.css)}</style>
-${filteredPreloadData?.map(({ url, type }) => $$render`<link rel="preload"${$$addAttribute(url, "href")} as="font"${$$addAttribute(`font/${type}`, "type")} crossorigin>`)}
-`;
+${filteredPreloadData?.map(({ url, type }) => $$render`<link rel="preload"${$$addAttribute(url, "href")} as="font"${$$addAttribute(`font/${type}`, "type")} crossorigin>`)}`;
 }, undefined, undefined);
 export default $$Component;

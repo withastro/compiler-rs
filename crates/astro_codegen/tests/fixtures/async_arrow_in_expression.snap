@@ -21,7 +21,6 @@ const $$Component = $$createComponent(async ($$result, $$props, $$slots) => {
 		const data = await fetch(`/api/${item}`);
 		return $$render`<li>${data}</li>`;
 	})}
-</ul>
-`;
+</ul>`;
 }, undefined, undefined);
 export default $$Component;
