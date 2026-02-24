@@ -1,5 +1,12 @@
 # @astrojs/compiler-rs
 
+## 0.1.2
+
+### Patch Changes
+
+- efed4ed: Fixes further issues found in the Astro tests, especially around HTML escaping in set:html
+  - @astrojs/compiler-binding@0.1.2
+
 ## 0.1.1
 
 ### Patch Changes
