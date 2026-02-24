@@ -13,7 +13,6 @@ use oxc_span::{GetSpan, Span};
 use oxc_syntax::precedence::Precedence;
 use rustc_hash::{FxHashMap, FxHashSet};
 
-use crate::css_scoping;
 use crate::options::CompactMode;
 use crate::scanner::{
     AstroScanner, HoistedScriptType as InternalHoistedScriptType, ScanResult,
@@ -1121,22 +1120,18 @@ impl<'a> AstroCodegen<'a> {
             None => return, // all whitespace / doctypes
         };
 
-        // In compact mode, also skip trailing whitespace-only text nodes at the
-        // template root level (matching Go compiler's TrimTrailingSpace behaviour).
-        let remaining = if self.options.compact != CompactMode::Disabled {
-            let last_real_idx = remaining
-                .iter()
-                .rposition(|c| match c {
-                    JSXChild::Text(t) => !t.value.trim().is_empty(),
-                    JSXChild::AstroDoctype(_) | JSXChild::AstroScript(_) => false,
-                    _ => true,
-                })
-                .map(|i| i + 1) // exclusive end
-                .unwrap_or(remaining.len());
-            &remaining[..last_real_idx]
-        } else {
-            remaining
-        };
+        // Also skip trailing whitespace-only text nodes at the template root
+        // level (matching Go compiler's TrimTrailingSpace behaviour).
+        let last_real_idx = remaining
+            .iter()
+            .rposition(|c| match c {
+                JSXChild::Text(t) => !t.value.trim().is_empty(),
+                JSXChild::AstroDoctype(_) | JSXChild::AstroScript(_) => false,
+                _ => true,
+            })
+            .map(|i| i + 1) // exclusive end
+            .unwrap_or(remaining.len());
+        let remaining = &remaining[..last_real_idx];
 
         self.print_jsx_children_compact(remaining);
     }
@@ -1250,24 +1245,6 @@ impl<'a> AstroCodegen<'a> {
         }
     }
 
-    fn print_astro_comment(&mut self, comment: &AstroComment<'a>) {
-        self.add_source_mapping_for_span(comment.span);
-        self.print("<!--");
-        self.print(&escape_template_literal(comment.value.as_str()));
-        self.print("-->");
-    }
-
-    fn print_jsx_text(&mut self, text: &JSXText<'a>) {
-        self.print_jsx_text_with_pos(
-            text,
-            TextPosition {
-                is_lone_child: false,
-                is_first_in_expression: false,
-                is_last_in_expression: false,
-            },
-        );
-    }
-
     fn print_jsx_text_with_pos(&mut self, text: &JSXText<'a>, pos: TextPosition) {
         self.add_source_mapping_for_span(text.span);
         let value = text.value.as_str();
@@ -1326,7 +1303,6 @@ impl<'a> AstroCodegen<'a> {
             }
         }
     }
-
 
     /// Dispatch a JSX element to either component or HTML element printing.
     fn print_jsx_element(&mut self, el: &JSXElement<'a>) {
