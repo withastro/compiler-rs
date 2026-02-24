@@ -1450,11 +1450,14 @@ impl<'a> AstroCodegen<'a> {
     }
 
     fn print_jsx_text(&mut self, text: &JSXText<'a>) {
-        self.print_jsx_text_with_pos(text, TextPosition {
-            is_lone_child: false,
-            is_first_in_expression: false,
-            is_last_in_expression: false,
-        });
+        self.print_jsx_text_with_pos(
+            text,
+            TextPosition {
+                is_lone_child: false,
+                is_first_in_expression: false,
+                is_last_in_expression: false,
+            },
+        );
     }
 
     fn print_jsx_text_with_pos(&mut self, text: &JSXText<'a>, pos: TextPosition) {

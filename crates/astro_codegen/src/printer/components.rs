@@ -95,7 +95,7 @@ impl<'a> AstroCodegen<'a> {
     }
 
     /// Print a component element via `$$renderComponent`.
-     pub(super) fn print_component_element(&mut self, el: &JSXElement<'a>, name: &str) {
+    pub(super) fn print_component_element(&mut self, el: &JSXElement<'a>, name: &str) {
         self.add_source_mapping_for_span(el.opening_element.span);
         // Check for client:* directives
         let mut hydration_info = Self::extract_hydration_info(&el.opening_element.attributes);

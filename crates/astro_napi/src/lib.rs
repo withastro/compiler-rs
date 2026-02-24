@@ -16,14 +16,14 @@ static ALLOC: mimalloc_safe::MiMalloc = mimalloc_safe::MiMalloc;
 
 use std::mem;
 
-use napi::{bindgen_prelude::AsyncTask, Task};
+use napi::{Task, bindgen_prelude::AsyncTask};
 use napi_derive::napi;
 
 use std::collections::HashMap;
 
 use crate::error::DiagnosticMessage;
 use astro_codegen::{
-    extract_styles, transform, CompactMode, Diagnostic, HoistedScriptType, TransformOptions,
+    CompactMode, Diagnostic, HoistedScriptType, TransformOptions, extract_styles, transform,
 };
 use oxc_allocator::Allocator;
 use oxc_estree::CompactTSSerializer;
