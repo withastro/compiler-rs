@@ -350,7 +350,8 @@ impl<'a> AstroCodegen<'a> {
                 } else if name == "transition:animate" {
                     transition_animate = Some((Self::get_attr_value_string(attr), attr.span));
                 } else if name == "transition:persist" {
-                    transition_persist = Some((Self::get_attr_value_string_or_empty(attr), attr.span));
+                    transition_persist =
+                        Some((Self::get_attr_value_string_or_empty(attr), attr.span));
                 } else if name == "transition:persist-props" {
                     transition_persist_props = Some((Self::get_attr_value_string(attr), attr.span));
                 }
@@ -499,7 +500,9 @@ impl<'a> AstroCodegen<'a> {
             } else if let Some((_, span)) = &transition_animate {
                 self.add_source_mapping_for_span(*span);
             }
-            let name_val = transition_name.as_ref().map_or_else(|| "\"\"".to_string(), |(v, _)| v.clone());
+            let name_val = transition_name
+                .as_ref()
+                .map_or_else(|| "\"\"".to_string(), |(v, _)| v.clone());
             let animate_val = transition_animate.map_or_else(|| "\"\"".to_string(), |(v, _)| v);
             let hash = self.generate_transition_hash();
             self.print(&format!(
@@ -536,10 +539,14 @@ impl<'a> AstroCodegen<'a> {
             // 3. Generated hash via $$createTransitionScope
             let clean_persist = persist_val.trim_matches('"');
             if !clean_persist.is_empty() {
-                self.print(&format!("\"data-astro-transition-persist\":\"{clean_persist}\""));
+                self.print(&format!(
+                    "\"data-astro-transition-persist\":\"{clean_persist}\""
+                ));
             } else if let Some((ref name_val, _)) = transition_name {
                 let clean_val = name_val.trim_matches('"');
-                self.print(&format!("\"data-astro-transition-persist\":\"{clean_val}\""));
+                self.print(&format!(
+                    "\"data-astro-transition-persist\":\"{clean_val}\""
+                ));
             } else {
                 let hash = self.generate_transition_hash();
                 self.print(&format!(

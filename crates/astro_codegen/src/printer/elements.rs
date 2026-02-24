@@ -390,7 +390,9 @@ impl<'a> AstroCodegen<'a> {
             let clean_persist = persist_val.trim_matches('"');
             if !clean_persist.is_empty() {
                 // Explicit string value on transition:persist — use it directly.
-                self.print(&format!(" data-astro-transition-persist=\"{clean_persist}\""));
+                self.print(&format!(
+                    " data-astro-transition-persist=\"{clean_persist}\""
+                ));
             } else if let Some((ref name_val, _)) = transition_name {
                 let clean_val = name_val.trim_matches('"');
                 self.print(&format!(" data-astro-transition-persist=\"{clean_val}\""));
