@@ -14,7 +14,6 @@ const $$Component = $$createComponent(($$result, $$props, $$slots) => {
 	return $$render`${$$maybeRenderHead($$result)}<div class="something"></div>
 <div id="a" class="b"></div>
 <div class="c"></div>
-<div class="d" id="e"></div>
-`;
+<div class="d" id="e"></div>`;
 }, undefined, undefined);
 export default $$Component;
