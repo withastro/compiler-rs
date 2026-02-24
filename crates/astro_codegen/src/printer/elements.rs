@@ -308,10 +308,12 @@ impl<'a> AstroCodegen<'a> {
                                 value_str = expr_to_string(e);
                                 is_template_literal = matches!(e, Expression::TemplateLiteral(_));
                             }
-                            // set:html needs $$unescapeHTML for expressions, but NOT for
-                            // template literals — the Go compiler passes template literals
-                            // through as-is without unescaping.
-                            let needs_unescape = directive_type == "html" && !is_template_literal;
+                            // set:html always needs $$unescapeHTML — the $$render tagged
+                            // template escapes HTML by default, so all expressions (including
+                            // template literals) must be wrapped in $$unescapeHTML to be
+                            // rendered as raw HTML.
+                            let _ = is_template_literal;
+                            let needs_unescape = directive_type == "html";
                             (value_str, needs_unescape, false)
                         }
                         _ => ("void 0".to_string(), false, false),
@@ -378,11 +380,18 @@ impl<'a> AstroCodegen<'a> {
         // If both class and class:list exist, merge them
         let has_merged_class = static_class.is_some() && class_list_expr.is_some();
 
-        // Handle transition:persist — if there's a transition:name, use that for persist value.
-        // Otherwise use $$createTransitionScope.
-        if let Some((ref _persist_val, persist_span)) = transition_persist {
+        // Handle transition:persist — priority order for the persist ID:
+        // 1. If transition:persist has an explicit string value (e.g. transition:persist="form"),
+        //    use that value directly.
+        // 2. If transition:name is present, use its value.
+        // 3. Otherwise generate a unique hash via $$createTransitionScope.
+        if let Some((ref persist_val, persist_span)) = transition_persist {
             self.add_source_mapping_for_span(persist_span);
-            if let Some((ref name_val, _)) = transition_name {
+            let clean_persist = persist_val.trim_matches('"');
+            if !clean_persist.is_empty() {
+                // Explicit string value on transition:persist — use it directly.
+                self.print(&format!(" data-astro-transition-persist=\"{clean_persist}\""));
+            } else if let Some((ref name_val, _)) = transition_name {
                 let clean_val = name_val.trim_matches('"');
                 self.print(&format!(" data-astro-transition-persist=\"{clean_val}\""));
             } else {

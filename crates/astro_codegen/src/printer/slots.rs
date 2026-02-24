@@ -307,7 +307,7 @@ impl<'a> AstroCodegen<'a> {
         // Also track dynamic slots separately (elements with slot={expr})
         let mut dynamic_slots: Vec<(String, oxc_span::Span, Vec<&JSXChild<'a>>)> = Vec::new();
 
-        for child in children {
+        for (i, child) in children.iter().enumerate() {
             // Skip HTML comments in slots if configured
             if self.options.strip_slot_comments && matches!(child, JSXChild::AstroComment(_)) {
                 continue;
@@ -349,6 +349,29 @@ impl<'a> AstroCodegen<'a> {
                             conditional_slots.push(expr);
                         }
                     }
+                }
+                JSXChild::Text(text) => {
+                    // A whitespace-only text node is dropped when it sits
+                    // immediately adjacent to an expression container —
+                    // specifically when it is:
+                    //   • the first child and its next sibling is an expression, OR
+                    //   • directly after an expression sibling.
+                    // This matches the Go compiler's slot child filtering exactly
+                    // and avoids passing leading/trailing whitespace through to
+                    // framework slot renderers (e.g. Vue's <slot />).
+                    if text.value.trim().is_empty() {
+                        let prev_is_expr =
+                            i > 0 && matches!(children[i - 1], JSXChild::ExpressionContainer(_));
+                        let next_is_expr = i + 1 < children.len()
+                            && matches!(children[i + 1], JSXChild::ExpressionContainer(_));
+                        let is_first = i == 0;
+                        // Drop if: leading node whose next sibling is an expression,
+                        //       or: node immediately following an expression.
+                        if (is_first && next_is_expr) || prev_is_expr {
+                            continue;
+                        }
+                    }
+                    default_children.push(child);
                 }
                 _ => {
                     default_children.push(child);

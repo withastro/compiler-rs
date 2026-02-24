@@ -2122,41 +2122,48 @@ fn try_anchor_supplement(
         // Find the nearest anchor with inter_col <= token_col
         // (the last one in sorted order that doesn't exceed it).
         let nearest = anchors.iter().rev().find(|&&(ic, _, _)| ic <= token_col);
-        let &(anchor_ic, anchor_fl, anchor_fc) = nearest?;
-        let delta = i64::from(anchor_fc) - i64::from(anchor_ic);
-        let candidate_col = u32::try_from((i64::from(token_col) + delta).max(0))
-            .expect("candidate col exceeds u32");
 
-        // Verify: the text at the candidate final position must match the
-        // intermediate text at the token position.  This confirms we are in
-        // a quasi region (not a reformatted expression).
-        let i_text = ctx.inter_lines.get(gen_line).copied().unwrap_or("");
-        let f_text = ctx
-            .final_lines
-            .get(anchor_fl as usize)
-            .copied()
-            .unwrap_or("");
-        let tc = token_col as usize;
-        let cc = candidate_col as usize;
-        // Use a short verification window; 2 bytes is enough to confirm
-        // we're at the same quasi text (e.g. "<p", "</", etc.).
-        let verify_len = 2;
-        let text_matches = tc + verify_len <= i_text.len()
-            && cc + verify_len <= f_text.len()
-            && i_text.as_bytes()[tc..tc + verify_len] == f_text.as_bytes()[cc..cc + verify_len];
+        if let Some(&(anchor_ic, anchor_fl, anchor_fc)) = nearest {
+            let delta = i64::from(anchor_fc) - i64::from(anchor_ic);
+            let candidate_col = u32::try_from((i64::from(token_col) + delta).max(0))
+                .expect("candidate col exceeds u32");
 
-        if text_matches {
-            Some((anchor_fl, candidate_col))
-        } else {
-            None
+            // Verify: the text at the candidate final position must match the
+            // intermediate text at the token position.  This confirms we are in
+            // a quasi region (not a reformatted expression).
+            let i_text = ctx.inter_lines.get(gen_line).copied().unwrap_or("");
+            let f_text = ctx
+                .final_lines
+                .get(anchor_fl as usize)
+                .copied()
+                .unwrap_or("");
+            let tc = token_col as usize;
+            let cc = candidate_col as usize;
+            // Use a short verification window; 2 bytes is enough to confirm
+            // we're at the same quasi text (e.g. "<p", "</", etc.).
+            let verify_len = 2;
+            let text_matches = tc + verify_len <= i_text.len()
+                && cc + verify_len <= f_text.len()
+                && i_text.as_bytes()[tc..tc + verify_len] == f_text.as_bytes()[cc..cc + verify_len];
+
+            if text_matches {
+                return Some((anchor_fl, candidate_col));
+            }
         }
-    } else {
-        // No Phase-2 anchors for this intermediate line.
+        // No anchor at or before token_col (or text mismatch): the token is in
+        // a quasi text region that starts before all Phase-2 anchors on this
+        // line (e.g. `<span>` at col 0 when the JS suffix starts at col 25).
+        // Fall through to the window search below.
+    }
+
+    {
+        // Either: no Phase-2 anchors exist for this intermediate line (pure
+        // quasi text), or all anchors are after the token's column (token is
+        // in a quasi region before the first interpolation on this line).
         //
-        // This happens for lines that are pure template literal quasi text
-        // (no JS expressions).  Phase-2 reformatting may shift these lines
-        // by inserting extra lines for object literal properties, but the
-        // text content remains identical.
+        // Phase-2 reformatting may shift these lines by inserting extra lines
+        // for object literal properties, but the text content remains
+        // identical in the quasi regions.
         //
         // Search a window of final lines around the expected position for
         // a line containing the same text at the token's column.
@@ -4058,9 +4065,11 @@ const html = '<b>bold</b>';
     }
 
     #[test]
-    fn test_set_html_template_literal_no_unescape_html() {
-        // `set:html={`template ${literal}`}` must NOT wrap with $$unescapeHTML.
-        // The Go compiler passes template literals through as-is — matching Go behavior.
+    fn test_set_html_template_literal_uses_unescape_html() {
+        // `set:html={`template ${literal}`}` must wrap with $$unescapeHTML.
+        // The $$render tagged template escapes HTML by default, so all set:html
+        // expressions — including template literals — need $$unescapeHTML to render
+        // as raw HTML.
         let source = r#"---
 const name = 'world';
 ---
@@ -4068,12 +4077,8 @@ const name = 'world';
         let output = compile_astro(source);
 
         assert!(
-            !output.contains("$$unescapeHTML(`"),
-            "set:html with template literal must NOT use $$unescapeHTML: {output}"
-        );
-        assert!(
-            output.contains("`Hello <b>${name}</b>`"),
-            "set:html template literal should be passed through as-is: {output}"
+            output.contains("$$unescapeHTML(`Hello <b>${name}</b>`)"),
+            "set:html with template literal must use $$unescapeHTML: {output}"
         );
     }
 
@@ -4228,6 +4233,95 @@ import { CompA, CompB } from 'test';
         assert!(
             output.contains("import") && output.contains("\"test\""),
             "Mixed import must not be suppressed when one specifier is used normally: {output}"
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // transition:persist tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_transition_persist_with_explicit_value_on_html_element() {
+        // transition:persist="form" on an HTML element should use the string value
+        // directly as data-astro-transition-persist, not a generated hash.
+        let source = r#"<form transition:persist="form"><input /></form>"#;
+        let output = compile_astro(source);
+
+        assert!(
+            output.contains(r#"data-astro-transition-persist="form""#),
+            "transition:persist with explicit value must use that value: {output}"
+        );
+        // The output must not contain a $$createTransitionScope( call (only the import alias is ok)
+        assert!(
+            !output.contains("$$createTransitionScope("),
+            "transition:persist with explicit value must not call $$createTransitionScope: {output}"
+        );
+    }
+
+    #[test]
+    fn test_transition_persist_with_transition_name_on_html_element() {
+        // transition:persist + transition:name="counter" — persist ID should be "counter"
+        let source = r#"<div transition:persist transition:name="counter"></div>"#;
+        let output = compile_astro(source);
+
+        assert!(
+            output.contains(r#"data-astro-transition-persist="counter""#),
+            "transition:persist must use transition:name value as persist ID: {output}"
+        );
+    }
+
+    #[test]
+    fn test_transition_persist_with_explicit_value_on_component() {
+        // transition:persist="form" on a component should use the string value directly.
+        let source = r#"---
+import MyComp from './MyComp.astro';
+---
+<MyComp transition:persist="form" />"#;
+        let output = compile_astro(source);
+
+        assert!(
+            output.contains(r#""data-astro-transition-persist": "form""#),
+            "component transition:persist with explicit value must use that value: {output}"
+        );
+        assert!(
+            !output.contains("$$createTransitionScope("),
+            "component transition:persist with explicit value must not call $$createTransitionScope: {output}"
+        );
+    }
+
+    #[test]
+    fn test_transition_persist_with_transition_name_on_component() {
+        // transition:persist + transition:name="counter" on a component.
+        let source = r#"---
+import MyComp from './MyComp.astro';
+---
+<MyComp transition:persist transition:name="counter" />"#;
+        let output = compile_astro(source);
+
+        assert!(
+            output.contains(r#""data-astro-transition-persist": "counter""#),
+            "component transition:persist must use transition:name value: {output}"
+        );
+    }
+
+    #[test]
+    fn test_array_expression_in_jsx_transforms_children() {
+        // JSX elements inside array expressions must be transformed.
+        // Previously they were left as raw JSX in output.
+        let source = r#"---
+import Foo from './Foo.astro';
+import Bar from './Bar.astro';
+---
+<div>{[<Foo/>, <Bar/>]}</div>"#;
+        let output = compile_astro(source);
+
+        assert!(
+            !output.contains("<Foo/>") && !output.contains("<Bar/>"),
+            "JSX elements inside arrays must be transformed: {output}"
+        );
+        assert!(
+            output.contains("$$renderComponent"),
+            "JSX elements inside arrays must use $$renderComponent: {output}"
         );
     }
 }

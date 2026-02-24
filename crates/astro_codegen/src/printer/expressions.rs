@@ -199,6 +199,33 @@ impl<'a> AstroCodegen<'a> {
                 self.print("await ");
                 self.print_expression(&await_expr.argument);
             }
+            Expression::ArrayExpression(arr) => {
+                self.add_source_mapping_for_span(expr.span());
+                // Arrays may contain JSX elements — iterate and transform each element.
+                self.print("[");
+                let mut first = true;
+                for element in &arr.elements {
+                    if !first {
+                        self.print(", ");
+                    }
+                    first = false;
+                    match element {
+                        oxc_ast::ast::ArrayExpressionElement::SpreadElement(spread) => {
+                            self.print("...");
+                            self.print_expression(&spread.argument);
+                        }
+                        oxc_ast::ast::ArrayExpressionElement::Elision(_) => {
+                            // Elision — empty slot, e.g. [1,,3]
+                        }
+                        _ => {
+                            if let Some(e) = element.as_expression() {
+                                self.print_expression(e);
+                            }
+                        }
+                    }
+                }
+                self.print("]");
+            }
             _ => {
                 self.add_source_mapping_for_span(expr.span());
                 // For all other expressions, use regular codegen

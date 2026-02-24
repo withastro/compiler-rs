@@ -11,6 +11,6 @@ export const $$metadata = $$createMetadata(import.meta.url, {
 	hoisted: []
 });
 const $$Component = $$createComponent(async ($$result, $$props, $$slots) => {
-	return $$render`${$$maybeRenderHead($$result)}<body>${$$renderComponent($$result, "Fragment", Fragment, {}, { "default": async () => $$render` ${await Promise.resolve("Awaited")} ` })}</body>`;
+	return $$render`${$$maybeRenderHead($$result)}<body>${$$renderComponent($$result, "Fragment", Fragment, {}, { "default": async () => $$render`${await Promise.resolve("Awaited")}` })}</body>`;
 }, undefined, undefined);
 export default $$Component;
