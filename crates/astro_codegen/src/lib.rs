@@ -25,7 +25,7 @@ mod printer;
 pub mod scanner;
 
 pub use diagnostic::{Diagnostic, DiagnosticLabel, DiagnosticSeverity};
-pub use options::{ScopedStyleStrategy, SourcemapOption, TransformOptions};
+pub use options::{CompactMode, ScopedStyleStrategy, SourcemapOption, TransformOptions};
 pub use printer::{
     AstroCodegen, HoistedScriptType, StyleBlock, TransformResult, TransformResultHoistedScript,
     TransformResultHydratedComponent, extract_styles, transform,
