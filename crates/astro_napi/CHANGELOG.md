@@ -1,5 +1,11 @@
 # @astrojs/compiler-binding
 
+## 0.1.3
+
+### Patch Changes
+
+- c49b415: Trim body whitespace like the Go compiler does
+
 ## 0.1.2
 
 ## 0.1.1
