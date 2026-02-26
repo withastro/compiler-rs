@@ -1,5 +1,11 @@
 # @astrojs/compiler-binding
 
+## 0.1.4
+
+### Patch Changes
+
+- 30299ab: Fixes an issue where certain compressHTML settings wouldn't work
+
 ## 0.1.3
 
 ### Patch Changes
