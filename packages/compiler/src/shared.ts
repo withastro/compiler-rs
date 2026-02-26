@@ -30,9 +30,10 @@ export function mapOptions(
 			preprocessedStyles = options.preprocessedStyles.styles;
 		}
 	}
-	
-	const compact = (options.compact === true ? "html" : options.compact === "jsx" ? "jsx" : undefined) ?? "none";
-	
+
+	const compact =
+		(options.compact === true ? 'html' : options.compact === 'jsx' ? 'jsx' : undefined) ?? 'none';
+
 	return {
 		filename: options.filename,
 		normalizedFilename: options.normalizedFilename,

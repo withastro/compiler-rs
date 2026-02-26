@@ -56,16 +56,16 @@ export interface ParseOptions {
  */
 export interface TransformOptions
 	extends Omit<CompileOptions, 'resolvePathProvided' | 'preprocessedStyles' | 'compact'> {
-  /**
-   * Controls whitespace collapsing in the HTML output.
-   *
-   * - `false`: no whitespace modification.
-   * - `true` (default): HTML-aware whitespace collapsing.
-   * - `"jsx"`: strips all whitespace-only text nodes and leading/trailing
-   *   whitespace from text content.
-   *
-   * @default `true`
-   */
+	/**
+	 * Controls whitespace collapsing in the HTML output.
+	 *
+	 * - `false`: no whitespace modification.
+	 * - `true` (default): HTML-aware whitespace collapsing.
+	 * - `"jsx"`: strips all whitespace-only text nodes and leading/trailing
+	 *   whitespace from text content.
+	 *
+	 * @default `true`
+	 */
 	compact?: boolean | 'jsx';
 	resolvePath?: (specifier: string) => string;
 	/**
