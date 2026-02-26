@@ -1133,7 +1133,21 @@ impl<'a> AstroCodegen<'a> {
             .unwrap_or(remaining.len());
         let remaining = &remaining[..last_real_idx];
 
-        self.print_jsx_children_compact(remaining);
+        // Print all but the last child normally, then trim trailing whitespace
+        // from the last text node — matching Go compiler's TrimTrailingSpace
+        // behaviour (the source file may end with a newline after real content).
+        if let Some((last, rest)) = remaining.split_last() {
+            self.print_jsx_children_compact(rest);
+            if let JSXChild::Text(text) = last {
+                let trimmed = text.value.trim_end();
+                if !trimmed.is_empty() {
+                    self.add_source_mapping_for_span(text.span);
+                    self.print(&escape_template_literal(trimmed));
+                }
+            } else {
+                self.print_jsx_children_compact(std::slice::from_ref(last));
+            }
+        }
     }
 
     /// Check if we need to insert `$$maybeRenderHead` at the start of the template.
@@ -1746,10 +1760,9 @@ import Component from 'test';
             "Missing $$renderHead in head"
         );
 
-        let maybe_render_head_count = output.matches("$$maybeRenderHead").count();
-        assert_eq!(
-            maybe_render_head_count, 1,
-            "$$maybeRenderHead should only appear once (in import), found {maybe_render_head_count} times. Body should not have $$maybeRenderHead when explicit <head> exists"
+        assert!(
+            !output.contains("$$maybeRenderHead("),
+            "Body should not have $$maybeRenderHead when explicit <head> exists"
         );
     }
 
@@ -1767,10 +1780,9 @@ import Component from 'test';
             "Missing meta element"
         );
 
-        let maybe_render_head_count = output.matches("$$maybeRenderHead").count();
-        assert_eq!(
-            maybe_render_head_count, 1,
-            "$$maybeRenderHead should only appear once (in import), found {maybe_render_head_count} times. Head elements should not trigger $$maybeRenderHead"
+        assert!(
+            !output.contains("$$maybeRenderHead("),
+            "Head elements should not trigger $$maybeRenderHead"
         );
     }
 
@@ -1788,10 +1800,9 @@ import Component from 'test';
             "Custom element should have tag name as both display name and quoted identifier"
         );
 
-        let maybe_render_head_count = output.matches("$$maybeRenderHead").count();
-        assert_eq!(
-            maybe_render_head_count, 1,
-            "$$maybeRenderHead should only appear once (in import), custom elements should not trigger it"
+        assert!(
+            !output.contains("$$maybeRenderHead("),
+            "Custom elements should not trigger $$maybeRenderHead"
         );
 
         assert!(

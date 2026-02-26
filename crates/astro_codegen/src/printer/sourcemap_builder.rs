@@ -795,12 +795,7 @@ fn strip_typescript(
         .semantic
         .into_scoping();
 
-    let mut options = oxc_transformer::TransformOptions::default();
-    // Keep value imports that appear unused. In our generated code, imported
-    // identifiers are referenced inside template literal strings (e.g.
-    // `$$render\`${Component}\``) which semantic analysis cannot see, so
-    // without this flag the transformer would incorrectly remove them.
-    options.typescript.only_remove_type_imports = true;
+    let options = oxc_transformer::TransformOptions::default();
     let _ = oxc_transformer::Transformer::new(allocator, std::path::Path::new(""), &options)
         .build_with_scoping(scoping, &mut program);
 
