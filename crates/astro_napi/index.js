@@ -579,7 +579,8 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { compileAstro, compileAstroSync, DiagnosticSeverity, extractStylesSync, parseAstro, parseAstroSync, ScopedStyleStrategy, SourcemapOption } = nativeBinding
+const { CompactOptions, compileAstro, compileAstroSync, DiagnosticSeverity, extractStylesSync, parseAstro, parseAstroSync, ScopedStyleStrategy, SourcemapOption } = nativeBinding
+export { CompactOptions }
 export { compileAstro }
 export { compileAstroSync }
 export { DiagnosticSeverity }

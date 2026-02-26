@@ -34,6 +34,7 @@ mod whitespace;
 mod sourcemap_builder;
 #[cfg(test)]
 mod sourcemap_tests;
+mod typescript;
 
 // Re-export public result types at the `printer` level so that `lib.rs`
 // can `pub use printer::{...}` without reaching into `result`.
@@ -496,10 +497,20 @@ impl<'a> AstroCodegen<'a> {
         let phase1_sourcemap = self.sourcemap_builder.take();
         let source_path = self.options.filename.as_deref().unwrap_or("<stdin>");
 
-        // Strip TypeScript and compose sourcemaps.
-        let (mut code, sourcemap) = sourcemap_builder::strip_and_compose_sourcemaps(
-            self.allocator,
+        // Strip TypeScript from the intermediate code.  When a sourcemap is
+        // requested we also ask the stripper to produce an intermediate→final
+        // sourcemap (phase2) so we can compose it with the Phase 1 map below.
+        let generate_sourcemap = phase1_sourcemap.is_some();
+        let (mut code, phase2_map) =
+            typescript::strip_typescript(self.allocator, &intermediate_code, generate_sourcemap);
+
+        // Compose Phase 1 (astro codegen) and Phase 2 (TS stripping) sourcemaps.
+        // This is independent of stripping: you can strip without a sourcemap,
+        // and the compose step is a no-op when no sourcemap was requested.
+        let sourcemap = sourcemap_builder::compose_sourcemaps(
             &intermediate_code,
+            &code,
+            phase2_map,
             phase1_sourcemap,
             source_path,
             self.source_text,
@@ -1133,7 +1144,21 @@ impl<'a> AstroCodegen<'a> {
             .unwrap_or(remaining.len());
         let remaining = &remaining[..last_real_idx];
 
-        self.print_jsx_children_compact(remaining);
+        // Print all but the last child normally, then trim trailing whitespace
+        // from the last text node — matching Go compiler's TrimTrailingSpace
+        // behaviour (the source file may end with a newline after real content).
+        if let Some((last, rest)) = remaining.split_last() {
+            self.print_jsx_children_compact(rest);
+            if let JSXChild::Text(text) = last {
+                let trimmed = text.value.trim_end();
+                if !trimmed.is_empty() {
+                    self.add_source_mapping_for_span(text.span);
+                    self.print(&escape_template_literal(trimmed));
+                }
+            } else {
+                self.print_jsx_children_compact(std::slice::from_ref(last));
+            }
+        }
     }
 
     /// Check if we need to insert `$$maybeRenderHead` at the start of the template.
@@ -1746,10 +1771,9 @@ import Component from 'test';
             "Missing $$renderHead in head"
         );
 
-        let maybe_render_head_count = output.matches("$$maybeRenderHead").count();
-        assert_eq!(
-            maybe_render_head_count, 1,
-            "$$maybeRenderHead should only appear once (in import), found {maybe_render_head_count} times. Body should not have $$maybeRenderHead when explicit <head> exists"
+        assert!(
+            !output.contains("$$maybeRenderHead("),
+            "Body should not have $$maybeRenderHead when explicit <head> exists"
         );
     }
 
@@ -1767,10 +1791,9 @@ import Component from 'test';
             "Missing meta element"
         );
 
-        let maybe_render_head_count = output.matches("$$maybeRenderHead").count();
-        assert_eq!(
-            maybe_render_head_count, 1,
-            "$$maybeRenderHead should only appear once (in import), found {maybe_render_head_count} times. Head elements should not trigger $$maybeRenderHead"
+        assert!(
+            !output.contains("$$maybeRenderHead("),
+            "Head elements should not trigger $$maybeRenderHead"
         );
     }
 
@@ -1788,10 +1811,9 @@ import Component from 'test';
             "Custom element should have tag name as both display name and quoted identifier"
         );
 
-        let maybe_render_head_count = output.matches("$$maybeRenderHead").count();
-        assert_eq!(
-            maybe_render_head_count, 1,
-            "$$maybeRenderHead should only appear once (in import), custom elements should not trigger it"
+        assert!(
+            !output.contains("$$maybeRenderHead("),
+            "Custom elements should not trigger $$maybeRenderHead"
         );
 
         assert!(

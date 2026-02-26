@@ -9,8 +9,6 @@
 
 use std::path::Path;
 
-use oxc_allocator::Allocator;
-use oxc_codegen::CodegenOptions;
 use oxc_span::Span;
 use rustc_hash::{FxHashMap, FxHashSet};
 
@@ -316,8 +314,8 @@ pub(super) struct SupplementContext<'a> {
     pub composed_positions: FxHashSet<(u32, u32)>,
 }
 
-/// Strip TypeScript from `intermediate_code` and compose the resulting
-/// sourcemap with the Phase 1 sourcemap from Astro codegen.
+/// Compose the Phase 2 sourcemap (TypeScript stripping) with the Phase 1
+/// sourcemap from Astro codegen, supplementing template-literal tokens.
 ///
 /// Phase 1 maps intermediate positions → original `.astro` positions.
 /// Phase 2 (TypeScript stripping / oxc_codegen re-emit) maps final positions
@@ -330,24 +328,27 @@ pub(super) struct SupplementContext<'a> {
 /// function carries forward Phase 1 tokens that were not covered by Phase 2 by
 /// computing line/column adjustments between the intermediate and final code.
 ///
-/// Returns `(final_code, Option<SourceMap>)` where the sourcemap is `None` if
-/// no sourcemap was requested.
+/// `final_code` is the already-stripped JavaScript produced by the TypeScript
+/// stripping pass.  `phase2_map` is the sourcemap from that pass (mapping
+/// `final_code` positions back to `intermediate_code` positions).
+///
+/// Returns `Some(SourceMap)` when both `phase2_map` and `phase1_sourcemap` are
+/// provided; returns `None` otherwise (no sourcemap requested).
 ///
 /// # Panics
 ///
 /// Panics if line or column values exceed `u32` or `i64` (impossible in
 /// practice for source files).
-pub fn strip_and_compose_sourcemaps(
-    allocator: &Allocator,
+pub fn compose_sourcemaps(
     intermediate_code: &str,
+    final_code: &str,
+    phase2_map: Option<oxc_sourcemap::SourceMap>,
     phase1_sourcemap: Option<AstroSourcemapBuilder<'_>>,
     source_path: &str,
     source_text: &str,
-) -> (String, Option<oxc_sourcemap::SourceMap>) {
-    let generate_sourcemap = phase1_sourcemap.is_some();
-    let (code, phase2_map) = strip_typescript(allocator, intermediate_code, generate_sourcemap);
-
-    let map = if let (Some(phase2_map), Some(phase1_sm)) = (phase2_map, phase1_sourcemap) {
+) -> Option<oxc_sourcemap::SourceMap> {
+    if let (Some(phase2_map), Some(phase1_sm)) = (phase2_map, phase1_sourcemap) {
+        let code = final_code;
         let phase1_map = phase1_sm.into_sourcemap();
         let composed = remap_sourcemap(&phase2_map, &phase1_map, source_path, source_text);
 
@@ -570,9 +571,7 @@ pub fn strip_and_compose_sourcemaps(
         Some(composed)
     } else {
         None
-    };
-
-    (code, map)
+    }
 }
 
 /// Carry forward Phase 1 tokens inside the template literal region that
@@ -768,55 +767,6 @@ fn try_anchor_supplement(
 
         None
     }
-}
-
-/// Strip TypeScript syntax from generated code.
-///
-/// Parses the code as TypeScript, runs `oxc_transformer` (TS-only stripping,
-/// no JSX transform, no ES downleveling), and re-emits as JavaScript.
-fn strip_typescript(
-    allocator: &Allocator,
-    code: &str,
-    generate_sourcemap: bool,
-) -> (String, Option<oxc_sourcemap::SourceMap>) {
-    let source_type = oxc_span::SourceType::mjs().with_typescript(true);
-    let ret = oxc_parser::Parser::new(allocator, code, source_type).parse();
-
-    if !ret.errors.is_empty() {
-        // If parsing fails, return the code unchanged — the downstream
-        // consumer will report a better error.
-        return (code.to_string(), None);
-    }
-
-    let mut program = ret.program;
-    let scoping = oxc_semantic::SemanticBuilder::new()
-        .with_excess_capacity(2.0)
-        .build(&program)
-        .semantic
-        .into_scoping();
-
-    let mut options = oxc_transformer::TransformOptions::default();
-    // Keep value imports that appear unused. In our generated code, imported
-    // identifiers are referenced inside template literal strings (e.g.
-    // `$$render\`${Component}\``) which semantic analysis cannot see, so
-    // without this flag the transformer would incorrectly remove them.
-    options.typescript.only_remove_type_imports = true;
-    let _ = oxc_transformer::Transformer::new(allocator, std::path::Path::new(""), &options)
-        .build_with_scoping(scoping, &mut program);
-
-    let codegen_options = CodegenOptions {
-        single_quote: false,
-        source_map_path: if generate_sourcemap {
-            Some(std::path::PathBuf::from("intermediate.js"))
-        } else {
-            None
-        },
-        ..CodegenOptions::default()
-    };
-    let result = oxc_codegen::Codegen::new()
-        .with_options(codegen_options)
-        .build(&program);
-    (result.code, result.map)
 }
 
 #[cfg(test)]

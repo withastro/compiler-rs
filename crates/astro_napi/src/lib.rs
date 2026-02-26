@@ -22,9 +22,7 @@ use napi_derive::napi;
 use std::collections::HashMap;
 
 use crate::error::DiagnosticMessage;
-use astro_codegen::{
-    CompactMode, Diagnostic, HoistedScriptType, TransformOptions, extract_styles, transform,
-};
+use astro_codegen::{Diagnostic, HoistedScriptType, TransformOptions, extract_styles, transform};
 use oxc_allocator::Allocator;
 use oxc_estree::CompactTSSerializer;
 use oxc_estree::ESTree;
@@ -44,6 +42,19 @@ pub enum SourcemapOption {
     /// Both: append the inline comment **and** populate the `map` field.
     #[napi(value = "both")]
     Both,
+}
+
+#[napi(string_enum)]
+pub enum CompactOptions {
+    #[napi(value = "none")]
+    /// No whitespace modification
+    None,
+    /// HTML-aware whitespace collapsing (default).
+    #[napi(value = "html")]
+    Html,
+    /// JSX-style whitespace removal.
+    #[napi(value = "jsx")]
+    Jsx,
 }
 
 /// Strategy for CSS scoping.
@@ -94,15 +105,15 @@ pub struct CompileOptions {
 
     /// Controls whitespace collapsing in the HTML output.
     ///
-    /// - `false` (default): no whitespace modification.
-    /// - `true`: HTML-aware whitespace collapsing (collapses runs of whitespace,
+    /// - `none` (default): no whitespace modification.
+    /// - `html`: HTML-aware whitespace collapsing (collapses runs of whitespace,
     ///   preserves significant whitespace, follows HTML whitespace rules).
     /// - `"jsx"`: strips all whitespace-only text nodes and leading/trailing
     ///   whitespace from text content (JSX-style whitespace removal).
     ///
     /// @default false
-    #[napi(ts_type = "boolean | 'jsx'")]
-    pub compact: Option<String>,
+    #[napi(ts_type = "'none' | 'html' | 'jsx'")]
+    pub compact: Option<CompactOptions>,
 
     /// Enable scoped slot result handling.
     /// When `true`, slot callbacks receive the `$$result` render context parameter.
@@ -273,11 +284,12 @@ fn napi_to_codegen_sourcemap(s: &Option<SourcemapOption>) -> astro_codegen::Sour
     }
 }
 
-fn napi_to_codegen_compact(s: &Option<String>) -> CompactMode {
-    match s.as_deref() {
-        Some("true") => CompactMode::Html,
-        Some("jsx") => CompactMode::Jsx,
-        _ => CompactMode::Disabled,
+fn napi_to_codegen_compact(s: &Option<CompactOptions>) -> astro_codegen::CompactMode {
+    match s {
+        Some(CompactOptions::None) => astro_codegen::CompactMode::Disabled,
+        Some(CompactOptions::Html) => astro_codegen::CompactMode::Html,
+        Some(CompactOptions::Jsx) => astro_codegen::CompactMode::Jsx,
+        _ => astro_codegen::CompactMode::default(),
     }
 }
 

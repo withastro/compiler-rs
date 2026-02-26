@@ -7,10 +7,6 @@ async function minify(input: string) {
 	return code.replace('${$$maybeRenderHead($$result)}', '');
 }
 
-// Note: basic, preservation, collapsing, jsx, and newline tests are covered
-// by Rust snapshot fixtures in crates/astro_codegen/tests/fixtures/compact__*.astro.
-// Only parametric tests that don't map cleanly to single fixtures remain here.
-
 describe('compact/minify', () => {
 	it('space normalization between attributes', async () => {
 		assert.ok((await minify('<p title="bar">foo</p>')).includes('<p title="bar">foo</p>'));
