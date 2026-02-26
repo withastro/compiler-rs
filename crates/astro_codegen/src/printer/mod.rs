@@ -34,6 +34,7 @@ mod whitespace;
 mod sourcemap_builder;
 #[cfg(test)]
 mod sourcemap_tests;
+mod typescript;
 
 // Re-export public result types at the `printer` level so that `lib.rs`
 // can `pub use printer::{...}` without reaching into `result`.
@@ -496,10 +497,20 @@ impl<'a> AstroCodegen<'a> {
         let phase1_sourcemap = self.sourcemap_builder.take();
         let source_path = self.options.filename.as_deref().unwrap_or("<stdin>");
 
-        // Strip TypeScript and compose sourcemaps.
-        let (mut code, sourcemap) = sourcemap_builder::strip_and_compose_sourcemaps(
-            self.allocator,
+        // Strip TypeScript from the intermediate code.  When a sourcemap is
+        // requested we also ask the stripper to produce an intermediate→final
+        // sourcemap (phase2) so we can compose it with the Phase 1 map below.
+        let generate_sourcemap = phase1_sourcemap.is_some();
+        let (mut code, phase2_map) =
+            typescript::strip_typescript(self.allocator, &intermediate_code, generate_sourcemap);
+
+        // Compose Phase 1 (astro codegen) and Phase 2 (TS stripping) sourcemaps.
+        // This is independent of stripping: you can strip without a sourcemap,
+        // and the compose step is a no-op when no sourcemap was requested.
+        let sourcemap = sourcemap_builder::compose_sourcemaps(
             &intermediate_code,
+            &code,
+            phase2_map,
             phase1_sourcemap,
             source_path,
             self.source_text,
