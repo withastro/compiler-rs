@@ -83,13 +83,14 @@ pub fn gen_to_string(node: &(impl Gen + ?Sized)) -> String {
 /// Runtime function names used in generated code.
 mod runtime {
     pub const FRAGMENT: &str = "Fragment";
-    pub const RENDER: &str = "$$render";
+    pub const RENDER_BYTES: &str = "$$renderBytes";
     pub const CREATE_ASTRO: &str = "$$createAstro";
     pub const CREATE_COMPONENT: &str = "$$createComponent";
     pub const RENDER_COMPONENT: &str = "$$renderComponent";
     pub const RENDER_HEAD: &str = "$$renderHead";
     pub const MAYBE_RENDER_HEAD: &str = "$$maybeRenderHead";
     pub const UNESCAPE_HTML: &str = "$$unescapeHTML";
+    pub const ESCAPE_HTML: &str = "$$escapeHTML";
     pub const RENDER_SLOT: &str = "$$renderSlot";
     pub const MERGE_SLOTS: &str = "$$mergeSlots";
     pub const ADD_ATTRIBUTE: &str = "$$addAttribute";
@@ -181,6 +182,36 @@ pub struct AstroCodegen<'a> {
     /// Counter for the current extractable style index during prescan.
     /// Used to look up preprocessed style content from `options.preprocessed_styles`.
     style_extraction_index: usize,
+
+    // -----------------------------------------------------------------------
+    // Template capture state for $$renderBytes emission
+    // -----------------------------------------------------------------------
+    /// Stack of outer CodeBuffers saved while capturing template bodies.
+    /// Each entry was pushed by `begin_template_capture()` and is restored by
+    /// `end_template_capture()`.
+    template_capture_stack: Vec<TemplateCapture>,
+
+    /// All pre-encoded static byte arrays collected across the entire module.
+    /// Each entry corresponds to one static segment of a `$$renderBytes` call.
+    /// Emitted at module scope before the component definition.
+    static_byte_arrays: Vec<Vec<u8>>,
+
+    /// Hoisted static-parts arrays.  Each entry is a list of `$$sN` indices
+    /// (into `static_byte_arrays`) that form the first argument to one
+    /// `$$renderBytes(...)` call.  Emitted as `const $$pN = [$$s0, ...]` at
+    /// module scope so the array is allocated once rather than on every call.
+    static_parts_arrays: Vec<Vec<usize>>,
+}
+
+/// Captured content of a single `$$render\`...\`` template literal, used by the
+/// "swap buffer" template capture mechanism.  After popping the capture, the
+/// raw template literal body is split into static UTF-8 byte arrays and JS
+/// expression strings, then re-emitted as a `$$renderBytes(...)` call.
+#[derive(Debug)]
+struct TemplateCapture {
+    /// The `CodeBuffer` that was active *before* entering this template, restored
+    /// on pop.
+    outer_code: CodeBuffer,
 }
 
 /// Information about an imported module for metadata.
@@ -266,6 +297,9 @@ impl<'a> AstroCodegen<'a> {
             define_vars_values: Vec::new(),
             define_vars_injected: false,
             style_extraction_index: 0,
+            template_capture_stack: Vec::new(),
+            static_byte_arrays: Vec::new(),
+            static_parts_arrays: Vec::new(),
         }
     }
 
@@ -426,6 +460,288 @@ impl<'a> AstroCodegen<'a> {
             first = false;
             self.code.print_str(line);
         }
+    }
+
+    // -----------------------------------------------------------------------
+    // Template capture helpers
+    // -----------------------------------------------------------------------
+
+    /// Begin capturing the body of a `$$render\`...\`` template literal.
+    ///
+    /// Swaps `self.code` with a fresh `CodeBuffer` so that all subsequent
+    /// `self.print()` calls write into the capture buffer instead of the main
+    /// output.  Call [`end_template_capture`] to pop the stack and obtain the
+    /// raw template literal body string.
+    fn begin_template_capture(&mut self) {
+        let outer = std::mem::replace(&mut self.code, CodeBuffer::default());
+        self.template_capture_stack.push(TemplateCapture { outer_code: outer });
+    }
+
+    /// End a template capture started by [`begin_template_capture`].
+    ///
+    /// Restores the previous `CodeBuffer` and returns the raw bytes that were
+    /// written into the capture buffer (i.e. the template literal body).
+    fn end_template_capture(&mut self) -> String {
+        let capture = self
+            .template_capture_stack
+            .pop()
+            .expect("end_template_capture called without matching begin_template_capture");
+        let captured = std::mem::replace(&mut self.code, capture.outer_code);
+        captured.into_string()
+    }
+
+    /// Split a raw template literal body (the text between the outer backticks,
+    /// *not* including the backticks themselves) into alternating static/dynamic
+    /// segments.
+    ///
+    /// Returns `(static_parts, expression_codes)` where `static_parts.len() ==
+    /// expression_codes.len() + 1`.  Each element of `static_parts` is the
+    /// un-escaped static HTML bytes for that segment; each element of
+    /// `expression_codes` is the verbatim JS code between `${` and its matching
+    /// `}`.
+    fn split_template_body(body: &str) -> (Vec<Vec<u8>>, Vec<String>) {
+        let bytes = body.as_bytes();
+        let len = bytes.len();
+
+        let mut static_parts: Vec<Vec<u8>> = Vec::new();
+        let mut expressions: Vec<String> = Vec::new();
+
+        let mut current_static: Vec<u8> = Vec::new();
+        let mut i = 0;
+
+        while i < len {
+            // Look for `${` which starts an expression hole.
+            if i + 1 < len && bytes[i] == b'$' && bytes[i + 1] == b'{' {
+                // Flush the accumulated static bytes.
+                static_parts.push(Self::unescape_template_literal_bytes(&current_static));
+                current_static = Vec::new();
+                i += 2; // skip `${`
+
+                // Collect the expression body, handling nested braces and strings.
+                let expr_start = i;
+                let mut depth = 1usize;
+                let mut in_single = false;
+                let mut in_double = false;
+                let mut in_backtick = false;
+                let mut in_template_depth = 0usize; // nesting of `...` inside the expr
+
+                while i < len && depth > 0 {
+                    let b = bytes[i];
+                    match b {
+                        b'\\' if in_single || in_double || in_backtick => {
+                            i += 2; // skip escaped char
+                            continue;
+                        }
+                        b'\'' if !in_double && !in_backtick => {
+                            in_single = !in_single;
+                        }
+                        b'"' if !in_single && !in_backtick => {
+                            in_double = !in_double;
+                        }
+                        b'`' if !in_single && !in_double => {
+                            in_backtick = !in_backtick;
+                            if in_backtick {
+                                in_template_depth += 1;
+                            } else {
+                                in_template_depth = in_template_depth.saturating_sub(1);
+                            }
+                        }
+                        b'{' if !in_single && !in_double && !in_backtick => {
+                            depth += 1;
+                        }
+                        b'}' if !in_single && !in_double && !in_backtick => {
+                            depth -= 1;
+                            if depth == 0 {
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                    i += 1;
+                }
+                let expr_code = &body[expr_start..i];
+                expressions.push(expr_code.to_string());
+                i += 1; // skip closing `}`
+            } else {
+                current_static.push(bytes[i]);
+                i += 1;
+            }
+        }
+
+        // Push final static segment (may be empty).
+        static_parts.push(Self::unescape_template_literal_bytes(&current_static));
+
+        (static_parts, expressions)
+    }
+
+    /// Unescape template literal escape sequences in the raw static bytes.
+    ///
+    /// The template literal body uses `\`` for backtick, `\${` for a literal
+    /// `${`, and `\\` for a literal backslash.  We need to undo these so the
+    /// emitted Uint8Array contains the actual HTML bytes.
+    fn unescape_template_literal_bytes(raw: &[u8]) -> Vec<u8> {
+        let mut out = Vec::with_capacity(raw.len());
+        let mut i = 0;
+        while i < raw.len() {
+            if raw[i] == b'\\' && i + 1 < raw.len() {
+                match raw[i + 1] {
+                    b'`' => { out.push(b'`'); i += 2; }
+                    b'$' => { out.push(b'$'); i += 2; }
+                    b'\\' => { out.push(b'\\'); i += 2; }
+                    // `\n`, `\r`, `\t` etc. — keep the backslash+char as-is
+                    // since the template literal would have already had the real
+                    // whitespace character, not a literal `\n` sequence.
+                    _ => { out.push(raw[i]); i += 1; }
+                }
+            } else {
+                out.push(raw[i]);
+                i += 1;
+            }
+        }
+        out
+    }
+
+    /// Emit `const $$sN = new Uint8Array([...]);` declarations for all
+    /// collected static byte arrays, followed by `const $$pN = [$$s0, ...]`
+    /// declarations for the hoisted static-parts arrays.
+    /// Called once from `print_astro_root` before the component wrapper so
+    /// all constants live at module scope.
+    fn print_static_byte_arrays(&mut self) {
+        // Clone to avoid holding an immutable borrow on self while calling self.print().
+        let arrays: Vec<Vec<u8>> = self.static_byte_arrays.clone();
+
+        // Build a dedup map: byte content → first $$sN index that has this content.
+        // Later indices that have the same content will be aliased to the first.
+        use std::collections::HashMap;
+        let mut dedup: HashMap<&[u8], usize> = HashMap::new();
+        // Maps original index → canonical index (the first index with the same bytes).
+        let mut canonical: Vec<usize> = Vec::with_capacity(arrays.len());
+        for (i, bytes) in arrays.iter().enumerate() {
+            if let Some(&first) = dedup.get(bytes.as_slice()) {
+                canonical.push(first);
+            } else {
+                dedup.insert(bytes.as_slice(), i);
+                canonical.push(i);
+            }
+        }
+
+        // Emit only the canonical (first-occurrence) $$sN constants.
+        // Each one gets a `_str` property with the pre-decoded string to avoid
+        // runtime decoder.decode() calls in the renderToString path.
+        for (i, bytes) in arrays.iter().enumerate() {
+            // Skip non-canonical entries — they'll alias to the canonical one.
+            if canonical[i] != i {
+                continue;
+            }
+
+            self.print(&format!("const $$s{i} = new Uint8Array(["));
+            let mut first = true;
+            for b in bytes {
+                if !first {
+                    self.print(",");
+                }
+                first = false;
+                self.print(&b.to_string());
+            }
+            self.print("]);");
+
+            // Attach the cached string representation.
+            // The runtime's chunkToString() reads (chunk as any)._str to skip
+            // decoder.decode() on every render call.
+            if !bytes.is_empty() {
+                let s = String::from_utf8_lossy(bytes);
+                // Escape the string for a JS single-quoted literal.
+                let escaped = Self::escape_js_string_single(&s);
+                self.print(&format!("$$s{i}._str='{escaped}';"));
+            }
+            self.println("");
+        }
+
+        // Emit aliases for deduplicated entries.
+        for (i, &canon) in canonical.iter().enumerate() {
+            if canon != i {
+                self.println(&format!("const $$s{i} = $$s{canon};"));
+            }
+        }
+
+        // Emit hoisted static-parts arrays: const $$pN = [$$s0, $$s1, ...];
+        let parts_arrays: Vec<Vec<usize>> = self.static_parts_arrays.clone();
+        for (i, indices) in parts_arrays.iter().enumerate() {
+            self.print(&format!("const $$p{i} = ["));
+            for (j, idx) in indices.iter().enumerate() {
+                if j > 0 {
+                    self.print(",");
+                }
+                self.print(&format!("$$s{idx}"));
+            }
+            self.println("];");
+        }
+        if !arrays.is_empty() || !parts_arrays.is_empty() {
+            self.println("");
+        }
+    }
+
+    /// Escape a string for use inside a JavaScript single-quoted string literal.
+    fn escape_js_string_single(s: &str) -> String {
+        let mut out = String::with_capacity(s.len() + 16);
+        for ch in s.chars() {
+            match ch {
+                '\'' => out.push_str("\\'"),
+                '\\' => out.push_str("\\\\"),
+                '\n' => out.push_str("\\n"),
+                '\r' => out.push_str("\\r"),
+                '\t' => out.push_str("\\t"),
+                '\0' => out.push_str("\\0"),
+                // Line separators that break JS single-quoted strings
+                '\u{2028}' => out.push_str("\\u2028"),
+                '\u{2029}' => out.push_str("\\u2029"),
+                _ => out.push(ch),
+            }
+        }
+        out
+    }
+
+    /// Capture the body of a `$$render\`...\`` call, split it into static/dynamic
+    /// segments, register the static byte arrays, and emit a `$$renderBytes(...)`
+    /// call in their place.
+    ///
+    /// `prefix` is any JS that should appear *before* `$$renderBytes(...)` in the
+    /// output (e.g. the `return ` keyword for the top-level template, or `${` for
+    /// an inline expression).  `suffix` is emitted after the call.
+    ///
+    /// The caller must have already called `begin_template_capture()` and
+    /// printed the full template body using the existing helper methods.
+    fn emit_render_bytes(&mut self, prefix: &str, suffix: &str) {
+        let body = self.end_template_capture();
+        let (static_parts, expr_codes) = Self::split_template_body(&body);
+
+        // Register static byte arrays and collect their indices.
+        let start_idx = self.static_byte_arrays.len();
+        let mut indices: Vec<usize> = Vec::with_capacity(static_parts.len());
+        for part in &static_parts {
+            indices.push(self.static_byte_arrays.len());
+            self.static_byte_arrays.push(part.clone());
+        }
+
+        // Register the hoisted static-parts array and get its index.
+        let parts_idx = self.static_parts_arrays.len();
+        self.static_parts_arrays.push(indices);
+
+        // Emit: <prefix>$$renderBytes($$pN, [expr0, expr1, ...])<suffix>
+        // $$pN is a module-scope constant holding [$$s<start>, ...] so the
+        // array is allocated once at import time rather than on every call.
+        let _ = start_idx; // kept for clarity, no longer used inline
+        self.print(prefix);
+        self.print(runtime::RENDER_BYTES);
+        self.print(&format!("($$p{parts_idx},["));
+        for (j, expr) in expr_codes.iter().enumerate() {
+            if j > 0 {
+                self.print(",");
+            }
+            self.print(expr);
+        }
+        self.print("])");
+        self.print(suffix);
     }
 
     /// Build the JavaScript output from an Astro AST.
@@ -600,9 +916,22 @@ impl<'a> AstroCodegen<'a> {
             self.print_statement(export_stmt);
         }
 
-        // 7. Print the component
+        // 7. Print the component.
+        // We need static byte array constants ($$s0, $$s1, ...) to appear
+        // *before* the component in the output, but they are only known after
+        // printing the component body.  Solution: capture the component output
+        // into a temporary buffer, then emit the arrays, then replay the buffer.
         let component_name = get_component_name(self.options.filename.as_deref());
+        // Swap self.code with a fresh buffer to capture the component output.
+        let pre_component_code = std::mem::replace(&mut self.code, CodeBuffer::default());
         self.print_component_wrapper(&other_statements, &root.body, &component_name);
+        let component_code = std::mem::replace(&mut self.code, pre_component_code);
+
+        // Now emit the collected static byte arrays at module scope.
+        self.print_static_byte_arrays();
+
+        // Replay the component code.
+        self.print(&component_code.into_string());
 
         // 8. Print default export
         self.println(&format!("export default {component_name};"));
@@ -613,7 +942,7 @@ impl<'a> AstroCodegen<'a> {
 
         self.println("import {");
         self.println(&format!("  {},", runtime::FRAGMENT));
-        self.println(&format!("  render as {},", runtime::RENDER));
+        self.println(&format!("  renderBytes as {},", runtime::RENDER_BYTES));
         self.println(&format!("  createAstro as {},", runtime::CREATE_ASTRO));
         self.println(&format!(
             "  createComponent as {},",
@@ -629,6 +958,7 @@ impl<'a> AstroCodegen<'a> {
             runtime::MAYBE_RENDER_HEAD
         ));
         self.println(&format!("  unescapeHTML as {},", runtime::UNESCAPE_HTML));
+        self.println(&format!("  escapeHTML as {},", runtime::ESCAPE_HTML));
         self.println(&format!("  renderSlot as {},", runtime::RENDER_SLOT));
         self.println(&format!("  mergeSlots as {},", runtime::MERGE_SLOTS));
         self.println(&format!("  addAttribute as {},", runtime::ADD_ATTRIBUTE));
@@ -1083,9 +1413,9 @@ impl<'a> AstroCodegen<'a> {
             ));
         }
 
-        self.print("return ");
-        self.print(runtime::RENDER);
-        self.print("`");
+        // Capture the template body so we can split it into static byte arrays
+        // and expression codes, then emit a $$renderBytes(...) call.
+        self.begin_template_capture();
 
         if self.needs_maybe_render_head_at_start(body) {
             self.print(&format!(
@@ -1098,7 +1428,7 @@ impl<'a> AstroCodegen<'a> {
 
         self.print_jsx_body_children(body);
 
-        self.println("`;");
+        self.emit_render_bytes("return ", ";");
 
         let filename_part = match &self.options.filename {
             Some(f) => format!("'{}'", escape_single_quote(f)),

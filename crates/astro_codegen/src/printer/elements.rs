@@ -232,12 +232,11 @@ impl<'a> AstroCodegen<'a> {
         // Add fallback content if there are children
         if !el.children.is_empty() {
             self.print(",");
-            self.print(runtime::RENDER);
-            self.print("`");
+            self.begin_template_capture();
             for child in &el.children {
                 self.print_jsx_child(child);
             }
-            self.print("`");
+            self.emit_render_bytes("", "");
         }
 
         // Map the closing </slot> tag to its source position (if present).

@@ -25,15 +25,15 @@ impl<'a> AstroCodegen<'a> {
         self.print(",\"Fragment\",");
         self.print(runtime::FRAGMENT);
         self.print(&format!(",{{}},{{\"default\": {async_prefix}{slot_params}"));
-        self.print(runtime::RENDER);
-        self.print("`");
+        // Capture the fragment children as a $$renderBytes call.
+        self.begin_template_capture();
         self.print_jsx_children_compact(&frag.children);
         // Map the closing fragment tag (</>) to the `)` that closes
         // $$renderComponent(...) — the semantic equivalent in generated code.
         if !frag.closing_fragment.span.is_empty() {
             self.add_source_mapping_for_span(frag.closing_fragment.span);
         }
-        self.print("`,})}");
+        self.emit_render_bytes("", ",})}");
     }
 
     pub(super) fn print_jsx_expression_container(&mut self, expr: &JSXExpressionContainer<'a>) {
@@ -48,9 +48,79 @@ impl<'a> AstroCodegen<'a> {
             }
         }
 
+        // For simple value expressions (identifiers, member access, literals,
+        // template literals, binary/unary ops), wrap in $$escapeHTML() at compile
+        // time.  This produces an HTMLString that renderChild writes directly
+        // (3rd dispatch check) instead of going through the full 13-branch
+        // type dispatch.  Expressions that may produce JSX (call expressions,
+        // ternaries, etc.) are left unwrapped for renderChild to handle.
+        let should_escape = Self::is_simple_value_expression(&expr.expression);
+
         self.print("${");
+        if should_escape {
+            self.print(runtime::ESCAPE_HTML);
+            self.print("(");
+        }
         self.print_jsx_expression(&expr.expression);
+        if should_escape {
+            self.print(")");
+        }
         self.print("}");
+    }
+
+    /// Returns true if the expression is guaranteed to be a simple value
+    /// (string, number, etc.) that cannot contain JSX or runtime render calls.
+    /// These expressions are safe to wrap in $$escapeHTML() at compile time.
+    fn is_simple_value_expression(expr: &JSXExpression<'a>) -> bool {
+        match expr {
+            // Bare identifiers like {title}, {name} — the most common text
+            // interpolation pattern.
+            JSXExpression::Identifier(_) => true,
+            JSXExpression::EmptyExpression(_) => false,
+            other => {
+                if let Some(inner) = other.as_expression() {
+                    Self::is_simple_value_expr(inner)
+                } else {
+                    false
+                }
+            }
+        }
+    }
+
+    /// Check if an Expression AST node is a simple value that can't produce JSX.
+    fn is_simple_value_expr(expr: &Expression<'a>) -> bool {
+        match expr {
+            // Literals: "hello", 42, true, null, etc.
+            Expression::StringLiteral(_)
+            | Expression::NumericLiteral(_)
+            | Expression::BooleanLiteral(_)
+            | Expression::NullLiteral(_)
+            | Expression::BigIntLiteral(_) => true,
+
+            // Template literals: `hello ${name}` — text-only, no JSX
+            Expression::TemplateLiteral(_) => true,
+
+            // Member access: item.name, obj.foo.bar, arr[0]
+            Expression::StaticMemberExpression(_)
+            | Expression::ComputedMemberExpression(_) => true,
+
+            // Unary: typeof x, !x, -x — always produces a primitive
+            Expression::UnaryExpression(_) => true,
+
+            // Binary: a + b, a - b, etc. — produces a primitive
+            Expression::BinaryExpression(_) => true,
+
+            // Parenthesized: (expr) — delegate to inner
+            Expression::ParenthesizedExpression(paren) => {
+                Self::is_simple_value_expr(&paren.expression)
+            }
+
+            // Await: await expr — the awaited value might be a string/number,
+            // but it could also be a component.  Be conservative.
+            // Call expressions, conditionals, logical expressions, arrays,
+            // JSX elements/fragments — all may produce JSX or render results.
+            _ => false,
+        }
     }
 
     pub(super) fn print_jsx_expression(&mut self, expr: &JSXExpression<'a>) {
@@ -92,42 +162,44 @@ impl<'a> AstroCodegen<'a> {
         // position (after the boilerplate).
         match expr {
             Expression::JSXElement(el) => {
-                // $$render is runtime boilerplate — skip mapping here;
-                // print_jsx_element will map <tag> to the correct source span.
-                self.print(runtime::RENDER);
-                self.print("`");
+                // Capture the element body and emit as $$renderBytes(...).
+                self.begin_template_capture();
                 self.print_jsx_element(el);
-                self.print("`");
+                self.emit_render_bytes("", "");
             }
             Expression::JSXFragment(frag) => {
-                // Same rationale as JSXElement — don't map $$render boilerplate.
                 // Child printing (print_jsx_child / print_jsx_fragment) will
                 // emit the appropriate source mappings.
                 let is_explicit_fragment = !frag.opening_fragment.span.is_empty();
 
                 if is_explicit_fragment {
-                    // Explicit <>...</> syntax gets wrapped in $$renderComponent with Fragment
+                    // Explicit <>...</> wraps children in $$renderComponent with Fragment.
+                    // Outer template: $$renderBytes([$$sN],[$$renderComponent(...)])
+                    // Inner template (the slot): $$renderBytes([$$sM,...],[...])
                     let slot_params = self.get_slot_params();
-                    self.print(runtime::RENDER);
-                    self.print("`${");
+                    // Outer template captures the ${$$renderComponent(...)} expression.
+                    self.begin_template_capture();
+                    self.print("${");
                     self.print(runtime::RENDER_COMPONENT);
                     self.print(&format!(
                         "($$result,\"Fragment\",Fragment,{{}},{{\"default\":{slot_params}"
                     ));
-                    self.print(runtime::RENDER);
-                    self.print("`");
+                    // Inner template for the slot children.
+                    self.begin_template_capture();
                     self.print_jsx_children_compact(&frag.children);
                     // Map closing fragment tag (</>) before the closing boilerplate.
                     if !frag.closing_fragment.span.is_empty() {
                         self.add_source_mapping_for_span(frag.closing_fragment.span);
                     }
-                    self.print("`,})}`");
+                    self.emit_render_bytes("", ",})}");
+                    // Close the ${...} expression and close the outer template.
+                    self.print("}");
+                    self.emit_render_bytes("", "");
                 } else {
-                    // Implicit fragments (multiple JSX siblings) are just wrapped in $$render`...`
-                    self.print(runtime::RENDER);
-                    self.print("`");
+                    // Implicit fragment: just wrap children in $$renderBytes.
+                    self.begin_template_capture();
                     self.print_jsx_children_compact(&frag.children);
-                    self.print("`");
+                    self.emit_render_bytes("", "");
                 }
             }
             Expression::ConditionalExpression(cond) => {

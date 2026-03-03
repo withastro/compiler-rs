@@ -261,17 +261,25 @@ impl<'a> AstroCodegen<'a> {
         }
     }
 
-    /// Print the opening of a slot render function: ` async? () => $$render\``.
+    /// Print the opening of a slot render function and begin capturing the body.
     ///
-    /// This is the common suffix after a slot key. After calling this, the
-    /// caller should print the slot body and then close with `` \` ``.
+    /// Emits `async? () => ` and then calls `begin_template_capture()`.
+    /// The caller should print the slot body and then call
+    /// `print_slot_fn_close(suffix)` to emit the `$$renderBytes(...)` call
+    /// with the appropriate trailing punctuation.
     fn print_slot_fn_open(&mut self) {
         let async_prefix = self.get_async_prefix();
         let slot_params = self.get_slot_params();
         self.print(async_prefix);
         self.print(slot_params);
-        self.print(runtime::RENDER);
-        self.print("`");
+        self.begin_template_capture();
+    }
+
+    /// Close a slot render function opened by [`print_slot_fn_open`].
+    ///
+    /// `suffix` is emitted after the `$$renderBytes(...)` call (e.g. `","` or `"}`).
+    fn print_slot_fn_close(&mut self, suffix: &str) {
+        self.emit_render_bytes("", suffix);
     }
 
     /// Print all children as a single default slot, preserving slot attributes.
@@ -289,7 +297,7 @@ impl<'a> AstroCodegen<'a> {
             self.print_jsx_child(child);
         }
 
-        self.print("`,}");
+        self.print_slot_fn_close(",}");
     }
 
     /// Categorize children into named/default/dynamic/conditional slots and print them.
@@ -399,7 +407,7 @@ impl<'a> AstroCodegen<'a> {
             for child in &default_children {
                 self.print_jsx_child(child);
             }
-            self.print("`,");
+            self.print_slot_fn_close(",");
         }
 
         // Print named slots (direct elements with slot attribute)
@@ -415,7 +423,7 @@ impl<'a> AstroCodegen<'a> {
                 self.print_jsx_child(child);
             }
             self.skip_slot_attribute = prev;
-            self.print("`,");
+            self.print_slot_fn_close(",");
         }
 
         // Print expression slots (expressions with single slot)
@@ -428,7 +436,7 @@ impl<'a> AstroCodegen<'a> {
             self.skip_slot_attribute = true;
             self.print_jsx_child(child);
             self.skip_slot_attribute = prev;
-            self.print("`,");
+            self.print_slot_fn_close(",");
         }
 
         // Print dynamic slots (elements with slot={expr}) using computed property syntax
@@ -444,7 +452,7 @@ impl<'a> AstroCodegen<'a> {
                 self.print_jsx_child(child);
             }
             self.skip_slot_attribute = prev;
-            self.print("`,");
+            self.print_slot_fn_close(",");
         }
 
         self.print("}");
@@ -616,13 +624,13 @@ impl<'a> AstroCodegen<'a> {
                     self.skip_slot_attribute = true;
                     self.print_jsx_element(el);
                     self.skip_slot_attribute = prev;
-                    self.print("`}");
+                    self.print_slot_fn_close("}");
                 } else {
                     // No slot attribute — print as default
                     self.print("{\"default\": ");
                     self.print_slot_fn_open();
                     self.print_jsx_element(el);
-                    self.print("`}");
+                    self.print_slot_fn_close("}");
                 }
             }
             Expression::ConditionalExpression(cond) => {

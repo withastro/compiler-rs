@@ -241,8 +241,7 @@ impl<'a> AstroCodegen<'a> {
             let async_prefix = self.get_async_prefix();
             let slot_params = self.get_slot_params();
             self.print(&format!(",{{\"default\": {async_prefix}{slot_params}"));
-            self.print(runtime::RENDER);
-            self.print("`");
+            self.begin_template_capture();
             if is_raw_text {
                 // set:text with string literal - inline raw text without ${}
                 self.print(&value);
@@ -260,7 +259,7 @@ impl<'a> AstroCodegen<'a> {
                 }
                 self.print("}");
             }
-            self.print("`,}");
+            self.emit_render_bytes("", ",}");
         } else if !el.children.is_empty() {
             // Print slots if there are children
             self.print(",");
