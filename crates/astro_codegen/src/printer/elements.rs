@@ -128,7 +128,8 @@ impl<'a> AstroCodegen<'a> {
         self.maybe_insert_render_head(name);
 
         // Extract set:html and set:text directives
-        let set_directive = Self::extract_set_directive(&el.opening_element.attributes);
+        let set_directive =
+            Self::extract_set_directive(&el.opening_element.attributes);
 
         // Determine if this element should receive a scope identifier
         let scope_id = if self.has_scoped_styles && css_scoping::should_scope_element(name) {
@@ -302,26 +303,22 @@ impl<'a> AstroCodegen<'a> {
                                 // set:text with string literal: inline raw text without ${}
                                 (lit.value.as_str().to_string(), false, true)
                             } else {
-                                // set:html with string literal: use ${"content"}
+                                // set:html with string literal: needs $$unescapeHTML like any
+                                // other value — the user is asking for raw HTML injection.
                                 (
                                     format!("\"{}\"", escape_double_quotes(lit.value.as_str())),
-                                    false,
+                                    true,
                                     false,
                                 )
                             }
                         }
                         Some(JSXAttributeValue::ExpressionContainer(expr)) => {
                             let mut value_str = String::new();
-                            let mut is_template_literal = false;
                             if let Some(e) = expr.expression.as_expression() {
                                 value_str = expr_to_string(e);
-                                is_template_literal = matches!(e, Expression::TemplateLiteral(_));
                             }
-                            // set:html always needs $$unescapeHTML — the $$render tagged
-                            // template escapes HTML by default, so all expressions (including
-                            // template literals) must be wrapped in $$unescapeHTML to be
-                            // rendered as raw HTML.
-                            let _ = is_template_literal;
+                            // set:html always needs $$unescapeHTML — its purpose is to inject
+                            // raw HTML, and $$render escapes by default.
                             let needs_unescape = directive_type == "html";
                             (value_str, needs_unescape, false)
                         }
