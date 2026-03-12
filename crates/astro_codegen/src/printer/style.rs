@@ -9,7 +9,7 @@ use oxc_ast::ast::*;
 use crate::css_scoping;
 use crate::scanner::{get_jsx_attribute_name, get_jsx_element_name};
 
-use super::{expr_to_string, AstroCodegen};
+use super::{AstroCodegen, expr_to_string};
 
 /// Metadata about an extractable `<style>` block in an Astro component.
 ///

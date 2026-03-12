@@ -128,8 +128,7 @@ impl<'a> AstroCodegen<'a> {
         self.maybe_insert_render_head(name);
 
         // Extract set:html and set:text directives
-        let set_directive =
-            Self::extract_set_directive(&el.opening_element.attributes);
+        let set_directive = Self::extract_set_directive(&el.opening_element.attributes);
 
         // Determine if this element should receive a scope identifier
         let scope_id = if self.has_scoped_styles && css_scoping::should_scope_element(name) {

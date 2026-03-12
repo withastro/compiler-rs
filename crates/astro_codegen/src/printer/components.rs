@@ -172,8 +172,7 @@ impl<'a> AstroCodegen<'a> {
         }
 
         // Check for set:html or set:text on components (including Fragment)
-        let set_directive =
-            Self::extract_set_html_value(&el.opening_element.attributes);
+        let set_directive = Self::extract_set_html_value(&el.opening_element.attributes);
 
         self.print("${");
         self.print(runtime::RENDER_COMPONENT);
