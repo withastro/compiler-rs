@@ -1,5 +1,5 @@
-import type { CompileOptions, CompileResult } from '@astrojs/compiler-binding';
-import { extractStylesSync } from '@astrojs/compiler-binding';
+import type { CompileOptions, CompileResult } from 'astro-compiler-binding';
+import { extractStylesSync } from 'astro-compiler-binding';
 import type {
 	AsyncTransformOptions,
 	ParseResult,

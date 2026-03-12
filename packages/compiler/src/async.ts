@@ -12,7 +12,7 @@ export type {
 	TransformResult,
 } from './types.js';
 export type { AsyncTransformOptions as TransformOptions } from './types.js';
-import { compileAstro, parseAstro } from '@astrojs/compiler-binding';
+import { compileAstro, parseAstro } from 'astro-compiler-binding';
 import { mapOptions, mapParseResult, mapResult } from './shared.js';
 export { preprocessStyles } from './shared.js';
 import type { AsyncTransformOptions, Component, ParseResult, TransformResult } from './types.js';

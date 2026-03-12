@@ -601,9 +601,25 @@ impl<'a> AstroCodegen<'a> {
         out
     }
 
-    /// Emit `const $$sN = new Uint8Array([...]);` declarations for all
-    /// collected static byte arrays, followed by `const $$pN = [$$s0, ...]`
-    /// declarations for the hoisted static-parts arrays.
+    /// The byte-length threshold for choosing how to emit static parts.
+    ///
+    /// Arrays **≤ this size** are emitted as `new Uint8Array([...])` with a
+    /// `._str` cache property — the runtime coalesces them as V8 rope strings
+    /// (fast `+=`) and encodes once at the end.
+    ///
+    /// Arrays **> this size** are emitted as `new TextEncoder().encode('...')`
+    /// — V8 parses a compact string literal (1:1 with the byte count) instead
+    /// of megabytes of comma-separated decimal numbers (~5.7× bloat), making
+    /// module load ≈10× faster for large static pages while keeping the same
+    /// zero-copy per-request render cost.
+    ///
+    /// The value matches the runtime threshold in `chunkToByteArrayOrString`
+    /// and `renderToBuffer`, which only read `._str` on chunks ≤ 256 bytes.
+    const SMALL_ARRAY_THRESHOLD: usize = 256;
+
+    /// Emit `const $$sN = ...;` declarations for all collected static byte
+    /// arrays, followed by `const $$pN = [$$s0, ...]` declarations for the
+    /// hoisted static-parts arrays.
     /// Called once from `print_astro_root` before the component wrapper so
     /// all constants live at module scope.
     fn print_static_byte_arrays(&mut self) {
@@ -625,36 +641,58 @@ impl<'a> AstroCodegen<'a> {
             }
         }
 
+        // Track whether any large array uses TextEncoder so we can hoist
+        // the `_enc` helper once.
+        let needs_text_encoder = arrays
+            .iter()
+            .enumerate()
+            .any(|(i, bytes)| canonical[i] == i && bytes.len() > Self::SMALL_ARRAY_THRESHOLD);
+
+        if needs_text_encoder {
+            self.println("const _enc = new TextEncoder();");
+        }
+
         // Emit only the canonical (first-occurrence) $$sN constants.
-        // Each one gets a `_str` property with the pre-decoded string to avoid
-        // runtime decoder.decode() calls in the renderToString path.
         for (i, bytes) in arrays.iter().enumerate() {
             // Skip non-canonical entries — they'll alias to the canonical one.
             if canonical[i] != i {
                 continue;
             }
 
-            self.print(&format!("const $$s{i} = new Uint8Array(["));
-            let mut first = true;
-            for b in bytes {
-                if !first {
-                    self.print(",");
-                }
-                first = false;
-                self.print(&b.to_string());
-            }
-            self.print("]);");
-
-            // Attach the cached string representation.
-            // The runtime's chunkToString() reads (chunk as any)._str to skip
-            // decoder.decode() on every render call.
-            if !bytes.is_empty() {
+            if bytes.len() > Self::SMALL_ARRAY_THRESHOLD {
+                // Large array: emit as TextEncoder.encode('...') — compact
+                // module representation, encoded once at module load time.
+                // No ._str is attached because the runtime hot paths
+                // (renderToBuffer, chunkToByteArrayOrString) never read it
+                // for chunks > 256 bytes.
                 let s = String::from_utf8_lossy(bytes);
-                // Escape the string for a JS single-quoted literal.
                 let escaped = Self::escape_js_string_single(&s);
-                self.print(&format!("$$s{i}._str='{escaped}';"));
+                self.println(&format!("const $$s{i} = _enc.encode('{escaped}');"));
+            } else {
+                // Small array: emit as Uint8Array literal with ._str cache.
+                // The runtime coalesces small chunks as V8 rope strings.
+                self.print(&format!("const $$s{i} = new Uint8Array(["));
+                let mut first = true;
+                for b in bytes {
+                    if !first {
+                        self.print(",");
+                    }
+                    first = false;
+                    self.print(&b.to_string());
+                }
+                self.print("]);");
+
+                // Attach the cached string representation.
+                // The runtime's chunkToString() and the ≤256 coalescing path
+                // in renderToBuffer / chunkToByteArrayOrString read ._str to
+                // skip decoder.decode() on every render call.
+                if !bytes.is_empty() {
+                    let s = String::from_utf8_lossy(bytes);
+                    let escaped = Self::escape_js_string_single(&s);
+                    self.print(&format!("$$s{i}._str='{escaped}';"));
+                }
+                self.println("");
             }
-            self.println("");
         }
 
         // Emit aliases for deduplicated entries.

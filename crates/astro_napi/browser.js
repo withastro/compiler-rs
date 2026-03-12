@@ -1,1 +1,1 @@
-export * from '@astrojs/compiler-binding-wasm32-wasi'
+export * from 'astro-compiler-binding-wasm32-wasi'

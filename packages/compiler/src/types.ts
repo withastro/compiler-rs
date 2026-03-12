@@ -8,8 +8,8 @@ export type {
 	HoistedScript,
 	ParseResult as BindingParseResult,
 	StyleBlock,
-} from '@astrojs/compiler-binding';
-import type { CompileOptions, CompileResult } from '@astrojs/compiler-binding';
+} from 'astro-compiler-binding';
+import type { CompileOptions, CompileResult } from 'astro-compiler-binding';
 
 /** Severity level for a diagnostic message. */
 export type DiagnosticSeverity = 'error' | 'warning' | 'information' | 'hint';
@@ -113,7 +113,7 @@ export interface ParseResult {
 	/** The oxc AST in ESTree-compatible JSON format. */
 	ast: Record<string, any>;
 	/** Diagnostic messages (parse errors, warnings). */
-	diagnostics: import('@astrojs/compiler-binding').DiagnosticMessage[];
+	diagnostics: import('astro-compiler-binding').DiagnosticMessage[];
 }
 
 // TODO: Stub until TSX is implemented in the Rust compiler

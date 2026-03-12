@@ -12,7 +12,7 @@ export type {
 	TransformOptions,
 	TransformResult,
 } from './types.js';
-import { compileAstroSync, parseAstroSync } from '@astrojs/compiler-binding';
+import { compileAstroSync, parseAstroSync } from 'astro-compiler-binding';
 import { mapOptions, mapParseResult, mapResult } from './shared.js';
 export { preprocessStyles } from './shared.js';
 import type {

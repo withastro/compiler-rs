@@ -44,7 +44,7 @@ importers:
 
   packages/compiler:
     dependencies:
-      '@astrojs/compiler-binding':
+      astro-compiler-binding:
         specifier: workspace:*
         version: link:../../crates/astro_napi
     devDependencies:

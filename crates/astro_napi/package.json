@@ -1,6 +1,6 @@
 {
-  "name": "@astrojs/compiler-binding",
-  "version": "0.1.4",
+  "name": "astro-compiler-binding",
+  "version": "0.1.6",
   "description": "Astro Compiler",
   "keywords": [
     "astro",
@@ -26,8 +26,7 @@
   "main": "index.js",
   "publishConfig": {
     "access": "public",
-    "registry": "https://registry.npmjs.org/",
-    "provenance": true
+    "registry": "https://registry.npmjs.org/"
   },
   "scripts": {
     "artifacts": "napi artifacts",
@@ -46,15 +45,10 @@
   },
   "napi": {
     "binaryName": "astro",
-    "packageName": "@astrojs/compiler-binding",
+    "packageName": "astro-compiler-binding",
     "targets": [
-      "aarch64-apple-darwin",
-      "aarch64-pc-windows-msvc",
       "aarch64-unknown-linux-gnu",
       "aarch64-unknown-linux-musl",
-      "wasm32-wasip1-threads",
-      "x86_64-apple-darwin",
-      "x86_64-pc-windows-msvc",
       "x86_64-unknown-linux-gnu",
       "x86_64-unknown-linux-musl"
     ],
@@ -66,5 +60,11 @@
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
+  },
+  "optionalDependencies": {
+    "astro-compiler-binding-linux-arm64-gnu": "0.1.6",
+    "astro-compiler-binding-linux-arm64-musl": "0.1.6",
+    "astro-compiler-binding-linux-x64-gnu": "0.1.6",
+    "astro-compiler-binding-linux-x64-musl": "0.1.6"
   }
 }

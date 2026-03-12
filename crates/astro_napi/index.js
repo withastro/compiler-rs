@@ -79,10 +79,10 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('@astrojs/compiler-binding-android-arm64')
-        const bindingPackageVersion = require('@astrojs/compiler-binding-android-arm64/package.json').version
-        if (bindingPackageVersion !== '0.1.4' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 0.1.4 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        const binding = require('astro-compiler-binding-android-arm64')
+        const bindingPackageVersion = require('astro-compiler-binding-android-arm64/package.json').version
+        if (bindingPackageVersion !== '0.1.6' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.1.6 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
         return binding
       } catch (e) {
@@ -95,10 +95,10 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('@astrojs/compiler-binding-android-arm-eabi')
-        const bindingPackageVersion = require('@astrojs/compiler-binding-android-arm-eabi/package.json').version
-        if (bindingPackageVersion !== '0.1.4' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 0.1.4 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        const binding = require('astro-compiler-binding-android-arm-eabi')
+        const bindingPackageVersion = require('astro-compiler-binding-android-arm-eabi/package.json').version
+        if (bindingPackageVersion !== '0.1.6' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.1.6 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
         return binding
       } catch (e) {
@@ -116,10 +116,10 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('@astrojs/compiler-binding-win32-x64-gnu')
-        const bindingPackageVersion = require('@astrojs/compiler-binding-win32-x64-gnu/package.json').version
-        if (bindingPackageVersion !== '0.1.4' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 0.1.4 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        const binding = require('astro-compiler-binding-win32-x64-gnu')
+        const bindingPackageVersion = require('astro-compiler-binding-win32-x64-gnu/package.json').version
+        if (bindingPackageVersion !== '0.1.6' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.1.6 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
         return binding
       } catch (e) {
@@ -132,10 +132,10 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('@astrojs/compiler-binding-win32-x64-msvc')
-        const bindingPackageVersion = require('@astrojs/compiler-binding-win32-x64-msvc/package.json').version
-        if (bindingPackageVersion !== '0.1.4' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 0.1.4 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        const binding = require('astro-compiler-binding-win32-x64-msvc')
+        const bindingPackageVersion = require('astro-compiler-binding-win32-x64-msvc/package.json').version
+        if (bindingPackageVersion !== '0.1.6' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.1.6 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
         return binding
       } catch (e) {
@@ -149,10 +149,10 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('@astrojs/compiler-binding-win32-ia32-msvc')
-        const bindingPackageVersion = require('@astrojs/compiler-binding-win32-ia32-msvc/package.json').version
-        if (bindingPackageVersion !== '0.1.4' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 0.1.4 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        const binding = require('astro-compiler-binding-win32-ia32-msvc')
+        const bindingPackageVersion = require('astro-compiler-binding-win32-ia32-msvc/package.json').version
+        if (bindingPackageVersion !== '0.1.6' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.1.6 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
         return binding
       } catch (e) {
@@ -165,10 +165,10 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('@astrojs/compiler-binding-win32-arm64-msvc')
-        const bindingPackageVersion = require('@astrojs/compiler-binding-win32-arm64-msvc/package.json').version
-        if (bindingPackageVersion !== '0.1.4' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 0.1.4 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        const binding = require('astro-compiler-binding-win32-arm64-msvc')
+        const bindingPackageVersion = require('astro-compiler-binding-win32-arm64-msvc/package.json').version
+        if (bindingPackageVersion !== '0.1.6' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.1.6 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
         return binding
       } catch (e) {
@@ -184,10 +184,10 @@ function requireNative() {
       loadErrors.push(e)
     }
     try {
-      const binding = require('@astrojs/compiler-binding-darwin-universal')
-      const bindingPackageVersion = require('@astrojs/compiler-binding-darwin-universal/package.json').version
-      if (bindingPackageVersion !== '0.1.4' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-        throw new Error(`Native binding package version mismatch, expected 0.1.4 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+      const binding = require('astro-compiler-binding-darwin-universal')
+      const bindingPackageVersion = require('astro-compiler-binding-darwin-universal/package.json').version
+      if (bindingPackageVersion !== '0.1.6' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+        throw new Error(`Native binding package version mismatch, expected 0.1.6 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
       }
       return binding
     } catch (e) {
@@ -200,10 +200,10 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('@astrojs/compiler-binding-darwin-x64')
-        const bindingPackageVersion = require('@astrojs/compiler-binding-darwin-x64/package.json').version
-        if (bindingPackageVersion !== '0.1.4' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 0.1.4 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        const binding = require('astro-compiler-binding-darwin-x64')
+        const bindingPackageVersion = require('astro-compiler-binding-darwin-x64/package.json').version
+        if (bindingPackageVersion !== '0.1.6' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.1.6 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
         return binding
       } catch (e) {
@@ -216,10 +216,10 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('@astrojs/compiler-binding-darwin-arm64')
-        const bindingPackageVersion = require('@astrojs/compiler-binding-darwin-arm64/package.json').version
-        if (bindingPackageVersion !== '0.1.4' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 0.1.4 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        const binding = require('astro-compiler-binding-darwin-arm64')
+        const bindingPackageVersion = require('astro-compiler-binding-darwin-arm64/package.json').version
+        if (bindingPackageVersion !== '0.1.6' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.1.6 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
         return binding
       } catch (e) {
@@ -236,10 +236,10 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('@astrojs/compiler-binding-freebsd-x64')
-        const bindingPackageVersion = require('@astrojs/compiler-binding-freebsd-x64/package.json').version
-        if (bindingPackageVersion !== '0.1.4' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 0.1.4 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        const binding = require('astro-compiler-binding-freebsd-x64')
+        const bindingPackageVersion = require('astro-compiler-binding-freebsd-x64/package.json').version
+        if (bindingPackageVersion !== '0.1.6' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.1.6 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
         return binding
       } catch (e) {
@@ -252,10 +252,10 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('@astrojs/compiler-binding-freebsd-arm64')
-        const bindingPackageVersion = require('@astrojs/compiler-binding-freebsd-arm64/package.json').version
-        if (bindingPackageVersion !== '0.1.4' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 0.1.4 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        const binding = require('astro-compiler-binding-freebsd-arm64')
+        const bindingPackageVersion = require('astro-compiler-binding-freebsd-arm64/package.json').version
+        if (bindingPackageVersion !== '0.1.6' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.1.6 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
         return binding
       } catch (e) {
@@ -273,10 +273,10 @@ function requireNative() {
           loadErrors.push(e)
         }
         try {
-          const binding = require('@astrojs/compiler-binding-linux-x64-musl')
-          const bindingPackageVersion = require('@astrojs/compiler-binding-linux-x64-musl/package.json').version
-          if (bindingPackageVersion !== '0.1.4' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-            throw new Error(`Native binding package version mismatch, expected 0.1.4 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          const binding = require('astro-compiler-binding-linux-x64-musl')
+          const bindingPackageVersion = require('astro-compiler-binding-linux-x64-musl/package.json').version
+          if (bindingPackageVersion !== '0.1.6' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+            throw new Error(`Native binding package version mismatch, expected 0.1.6 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
           }
           return binding
         } catch (e) {
@@ -289,10 +289,10 @@ function requireNative() {
           loadErrors.push(e)
         }
         try {
-          const binding = require('@astrojs/compiler-binding-linux-x64-gnu')
-          const bindingPackageVersion = require('@astrojs/compiler-binding-linux-x64-gnu/package.json').version
-          if (bindingPackageVersion !== '0.1.4' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-            throw new Error(`Native binding package version mismatch, expected 0.1.4 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          const binding = require('astro-compiler-binding-linux-x64-gnu')
+          const bindingPackageVersion = require('astro-compiler-binding-linux-x64-gnu/package.json').version
+          if (bindingPackageVersion !== '0.1.6' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+            throw new Error(`Native binding package version mismatch, expected 0.1.6 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
           }
           return binding
         } catch (e) {
@@ -307,10 +307,10 @@ function requireNative() {
           loadErrors.push(e)
         }
         try {
-          const binding = require('@astrojs/compiler-binding-linux-arm64-musl')
-          const bindingPackageVersion = require('@astrojs/compiler-binding-linux-arm64-musl/package.json').version
-          if (bindingPackageVersion !== '0.1.4' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-            throw new Error(`Native binding package version mismatch, expected 0.1.4 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          const binding = require('astro-compiler-binding-linux-arm64-musl')
+          const bindingPackageVersion = require('astro-compiler-binding-linux-arm64-musl/package.json').version
+          if (bindingPackageVersion !== '0.1.6' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+            throw new Error(`Native binding package version mismatch, expected 0.1.6 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
           }
           return binding
         } catch (e) {
@@ -323,10 +323,10 @@ function requireNative() {
           loadErrors.push(e)
         }
         try {
-          const binding = require('@astrojs/compiler-binding-linux-arm64-gnu')
-          const bindingPackageVersion = require('@astrojs/compiler-binding-linux-arm64-gnu/package.json').version
-          if (bindingPackageVersion !== '0.1.4' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-            throw new Error(`Native binding package version mismatch, expected 0.1.4 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          const binding = require('astro-compiler-binding-linux-arm64-gnu')
+          const bindingPackageVersion = require('astro-compiler-binding-linux-arm64-gnu/package.json').version
+          if (bindingPackageVersion !== '0.1.6' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+            throw new Error(`Native binding package version mismatch, expected 0.1.6 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
           }
           return binding
         } catch (e) {
@@ -341,10 +341,10 @@ function requireNative() {
           loadErrors.push(e)
         }
         try {
-          const binding = require('@astrojs/compiler-binding-linux-arm-musleabihf')
-          const bindingPackageVersion = require('@astrojs/compiler-binding-linux-arm-musleabihf/package.json').version
-          if (bindingPackageVersion !== '0.1.4' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-            throw new Error(`Native binding package version mismatch, expected 0.1.4 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          const binding = require('astro-compiler-binding-linux-arm-musleabihf')
+          const bindingPackageVersion = require('astro-compiler-binding-linux-arm-musleabihf/package.json').version
+          if (bindingPackageVersion !== '0.1.6' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+            throw new Error(`Native binding package version mismatch, expected 0.1.6 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
           }
           return binding
         } catch (e) {
@@ -357,10 +357,10 @@ function requireNative() {
           loadErrors.push(e)
         }
         try {
-          const binding = require('@astrojs/compiler-binding-linux-arm-gnueabihf')
-          const bindingPackageVersion = require('@astrojs/compiler-binding-linux-arm-gnueabihf/package.json').version
-          if (bindingPackageVersion !== '0.1.4' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-            throw new Error(`Native binding package version mismatch, expected 0.1.4 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          const binding = require('astro-compiler-binding-linux-arm-gnueabihf')
+          const bindingPackageVersion = require('astro-compiler-binding-linux-arm-gnueabihf/package.json').version
+          if (bindingPackageVersion !== '0.1.6' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+            throw new Error(`Native binding package version mismatch, expected 0.1.6 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
           }
           return binding
         } catch (e) {
@@ -375,10 +375,10 @@ function requireNative() {
           loadErrors.push(e)
         }
         try {
-          const binding = require('@astrojs/compiler-binding-linux-loong64-musl')
-          const bindingPackageVersion = require('@astrojs/compiler-binding-linux-loong64-musl/package.json').version
-          if (bindingPackageVersion !== '0.1.4' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-            throw new Error(`Native binding package version mismatch, expected 0.1.4 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          const binding = require('astro-compiler-binding-linux-loong64-musl')
+          const bindingPackageVersion = require('astro-compiler-binding-linux-loong64-musl/package.json').version
+          if (bindingPackageVersion !== '0.1.6' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+            throw new Error(`Native binding package version mismatch, expected 0.1.6 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
           }
           return binding
         } catch (e) {
@@ -391,10 +391,10 @@ function requireNative() {
           loadErrors.push(e)
         }
         try {
-          const binding = require('@astrojs/compiler-binding-linux-loong64-gnu')
-          const bindingPackageVersion = require('@astrojs/compiler-binding-linux-loong64-gnu/package.json').version
-          if (bindingPackageVersion !== '0.1.4' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-            throw new Error(`Native binding package version mismatch, expected 0.1.4 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          const binding = require('astro-compiler-binding-linux-loong64-gnu')
+          const bindingPackageVersion = require('astro-compiler-binding-linux-loong64-gnu/package.json').version
+          if (bindingPackageVersion !== '0.1.6' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+            throw new Error(`Native binding package version mismatch, expected 0.1.6 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
           }
           return binding
         } catch (e) {
@@ -409,10 +409,10 @@ function requireNative() {
           loadErrors.push(e)
         }
         try {
-          const binding = require('@astrojs/compiler-binding-linux-riscv64-musl')
-          const bindingPackageVersion = require('@astrojs/compiler-binding-linux-riscv64-musl/package.json').version
-          if (bindingPackageVersion !== '0.1.4' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-            throw new Error(`Native binding package version mismatch, expected 0.1.4 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          const binding = require('astro-compiler-binding-linux-riscv64-musl')
+          const bindingPackageVersion = require('astro-compiler-binding-linux-riscv64-musl/package.json').version
+          if (bindingPackageVersion !== '0.1.6' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+            throw new Error(`Native binding package version mismatch, expected 0.1.6 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
           }
           return binding
         } catch (e) {
@@ -425,10 +425,10 @@ function requireNative() {
           loadErrors.push(e)
         }
         try {
-          const binding = require('@astrojs/compiler-binding-linux-riscv64-gnu')
-          const bindingPackageVersion = require('@astrojs/compiler-binding-linux-riscv64-gnu/package.json').version
-          if (bindingPackageVersion !== '0.1.4' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-            throw new Error(`Native binding package version mismatch, expected 0.1.4 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+          const binding = require('astro-compiler-binding-linux-riscv64-gnu')
+          const bindingPackageVersion = require('astro-compiler-binding-linux-riscv64-gnu/package.json').version
+          if (bindingPackageVersion !== '0.1.6' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+            throw new Error(`Native binding package version mismatch, expected 0.1.6 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
           }
           return binding
         } catch (e) {
@@ -442,10 +442,10 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('@astrojs/compiler-binding-linux-ppc64-gnu')
-        const bindingPackageVersion = require('@astrojs/compiler-binding-linux-ppc64-gnu/package.json').version
-        if (bindingPackageVersion !== '0.1.4' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 0.1.4 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        const binding = require('astro-compiler-binding-linux-ppc64-gnu')
+        const bindingPackageVersion = require('astro-compiler-binding-linux-ppc64-gnu/package.json').version
+        if (bindingPackageVersion !== '0.1.6' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.1.6 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
         return binding
       } catch (e) {
@@ -458,10 +458,10 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('@astrojs/compiler-binding-linux-s390x-gnu')
-        const bindingPackageVersion = require('@astrojs/compiler-binding-linux-s390x-gnu/package.json').version
-        if (bindingPackageVersion !== '0.1.4' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 0.1.4 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        const binding = require('astro-compiler-binding-linux-s390x-gnu')
+        const bindingPackageVersion = require('astro-compiler-binding-linux-s390x-gnu/package.json').version
+        if (bindingPackageVersion !== '0.1.6' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.1.6 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
         return binding
       } catch (e) {
@@ -478,10 +478,10 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('@astrojs/compiler-binding-openharmony-arm64')
-        const bindingPackageVersion = require('@astrojs/compiler-binding-openharmony-arm64/package.json').version
-        if (bindingPackageVersion !== '0.1.4' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 0.1.4 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        const binding = require('astro-compiler-binding-openharmony-arm64')
+        const bindingPackageVersion = require('astro-compiler-binding-openharmony-arm64/package.json').version
+        if (bindingPackageVersion !== '0.1.6' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.1.6 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
         return binding
       } catch (e) {
@@ -494,10 +494,10 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('@astrojs/compiler-binding-openharmony-x64')
-        const bindingPackageVersion = require('@astrojs/compiler-binding-openharmony-x64/package.json').version
-        if (bindingPackageVersion !== '0.1.4' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 0.1.4 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        const binding = require('astro-compiler-binding-openharmony-x64')
+        const bindingPackageVersion = require('astro-compiler-binding-openharmony-x64/package.json').version
+        if (bindingPackageVersion !== '0.1.6' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.1.6 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
         return binding
       } catch (e) {
@@ -510,10 +510,10 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        const binding = require('@astrojs/compiler-binding-openharmony-arm')
-        const bindingPackageVersion = require('@astrojs/compiler-binding-openharmony-arm/package.json').version
-        if (bindingPackageVersion !== '0.1.4' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
-          throw new Error(`Native binding package version mismatch, expected 0.1.4 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
+        const binding = require('astro-compiler-binding-openharmony-arm')
+        const bindingPackageVersion = require('astro-compiler-binding-openharmony-arm/package.json').version
+        if (bindingPackageVersion !== '0.1.6' && process.env.NAPI_RS_ENFORCE_VERSION_CHECK && process.env.NAPI_RS_ENFORCE_VERSION_CHECK !== '0') {
+          throw new Error(`Native binding package version mismatch, expected 0.1.6 but got ${bindingPackageVersion}. You can reinstall dependencies to fix this issue.`)
         }
         return binding
       } catch (e) {
@@ -542,7 +542,7 @@ if (!nativeBinding || process.env.NAPI_RS_FORCE_WASI) {
   }
   if (!nativeBinding || process.env.NAPI_RS_FORCE_WASI) {
     try {
-      wasiBinding = require('@astrojs/compiler-binding-wasm32-wasi')
+      wasiBinding = require('astro-compiler-binding-wasm32-wasi')
       nativeBinding = wasiBinding
     } catch (err) {
       if (process.env.NAPI_RS_FORCE_WASI) {
