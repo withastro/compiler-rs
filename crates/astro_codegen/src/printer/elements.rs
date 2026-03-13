@@ -6,7 +6,7 @@
 //! attributes, and element classification helpers (`is_void_element`,
 //! `is_head_element`).
 
-use super::escape::{escape_double_quotes, escape_html_attribute};
+use super::escape::{escape_double_quotes, escape_html_attribute, escape_template_literal};
 use super::runtime;
 use super::whitespace::{has_is_raw_attr, is_raw_element_name};
 use super::{AstroCodegen, expr_to_string};
@@ -185,6 +185,30 @@ impl<'a> AstroCodegen<'a> {
                 // For literals (string/template) or set:text expression, just interpolate
                 self.print(&format!("${{{value}}}"));
             }
+        } else if name == "script"
+            && el
+                .children
+                .iter()
+                .any(|c| matches!(c, JSXChild::AstroScript(_)))
+        {
+            // The script content was parsed as JS by oxc (AstroScript child).
+            // For non-hoisted scripts (e.g. is:inline), emit the raw source text
+            // verbatim. The content lies between the opening tag end and closing
+            // tag start in the original source.
+            let content_start = el.opening_element.span.end as usize;
+            let content_end = el
+                .closing_element
+                .as_ref()
+                .map(|c| c.span.start as usize)
+                .unwrap_or(content_start);
+            if content_start < content_end {
+                let raw = &self.source_text[content_start..content_end];
+                self.add_source_mapping_for_span(oxc_span::Span::new(
+                    content_start as u32,
+                    content_end as u32,
+                ));
+                self.print(&escape_template_literal(raw));
+            }
         } else {
             // Regular children with compact-aware printing
             self.print_jsx_children_compact(&el.children);
@@ -302,26 +326,22 @@ impl<'a> AstroCodegen<'a> {
                                 // set:text with string literal: inline raw text without ${}
                                 (lit.value.as_str().to_string(), false, true)
                             } else {
-                                // set:html with string literal: use ${"content"}
+                                // set:html with string literal: needs $$unescapeHTML like any
+                                // other value — the user is asking for raw HTML injection.
                                 (
                                     format!("\"{}\"", escape_double_quotes(lit.value.as_str())),
-                                    false,
+                                    true,
                                     false,
                                 )
                             }
                         }
                         Some(JSXAttributeValue::ExpressionContainer(expr)) => {
                             let mut value_str = String::new();
-                            let mut is_template_literal = false;
                             if let Some(e) = expr.expression.as_expression() {
                                 value_str = expr_to_string(e);
-                                is_template_literal = matches!(e, Expression::TemplateLiteral(_));
                             }
-                            // set:html always needs $$unescapeHTML — the $$render tagged
-                            // template escapes HTML by default, so all expressions (including
-                            // template literals) must be wrapped in $$unescapeHTML to be
-                            // rendered as raw HTML.
-                            let _ = is_template_literal;
+                            // set:html always needs $$unescapeHTML — its purpose is to inject
+                            // raw HTML, and $$render escapes by default.
                             let needs_unescape = directive_type == "html";
                             (value_str, needs_unescape, false)
                         }

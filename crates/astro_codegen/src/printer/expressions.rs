@@ -106,7 +106,8 @@ impl<'a> AstroCodegen<'a> {
                 let is_explicit_fragment = !frag.opening_fragment.span.is_empty();
 
                 if is_explicit_fragment {
-                    // Explicit <>...</> syntax gets wrapped in $$renderComponent with Fragment
+                    // Explicit <>...</> syntax gets wrapped in $$renderComponent with Fragment.
+                    // Whitespace inside <>..</> is intentional authored content — preserve it.
                     let slot_params = self.get_slot_params();
                     self.print(runtime::RENDER);
                     self.print("`${");
@@ -123,7 +124,9 @@ impl<'a> AstroCodegen<'a> {
                     }
                     self.print("`,})}`");
                 } else {
-                    // Implicit fragments (multiple JSX siblings) are just wrapped in $$render`...`
+                    // Implicit fragments (multiple JSX siblings) are just wrapped
+                    // in $$render`...`. Edge whitespace-only text nodes are
+                    // stripped by the parser, so we render children directly.
                     self.print(runtime::RENDER);
                     self.print("`");
                     self.print_jsx_children_compact(&frag.children);

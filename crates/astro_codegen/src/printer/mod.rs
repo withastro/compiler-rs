@@ -15,9 +15,8 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::options::CompactMode;
 use crate::scanner::{
-    AstroScanner, HoistedScriptType as InternalHoistedScriptType, ScanResult,
-    get_jsx_attribute_name, get_jsx_element_name, is_component_name, is_custom_element,
-    should_hoist_script,
+    AstroScanner, ScanResult, get_jsx_attribute_name, get_jsx_element_name, is_component_name,
+    is_custom_element, should_hoist_script,
 };
 use crate::{SourcemapOption, TransformOptions};
 use whitespace::{TextPosition, collapse_html, collapse_jsx};
@@ -437,28 +436,7 @@ impl<'a> AstroCodegen<'a> {
     pub fn build(mut self, root: &'a AstroRoot<'a>) -> TransformResult {
         self.print_astro_root(root);
 
-        // Build public hoisted scripts from internal representation.
-        // DefineVars scripts are rendered inline as IIFEs and are NOT bundled as
-        // virtual modules — exclude them from the public scripts array.
-        let scripts = self
-            .scan_result
-            .hoisted_scripts
-            .iter()
-            .filter_map(|s| match s.script_type {
-                InternalHoistedScriptType::External => Some(TransformResultHoistedScript {
-                    script_type: HoistedScriptType::External,
-                    src: s.src.clone(),
-                    code: None,
-                }),
-                InternalHoistedScriptType::Inline => Some(TransformResultHoistedScript {
-                    script_type: HoistedScriptType::Inline,
-                    code: s.value.clone(),
-                    src: None,
-                }),
-                // DefineVars are printed inline — skip them here
-                InternalHoistedScriptType::DefineVars => None,
-            })
-            .collect();
+        let scripts = self.scan_result.hoisted_scripts.clone();
 
         // Build public hydrated components from internal representation
         let hydrated_components = self
@@ -783,33 +761,27 @@ impl<'a> AstroCodegen<'a> {
             "[]".to_string()
         } else {
             let items: Vec<String> = self
-                .scan_result.hoisted_scripts
+                .scan_result
+                .hoisted_scripts
                 .iter()
-                .map(|script| {
-                    match script.script_type {
-                        InternalHoistedScriptType::Inline => {
-                            let value = script.value.as_deref().unwrap_or("");
-                            let escaped = escape_template_literal(value);
-                            format!("{{ type: \"inline\", value: `{escaped}` }}")
-                        }
-                        InternalHoistedScriptType::External => {
-                            let src = script.src.as_deref().unwrap_or("");
-                            let escaped = escape_single_quote(src);
-                            format!("{{ type: \"external\", src: '{escaped}' }}")
-                        }
-                        InternalHoistedScriptType::DefineVars => {
-                            let value = script.value.as_deref().unwrap_or("");
-                            let keys = script.keys.as_deref().unwrap_or("");
-                            let escaped_value = escape_template_literal(value);
-                            let escaped_keys = escape_single_quote(keys);
-                            format!(
-                                "{{ type: \"define:vars\", value: `{escaped_value}`, keys: '{escaped_keys}' }}"
-                            )
-                        }
+                .map(|script| match script.script_type {
+                    HoistedScriptType::Inline => {
+                        let code = script.code.as_deref().unwrap_or("");
+                        let escaped = escape_template_literal(code);
+                        format!("{{ type: \"inline\", value: `{escaped}` }}")
+                    }
+                    HoistedScriptType::External => {
+                        let src = script.src.as_deref().unwrap_or("");
+                        let escaped = escape_single_quote(src);
+                        format!("{{ type: \"external\", src: '{escaped}' }}")
                     }
                 })
                 .collect();
-            format!("[{}]", items.join(", "))
+            if items.is_empty() {
+                "[]".to_string()
+            } else {
+                format!("[{}]", items.join(", "))
+            }
         };
 
         let metadata_url = match &self.options.filename {
@@ -1256,7 +1228,8 @@ impl<'a> AstroCodegen<'a> {
                 self.print_jsx_spread_child(spread);
             }
             JSXChild::AstroScript(_script) => {
-                // AstroScript is handled specially — already parsed TypeScript
+                // AstroScript children are handled at the element level (print_html_element)
+                // where we have access to the parent element's spans to derive the content range.
             }
             JSXChild::AstroDoctype(_doctype) => {
                 // Doctype is typically stripped in the output
@@ -1319,8 +1292,6 @@ impl<'a> AstroCodegen<'a> {
                 let is_lone = visible_count == 1;
                 let pos = TextPosition {
                     is_lone_child: is_lone,
-                    is_first_in_expression: false,
-                    is_last_in_expression: false,
                 };
                 self.print_jsx_text_with_pos(text, pos);
             } else {
@@ -1338,6 +1309,98 @@ impl<'a> AstroCodegen<'a> {
         if name == "style" && !self.in_non_hoistable && self.should_extract_style(el) {
             // Style was already extracted during prescan — just skip it from template
             return;
+        }
+
+        // Handle <script define:vars={...}> — these are rendered inline (not bundled
+        // via $$renderScript) regardless of whether is:inline is present or not.
+        // - Without type="module": IIFE wrapping  <script>(function(){${$$defineScriptVars({...})}...})();</script>
+        // - With type="module": no IIFE (imports are illegal inside functions)
+        //   <script type="module">${$$defineScriptVars({...})}...</script>
+        if name == "script" {
+            let define_vars_expr = el.opening_element.attributes.iter().find_map(|attr| {
+                if let JSXAttributeItem::Attribute(attr) = attr
+                    && get_jsx_attribute_name(&attr.name) == "define:vars"
+                {
+                    return match &attr.value {
+                        Some(JSXAttributeValue::StringLiteral(lit)) => {
+                            Some(format!("'{}'", lit.value.as_str()))
+                        }
+                        Some(JSXAttributeValue::ExpressionContainer(expr)) => {
+                            expr.expression.as_expression().map(expr_to_string)
+                        }
+                        _ => None,
+                    };
+                }
+                None
+            });
+
+            if let Some(define_vars_expr) = define_vars_expr {
+                self.add_source_mapping_for_span(el.opening_element.span);
+
+                let is_module = el.opening_element.attributes.iter().any(|attr| {
+                    if let JSXAttributeItem::Attribute(attr) = attr {
+                        let attr_name = get_jsx_attribute_name(&attr.name);
+                        if attr_name == "type"
+                            && let Some(JSXAttributeValue::StringLiteral(lit)) = &attr.value
+                        {
+                            return lit.value == "module";
+                        }
+                    }
+                    false
+                });
+
+                // Get script content — either from JSXText children (raw text) or
+                // from the raw source span when the child is an AstroScript (oxc
+                // parsed the content as JS).
+                let has_astro_script = el
+                    .children
+                    .iter()
+                    .any(|c| matches!(c, JSXChild::AstroScript(_)));
+                let text_content: String = if has_astro_script {
+                    let start = el.opening_element.span.end as usize;
+                    let end = el
+                        .closing_element
+                        .as_ref()
+                        .map(|c| c.span.start as usize)
+                        .unwrap_or(start);
+                    self.source_text[start..end].to_string()
+                } else {
+                    el.children
+                        .iter()
+                        .filter_map(|child| {
+                            if let JSXChild::Text(t) = child {
+                                Some(t.value.as_str())
+                            } else {
+                                None
+                            }
+                        })
+                        .collect()
+                };
+
+                if is_module {
+                    // type="module" — no IIFE, just prepend $$defineScriptVars
+                    self.print("<script type=\"module\">");
+                    self.print("${");
+                    self.print(runtime::DEFINE_SCRIPT_VARS);
+                    self.print("(");
+                    self.print(&define_vars_expr);
+                    self.print(")}");
+                    self.print(&escape_template_literal(&text_content));
+                    self.print("</script>");
+                } else {
+                    // No type="module" — wrap in IIFE
+                    self.print("<script>");
+                    self.print("(function(){${");
+                    self.print(runtime::DEFINE_SCRIPT_VARS);
+                    self.print("(");
+                    self.print(&define_vars_expr);
+                    self.print(")}");
+                    self.print(&escape_template_literal(&text_content));
+                    self.print("})();");
+                    self.print("</script>");
+                }
+                return;
+            }
         }
 
         // Handle <script> elements that should be hoisted
@@ -1363,49 +1426,6 @@ impl<'a> AstroCodegen<'a> {
 
         if name == "script" && is_hoisted_script {
             self.add_source_mapping_for_span(el.opening_element.span);
-
-            // define:vars scripts are NOT bundled via $$renderScript — they stay
-            // inline in the template as an IIFE: <script>(function(){${$$defineScriptVars({...})}...})();</script>
-            let define_vars_expr = el.opening_element.attributes.iter().find_map(|attr| {
-                if let JSXAttributeItem::Attribute(attr) = attr
-                    && get_jsx_attribute_name(&attr.name) == "define:vars"
-                {
-                    return match &attr.value {
-                        Some(JSXAttributeValue::StringLiteral(lit)) => {
-                            Some(format!("'{}'", lit.value.as_str()))
-                        }
-                        Some(JSXAttributeValue::ExpressionContainer(expr)) => {
-                            expr.expression.as_expression().map(expr_to_string)
-                        }
-                        _ => None,
-                    };
-                }
-                None
-            });
-
-            if let Some(define_vars_expr) = define_vars_expr {
-                let text_content: String = el
-                    .children
-                    .iter()
-                    .filter_map(|child| {
-                        if let JSXChild::Text(t) = child {
-                            Some(t.value.as_str())
-                        } else {
-                            None
-                        }
-                    })
-                    .collect();
-                self.print("<script>");
-                self.print("(function(){${");
-                self.print(runtime::DEFINE_SCRIPT_VARS);
-                self.print("(");
-                self.print(&define_vars_expr);
-                self.print(")}");
-                self.print(&escape_template_literal(&text_content));
-                self.print("})();");
-                self.print("</script>");
-                return;
-            }
 
             let filename = self
                 .options
@@ -3250,6 +3270,65 @@ import MyComp from 'test';
     }
 
     #[test]
+    fn test_script_inside_html_comment_not_hoisted() {
+        // Full no_extra_script_tag fixture content
+        let source = r#"<!-- Global Metadata -->
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width">
+
+<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+<link rel="alternate icon" type="image/x-icon" href="/favicon.ico" />
+
+<link rel="sitemap" href="/sitemap.xml"/>
+
+<!-- Global CSS -->
+<link rel="stylesheet" href="/theme.css" />
+<link rel="stylesheet" href="/code.css" />
+<link rel="stylesheet" href="/index.css" />
+
+<!-- Preload Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital@0;1&display=swap" rel="stylesheet">
+
+<!-- Scrollable a11y code helper -->
+<script type="module" src="/make-scrollable-code-focusable.js" />
+
+<!-- This is intentionally inlined to avoid FOUC -->
+<script is:inline>
+  const root = document.documentElement;
+  const theme = localStorage.getItem('theme');
+  if (theme === 'dark' || (!theme) && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+    root.classList.add('theme-dark');
+  } else {
+    root.classList.remove('theme-dark');
+  }
+</script>
+
+<!-- Global site tag (gtag.js) - Google Analytics -->
+<!-- <script async src="https://www.googletagmanager.com/gtag/js?id=G-TEL60V1WM9"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-TEL60V1WM9');
+</script> -->"#;
+
+        let output = compile_astro(source);
+        // The commented-out scripts should be inside an HTML comment in the template,
+        // NOT in hoisted metadata. Verify hoisted is empty.
+        assert!(
+            output.contains("hoisted: []"),
+            "hoisted should be empty: {output}"
+        );
+        // Verify the HTML comment containing script tags IS rendered in the template
+        assert!(
+            output.contains("<!-- <script async"),
+            "HTML comment with script tags should be rendered: {output}"
+        );
+    }
+
+    #[test]
     fn test_script_src_with_data_attr_not_hoisted() {
         // `<script src="..." data-foo="bar">` — any extra attr blocks hoisting.
         let source = r#"<script src="/script.js" data-foo="bar"></script>"#;
@@ -3542,6 +3621,75 @@ import Bar from './Bar.astro';
         assert!(
             output.contains("$$renderComponent"),
             "JSX elements inside arrays must use $$renderComponent: {output}"
+        );
+    }
+
+    // -- Expression edge whitespace trimming tests --
+    //
+    // Implicit JSX fragments inside expressions ({ <el/>... }) should not
+    // have whitespace-only text nodes at the leading/trailing edges inside
+    // the $$render backtick. Explicit fragments (<>...</>) preserve their
+    // whitespace.
+
+    #[test]
+    fn test_expression_implicit_fragment_trims_leading_whitespace() {
+        // Leading \n\t before <li> should be trimmed
+        let source = "<ul>{\n\t<li>one</li>\n}</ul>";
+        let output = compile_astro(source);
+        // The backtick should open right before <li>, not with leading whitespace
+        assert!(
+            output.contains("$$render`<li>one</li>"),
+            "implicit fragment should trim leading whitespace: {output}"
+        );
+    }
+
+    #[test]
+    fn test_expression_implicit_fragment_trims_trailing_whitespace() {
+        // Trailing \n after </li> should be trimmed
+        let source = "<ul>{<li>one</li>\n}</ul>";
+        let output = compile_astro(source);
+        assert!(
+            output.contains("<li>one</li>`"),
+            "implicit fragment should trim trailing whitespace: {output}"
+        );
+    }
+
+    #[test]
+    fn test_expression_implicit_fragment_preserves_interior_whitespace() {
+        // Whitespace between elements should be preserved
+        let source = "<ul>{\n\t<li>one</li>\n\t<li>two</li>\n}</ul>";
+        let output = compile_astro(source);
+        assert!(
+            output.contains("<li>one</li>\n\t<li>two</li>"),
+            "implicit fragment should preserve interior whitespace: {output}"
+        );
+    }
+
+    #[test]
+    fn test_expression_explicit_fragment_preserves_all_whitespace() {
+        // Explicit <>...</> should keep leading/trailing whitespace
+        let source = "<div>{<>\n  <span>hi</span>\n</>}</div>";
+        let output = compile_astro(source);
+        // The whitespace after <> and before </> should be inside the backtick
+        assert!(
+            output.contains("$$render`\n  <span>hi</span>\n`"),
+            "explicit fragment should preserve all whitespace: {output}"
+        );
+    }
+
+    #[test]
+    fn test_expression_implicit_fragment_inline_elements_no_extra_space() {
+        // Inline elements shouldn't get extra whitespace injected
+        let source = "<span>{\n  <strong>hello</strong>\n  <em>world</em>\n}</span>";
+        let output = compile_astro(source);
+        // Leading/trailing \n should be trimmed — no extra space at edges
+        assert!(
+            output.contains("$$render`<strong>hello</strong>"),
+            "should not inject leading whitespace before inline element: {output}"
+        );
+        assert!(
+            output.contains("<em>world</em>`"),
+            "should not inject trailing whitespace after inline element: {output}"
         );
     }
 }

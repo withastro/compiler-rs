@@ -302,13 +302,14 @@ impl<'a> AstroCodegen<'a> {
                 if is_html || is_text {
                     let (value, needs_unescape, is_raw_text) = match &attr.value {
                         Some(JSXAttributeValue::StringLiteral(lit)) => {
-                            // String literals don't need $$unescapeHTML
                             let raw_value = lit.value.as_str();
                             if is_html {
+                                // set:html with string literal: needs $$unescapeHTML like any
+                                // other value — the user is asking for raw HTML injection.
                                 let decoded = decode_html_entities(raw_value);
                                 (
                                     Some(format!("\"{}\"", escape_double_quotes(&decoded))),
-                                    false,
+                                    true,
                                     false,
                                 )
                             } else {
@@ -318,12 +319,9 @@ impl<'a> AstroCodegen<'a> {
                         }
                         Some(JSXAttributeValue::ExpressionContainer(expr)) => {
                             if let Some(e) = expr.expression.as_expression() {
-                                // set:html needs $$unescapeHTML for expressions, but NOT for
-                                // template literals — the Go compiler passes template literals
-                                // through as-is without unescaping.
-                                let is_template_literal =
-                                    matches!(e, Expression::TemplateLiteral(_));
-                                let needs_unescape = is_html && !is_template_literal;
+                                // set:html always needs $$unescapeHTML — its purpose is to
+                                // inject raw HTML, and $$render escapes by default.
+                                let needs_unescape = is_html;
                                 let code = expr_to_string(e);
                                 return Some((code, is_html, needs_unescape, false, attr.span));
                             }
