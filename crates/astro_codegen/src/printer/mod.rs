@@ -1341,9 +1341,10 @@ impl<'a> AstroCodegen<'a> {
                     if let JSXAttributeItem::Attribute(attr) = attr {
                         let attr_name = get_jsx_attribute_name(&attr.name);
                         if attr_name == "type"
-                            && let Some(JSXAttributeValue::StringLiteral(lit)) = &attr.value {
-                                return lit.value == "module";
-                            }
+                            && let Some(JSXAttributeValue::StringLiteral(lit)) = &attr.value
+                        {
+                            return lit.value == "module";
+                        }
                     }
                     false
                 });
