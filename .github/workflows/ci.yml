@@ -107,6 +107,12 @@ jobs:
         run: pnpm test
         working-directory: crates/astro_napi
 
+      - name: Build compiler package
+        run: pnpm run build:compiler
+
+      - name: Test compiler package
+        run: pnpm test
+
   build:
     if: github.event_name != 'pull_request'
     strategy:

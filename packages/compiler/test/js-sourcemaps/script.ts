@@ -14,7 +14,7 @@ describe('js-sourcemaps/script', () => {
 		assert.deepStrictEqual(output, {
 			source: 'index.astro',
 			line: 1,
-			column: 0,
+			column: 18,
 			name: null,
 		});
 	});
