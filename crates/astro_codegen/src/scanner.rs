@@ -11,39 +11,7 @@ use rustc_hash::FxHashSet;
 
 use oxc_allocator::Allocator;
 
-/// Information about an imported component.
-#[derive(Debug, Clone)]
-pub struct ComponentImportInfo {
-    /// The import specifier (e.g., "../components")
-    pub specifier: String,
-    /// The export name ("default" for default imports, otherwise the named export)
-    pub export_name: String,
-    /// Whether this is a namespace import (import * as x)
-    pub is_namespace: bool,
-}
-
-/// Type of hoisted script (internal representation).
-#[derive(Debug, Clone)]
-pub enum HoistedScriptType {
-    /// Inline script: `{ type: "inline", value: \`...\` }`
-    Inline,
-    /// External script with src: `{ type: "external", src: '...' }`
-    External,
-    /// Script with define:vars: `{ type: "define:vars", value: \`...\`, keys: '...' }`
-    DefineVars,
-}
-
-/// Information about a hoisted script (internal representation).
-#[derive(Debug, Clone)]
-pub struct HoistedScript {
-    pub script_type: HoistedScriptType,
-    /// The script content (for inline and define:vars)
-    pub value: Option<String>,
-    /// The external src (for external scripts)
-    pub src: Option<String>,
-    /// The variable keys (for define:vars)
-    pub keys: Option<String>,
-}
+use crate::printer::result::{HoistedScriptType, TransformResultHoistedScript};
 
 /// Information about a hydrated component.
 #[derive(Debug, Clone)]
@@ -78,7 +46,7 @@ pub struct ScanResult {
     /// Collected hydration directive names (e.g., "load", "visible", "only")
     pub hydration_directives: Vec<String>,
     /// Collected hoisted scripts
-    pub hoisted_scripts: Vec<HoistedScript>,
+    pub hoisted_scripts: Vec<TransformResultHoistedScript>,
 }
 
 /// Scans an Astro AST to collect metadata in a single pass.
@@ -107,7 +75,7 @@ pub struct AstroScanner<'a> {
     /// Hydration directive names
     hydration_directives: Vec<String>,
     /// Collected hoisted scripts
-    hoisted_scripts: Vec<HoistedScript>,
+    hoisted_scripts: Vec<TransformResultHoistedScript>,
 }
 
 impl<'a> AstroScanner<'a> {
@@ -248,60 +216,31 @@ impl<'a> AstroScanner<'a> {
         attrs: &[&JSXAttributeItem<'a>],
     ) {
         let mut src_value: Option<String> = None;
-        let mut define_vars_value: Option<String> = None;
-        let mut define_vars_keys: Option<String> = None;
 
         for attr in attrs {
             if let JSXAttributeItem::Attribute(attr) = attr {
                 let attr_name = get_jsx_attribute_name(&attr.name);
-                if attr_name == "src" {
-                    if let Some(JSXAttributeValue::StringLiteral(lit)) = &attr.value {
-                        src_value = Some(lit.value.to_string());
-                    }
-                } else if attr_name == "define:vars"
-                    && let Some(JSXAttributeValue::ExpressionContainer(container)) = &attr.value
-                    && let Some(expr) = container.expression.as_expression()
-                    && let Expression::ObjectExpression(obj) = expr
+                if attr_name == "src"
+                    && let Some(JSXAttributeValue::StringLiteral(lit)) = &attr.value
                 {
-                    let keys: Vec<String> = obj
-                        .properties
-                        .iter()
-                        .filter_map(|prop| {
-                            if let ObjectPropertyKind::ObjectProperty(p) = prop {
-                                Some(get_property_key_name(&p.key))
-                            } else {
-                                None
-                            }
-                        })
-                        .collect();
-                    define_vars_keys = Some(keys.join(","));
-                    define_vars_value = Some(get_script_content(self.allocator, program));
+                    src_value = Some(lit.value.to_string());
                 }
             }
         }
 
-        if let Some(keys) = define_vars_keys {
-            self.hoisted_scripts.push(HoistedScript {
-                script_type: HoistedScriptType::DefineVars,
-                value: Some(define_vars_value.unwrap_or_default()),
-                src: None,
-                keys: Some(keys),
-            });
-        } else if let Some(src) = src_value {
-            self.hoisted_scripts.push(HoistedScript {
+        if let Some(src) = src_value {
+            self.hoisted_scripts.push(TransformResultHoistedScript {
                 script_type: HoistedScriptType::External,
-                value: None,
+                code: None,
                 src: Some(src),
-                keys: None,
             });
         } else {
             let content = get_script_content(self.allocator, program);
             if !content.is_empty() {
-                self.hoisted_scripts.push(HoistedScript {
+                self.hoisted_scripts.push(TransformResultHoistedScript {
                     script_type: HoistedScriptType::Inline,
-                    value: Some(content),
+                    code: Some(content),
                     src: None,
-                    keys: None,
                 });
             }
         }
@@ -327,11 +266,10 @@ impl<'a> AstroScanner<'a> {
         }
 
         if let Some(src) = src_value {
-            self.hoisted_scripts.push(HoistedScript {
+            self.hoisted_scripts.push(TransformResultHoistedScript {
                 script_type: HoistedScriptType::External,
-                value: None,
+                code: None,
                 src: Some(src),
-                keys: None,
             });
         } else {
             let content: String = children
@@ -348,11 +286,10 @@ impl<'a> AstroScanner<'a> {
 
             let content = content.trim();
             if !content.is_empty() {
-                self.hoisted_scripts.push(HoistedScript {
+                self.hoisted_scripts.push(TransformResultHoistedScript {
                     script_type: HoistedScriptType::Inline,
-                    value: Some(content.to_string()),
+                    code: Some(content.to_string()),
                     src: None,
-                    keys: None,
                 });
             }
         }
@@ -375,9 +312,12 @@ impl<'a> Visit<'a> for AstroScanner<'a> {
         // Check for hoistable scripts — if we collect one, skip walking
         // children to avoid visit_astro_script double-collecting the same script.
         let name = get_jsx_element_name(&el.opening_element.name);
-        if name == "script" && should_hoist_script(&el.opening_element.attributes) {
-            self.try_collect_script(el);
-            // Don't walk children — we already processed the AstroScript child
+        if name == "script" {
+            if should_hoist_script(&el.opening_element.attributes) {
+                self.try_collect_script(el);
+            }
+            // Don't walk children for any <script> element — AstroScript children
+            // inside non-hoistable scripts (e.g. is:inline) must not be collected.
             return;
         }
 
@@ -439,6 +379,8 @@ pub fn is_custom_element(name: &str) -> bool {
     name.contains('-')
 }
 
+/// Returns `true` if a `<script>` element should be hoisted (bundled via
+/// `$$renderScript`).
 pub fn should_hoist_script(attrs: &oxc_allocator::Vec<'_, JSXAttributeItem<'_>>) -> bool {
     let mut has_type_module = false;
     let mut has_src = false;
@@ -467,12 +409,8 @@ pub fn should_hoist_script(attrs: &oxc_allocator::Vec<'_, JSXAttributeItem<'_>>)
         }
     }
 
-    if is_inline {
+    if is_inline || has_define_vars {
         return false;
-    }
-
-    if has_define_vars {
-        return true;
     }
 
     // A script with a `src` pointing to an external file is only hoistable if
@@ -485,14 +423,6 @@ pub fn should_hoist_script(attrs: &oxc_allocator::Vec<'_, JSXAttributeItem<'_>>)
 
     // Scripts with no attributes at all, or with just `type="module"`, are hoistable.
     attrs.is_empty() || (has_type_module && !has_other)
-}
-
-fn get_property_key_name(key: &PropertyKey<'_>) -> String {
-    match key {
-        PropertyKey::StaticIdentifier(ident) => ident.name.to_string(),
-        PropertyKey::StringLiteral(lit) => lit.value.to_string(),
-        _ => String::new(),
-    }
 }
 
 /// Get the script content as a string by codegen-ing the program.

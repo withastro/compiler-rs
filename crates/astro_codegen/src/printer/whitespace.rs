@@ -68,10 +68,6 @@ pub(super) fn has_is_raw_attr(attrs: &[JSXAttributeItem<'_>]) -> bool {
 pub(super) struct TextPosition {
     /// Whether this text node is the only child (no siblings).
     pub is_lone_child: bool,
-    /// Whether this text node is the first child of an expression container.
-    pub is_first_in_expression: bool,
-    /// Whether this text node is the last child of an expression container.
-    pub is_last_in_expression: bool,
 }
 
 /// Apply `CompactMode::Html` whitespace collapsing to a text value.
@@ -91,25 +87,6 @@ pub(super) fn collapse_html(
 ) -> Option<String> {
     if in_raw_element {
         return Some(text.to_string());
-    }
-
-    // Expression boundary trimming: fully strip leading whitespace from the
-    // first child of an expression container, and trailing whitespace from the
-    // last child. After trimming, if the result is empty we emit nothing.
-    if pos.is_first_in_expression || pos.is_last_in_expression {
-        let mut s = text.to_string();
-        if pos.is_first_in_expression {
-            // Trim leading whitespace
-            s = s.trim_start().to_string();
-        }
-        if pos.is_last_in_expression {
-            // Trim trailing whitespace
-            s = s.trim_end().to_string();
-        }
-        if s.is_empty() {
-            return None;
-        }
-        return Some(s);
     }
 
     // Pure whitespace text node?
@@ -175,24 +152,22 @@ pub(super) fn collapse_jsx(text: &str, in_raw_element: bool) -> Option<String> {
 mod tests {
     use super::*;
 
-    fn pos(lone: bool, first_expr: bool, last_expr: bool) -> TextPosition {
+    fn pos(lone: bool) -> TextPosition {
         TextPosition {
             is_lone_child: lone,
-            is_first_in_expression: first_expr,
-            is_last_in_expression: last_expr,
         }
     }
 
     fn html(text: &str) -> Option<String> {
-        collapse_html(text, false, false, pos(false, false, false))
+        collapse_html(text, false, false, pos(false))
     }
 
     fn html_lone(text: &str) -> Option<String> {
-        collapse_html(text, false, false, pos(true, false, false))
+        collapse_html(text, false, false, pos(true))
     }
 
     fn html_insensitive(text: &str) -> Option<String> {
-        collapse_html(text, false, true, pos(false, false, false))
+        collapse_html(text, false, true, pos(false))
     }
 
     // --- Html mode: whitespace-only text ---
@@ -245,37 +220,11 @@ mod tests {
 
     #[test]
     fn html_raw_element_verbatim() {
-        let p = pos(false, false, false);
+        let p = pos(false);
         assert_eq!(
             collapse_html("  hello  ", true, false, p),
             Some("  hello  ".to_string())
         );
-    }
-
-    // --- Html mode: expression boundary ---
-
-    #[test]
-    fn html_expression_first_child_trims_leading() {
-        let p = pos(false, true, false);
-        assert_eq!(
-            collapse_html("\n  foo\n", false, false, p),
-            Some("foo\n".to_string())
-        );
-    }
-
-    #[test]
-    fn html_expression_last_child_trims_trailing() {
-        let p = pos(false, false, true);
-        assert_eq!(
-            collapse_html("\n  foo\n  ", false, false, p),
-            Some("\n  foo".to_string())
-        );
-    }
-
-    #[test]
-    fn html_expression_whitespace_only_first_removed() {
-        let p = pos(false, true, false);
-        assert_eq!(collapse_html("\n  \t", false, false, p), None);
     }
 
     // --- Jsx mode ---

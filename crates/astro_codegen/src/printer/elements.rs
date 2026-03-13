@@ -6,7 +6,7 @@
 //! attributes, and element classification helpers (`is_void_element`,
 //! `is_head_element`).
 
-use super::escape::{escape_double_quotes, escape_html_attribute};
+use super::escape::{escape_double_quotes, escape_html_attribute, escape_template_literal};
 use super::runtime;
 use super::whitespace::{has_is_raw_attr, is_raw_element_name};
 use super::{AstroCodegen, expr_to_string};
@@ -184,6 +184,30 @@ impl<'a> AstroCodegen<'a> {
             } else {
                 // For literals (string/template) or set:text expression, just interpolate
                 self.print(&format!("${{{value}}}"));
+            }
+        } else if name == "script"
+            && el
+                .children
+                .iter()
+                .any(|c| matches!(c, JSXChild::AstroScript(_)))
+        {
+            // The script content was parsed as JS by oxc (AstroScript child).
+            // For non-hoisted scripts (e.g. is:inline), emit the raw source text
+            // verbatim. The content lies between the opening tag end and closing
+            // tag start in the original source.
+            let content_start = el.opening_element.span.end as usize;
+            let content_end = el
+                .closing_element
+                .as_ref()
+                .map(|c| c.span.start as usize)
+                .unwrap_or(content_start);
+            if content_start < content_end {
+                let raw = &self.source_text[content_start..content_end];
+                self.add_source_mapping_for_span(oxc_span::Span::new(
+                    content_start as u32,
+                    content_end as u32,
+                ));
+                self.print(&escape_template_literal(raw));
             }
         } else {
             // Regular children with compact-aware printing
