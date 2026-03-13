@@ -328,6 +328,12 @@ impl ScopeVisitor<'_> {
                 result.extend(inner_components);
                 continue;
             }
+            // Pseudo-elements (e.g. `::after` in `:global(.fallback)::after`) attach to
+            // the content extracted from :global() and must NOT trigger scoping.
+            if matches!(component, Component::PseudoElement(_)) {
+                result.push(component.clone());
+                continue;
+            }
             has_non_global = true;
             result.push(component.clone());
         }
@@ -720,6 +726,18 @@ mod tests {
     }
 
     #[test]
+    fn test_root_with_class() {
+        // :root.dark should NOT be scoped — Go: scoped=true when :root seen
+        assert_eq!(scope(":root.dark{}"), ":root.dark {\n}\n");
+    }
+
+    #[test]
+    fn test_root_with_not() {
+        // :root:not(.theme) should NOT be scoped
+        assert_eq!(scope(":root:not(.theme){}"), ":root:not(.theme) {\n}\n");
+    }
+
+    #[test]
     fn test_chained_not() {
         assert_eq!(
             scope(".class:not(.is-active):not(.is-disabled){}"),
@@ -849,6 +867,34 @@ mod tests {
         assert_eq!(
             scope(".class{& .other_class{&::after{}}}"),
             ".class:where(.astro-xxxxxx) {\n  & .other_class:where(.astro-xxxxxx) {\n    &:where(.astro-xxxxxx):after {\n    }\n  }\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_with_pseudo_element() {
+        // :global(.fallback)::after must NOT be scoped — the ::after attaches to the
+        // content inside :global() and the whole selector is intentionally unscoped.
+        assert_eq!(
+            scope(":global(.fallback)::after{}"),
+            ".fallback:after {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_with_pseudo_element_before() {
+        assert_eq!(
+            scope(":global(.fallback)::before{}"),
+            ".fallback:before {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_then_class_with_pseudo_element() {
+        // .local:global(.global)::after — .local is non-global, so scoping applies,
+        // but ::after should not cause an extra scope injection.
+        assert_eq!(
+            scope(".local:global(.global)::after{}"),
+            ".local:where(.astro-xxxxxx).global:after {\n}\n"
         );
     }
 
