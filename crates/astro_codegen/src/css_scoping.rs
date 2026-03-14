@@ -144,6 +144,11 @@ impl ScopeVisitor<'_> {
 
         let mut result_components: Vec<Component<'i>> = Vec::new();
 
+        let starts_with_bare_nesting = merged
+            .first()
+            .map(|(_, compound)| compound.len() == 1 && matches!(compound[0], Component::Nesting))
+            .unwrap_or(false);
+
         for (i, (combinator, compound)) in merged.iter().enumerate() {
             if i > 0
                 && let Some(comb) = combinator
@@ -151,8 +156,18 @@ impl ScopeVisitor<'_> {
                 result_components.push(Component::Combinator(*comb));
             }
 
-            let scoped = self.scope_compound(compound);
-            result_components.extend(scoped);
+            // Skip scope injection for compounds that follow the leading bare `&` via a
+            // descendant combinator — they are descendant selectors, not the scoped element.
+            let skip_scope = starts_with_bare_nesting
+                && i > 0
+                && matches!(combinator, Some(Combinator::Descendant));
+
+            if skip_scope {
+                result_components.extend(compound.iter().cloned());
+            } else {
+                let scoped = self.scope_compound(compound);
+                result_components.extend(scoped);
+            }
         }
 
         if result_components.is_empty() {
@@ -802,7 +817,15 @@ mod tests {
     fn test_nesting_combinator() {
         assert_eq!(
             scope("div{& span{color:blue}}"),
-            "div:where(.astro-xxxxxx) {\n  & span:where(.astro-xxxxxx) {\n    color: #00f;\n  }\n}\n"
+            "div:where(.astro-xxxxxx) {\n  & span {\n    color: #00f;\n  }\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_nesting_without_ampersand() {
+        assert_eq!(
+            scope("nav{a{color:deeppink}}"),
+            "nav:where(.astro-xxxxxx) {\n  & a {\n    color: #ff1493;\n  }\n}\n"
         );
     }
 
@@ -863,10 +886,50 @@ mod tests {
     }
 
     #[test]
+    fn test_nesting_without_ampersand_deep() {
+        // Deeper descendant nesting: `nav { a { span { color: red } } }`
+        // Neither `a` nor `span` should be scoped.
+        assert_eq!(
+            scope("nav{a{span{color:red}}}"),
+            "nav:where(.astro-xxxxxx) {\n  & a {\n    & span {\n      color: red;\n    }\n  }\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_nesting_mixed() {
+        // Comprehensive real-world nesting scenario (withastro/astro#15907):
+        //
+        // nav { color: blue }          — top-level, scoped
+        // nav { a { color: deeppink } } — `a` is a descendant, NOT scoped
+        // nav { &:hover { opacity: .8 } } — `&:hover` modifies nav itself, scoped
+        // nav { & > li { color: red } } — child combinator (not descendant), scoped
+        // nav { a { span { color: green } } } — deeply nested descendants, neither scoped
+        // nav { &::before { content: "" } } — pseudo-element on nav itself, scoped
+        let input = "nav{color:blue} nav{a{color:deeppink}} nav{&:hover{opacity:.8}} nav{& > li{color:red}} nav{a{span{color:green}}} nav{&::before{content:\"\"}}";
+        let output = scope(input);
+        // nav itself is always scoped
+        assert!(output.contains("nav:where(.astro-xxxxxx)"), "nav should be scoped: {output}");
+        // descendant `a` must NOT be scoped
+        assert!(!output.contains("a:where("), "a should not be scoped: {output}");
+        // descendant `span` must NOT be scoped
+        assert!(!output.contains("span:where("), "span should not be scoped: {output}");
+        // &:hover — `&` has a modifier in the same compound, returned as-is by scope_nesting_compound
+        assert!(output.contains("&:hover"), "&:hover should be preserved: {output}");
+        assert!(!output.contains("&:where(.astro-xxxxxx):hover"), "&:hover should not get extra scope: {output}");
+        // child combinator `> li` — explicit child, NOT via descendant combinator, should be scoped
+        assert!(output.contains("li:where(.astro-xxxxxx)"), "> li should be scoped: {output}");
+        // &::before — pseudo-element on nav itself, should be scoped
+        assert!(output.contains("&:where(.astro-xxxxxx):before"), "&::before should be scoped: {output}");
+    }
+
+    #[test]
     fn test_nested_only_pseudo_element() {
+        // `.class { & .other_class { &::after {} } }`:
+        // - `& .other_class` — descendant, NOT scoped (withastro/astro#15907)
+        // - `&::after` — attaches to `.other_class` itself, still scoped
         assert_eq!(
             scope(".class{& .other_class{&::after{}}}"),
-            ".class:where(.astro-xxxxxx) {\n  & .other_class:where(.astro-xxxxxx) {\n    &:where(.astro-xxxxxx):after {\n    }\n  }\n}\n"
+            ".class:where(.astro-xxxxxx) {\n  & .other_class {\n    &:where(.astro-xxxxxx):after {\n    }\n  }\n}\n"
         );
     }
 
