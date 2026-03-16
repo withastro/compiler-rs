@@ -908,18 +908,39 @@ mod tests {
         let input = "nav{color:blue} nav{a{color:deeppink}} nav{&:hover{opacity:.8}} nav{& > li{color:red}} nav{a{span{color:green}}} nav{&::before{content:\"\"}}";
         let output = scope(input);
         // nav itself is always scoped
-        assert!(output.contains("nav:where(.astro-xxxxxx)"), "nav should be scoped: {output}");
+        assert!(
+            output.contains("nav:where(.astro-xxxxxx)"),
+            "nav should be scoped: {output}"
+        );
         // descendant `a` must NOT be scoped
-        assert!(!output.contains("a:where("), "a should not be scoped: {output}");
+        assert!(
+            !output.contains("a:where("),
+            "a should not be scoped: {output}"
+        );
         // descendant `span` must NOT be scoped
-        assert!(!output.contains("span:where("), "span should not be scoped: {output}");
+        assert!(
+            !output.contains("span:where("),
+            "span should not be scoped: {output}"
+        );
         // &:hover — `&` has a modifier in the same compound, returned as-is by scope_nesting_compound
-        assert!(output.contains("&:hover"), "&:hover should be preserved: {output}");
-        assert!(!output.contains("&:where(.astro-xxxxxx):hover"), "&:hover should not get extra scope: {output}");
+        assert!(
+            output.contains("&:hover"),
+            "&:hover should be preserved: {output}"
+        );
+        assert!(
+            !output.contains("&:where(.astro-xxxxxx):hover"),
+            "&:hover should not get extra scope: {output}"
+        );
         // child combinator `> li` — explicit child, NOT via descendant combinator, should be scoped
-        assert!(output.contains("li:where(.astro-xxxxxx)"), "> li should be scoped: {output}");
+        assert!(
+            output.contains("li:where(.astro-xxxxxx)"),
+            "> li should be scoped: {output}"
+        );
         // &::before — pseudo-element on nav itself, should be scoped
-        assert!(output.contains("&:where(.astro-xxxxxx):before"), "&::before should be scoped: {output}");
+        assert!(
+            output.contains("&:where(.astro-xxxxxx):before"),
+            "&::before should be scoped: {output}"
+        );
     }
 
     #[test]

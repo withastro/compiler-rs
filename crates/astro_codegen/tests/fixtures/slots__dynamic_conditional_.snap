@@ -1,0 +1,42 @@
+---
+source: crates/astro_codegen/tests/snapshots.rs
+input_file: crates/astro_codegen/tests/fixtures/slots__dynamic_conditional_.astro
+---
+import { render as $$render, createAstro as $$createAstro, createComponent as $$createComponent, renderComponent as $$renderComponent, renderSlot as $$renderSlot, createMetadata as $$createMetadata } from "http://localhost:3000/";
+import Card from "./card.astro";
+import Meta from "./meta.astro";
+import * as $$module1 from "./card.astro";
+import * as $$module2 from "./meta.astro";
+export const $$metadata = $$createMetadata(import.meta.url, {
+	modules: [{
+		module: $$module1,
+		specifier: "./card.astro",
+		assert: {}
+	}, {
+		module: $$module2,
+		specifier: "./meta.astro",
+		assert: {}
+	}],
+	hydratedComponents: [],
+	clientOnlyComponents: [],
+	hydrationDirectives: new Set([]),
+	hoisted: []
+});
+const $$Astro = $$createAstro("https://astro.build");
+const Astro = $$Astro;
+const $$Component = $$createComponent(($$result, $$props, $$slots) => {
+	const Astro = $$result.createAstro($$props, $$slots);
+	Astro.self = $$Component;
+	const { meta } = Astro.props;
+	return $$render`${$$renderComponent($$result, "Card", Card, {}, {
+		"default": () => $$render`
+  ${$$renderSlot($$result, $$slots["default"])}
+`,
+		"title": () => $$render`${$$renderSlot($$result, $$slots["title"])}`,
+		[meta ? "meta" : ""]: () => $$render`${meta ? $$render`${$$renderComponent($$result, "Meta", Meta, {
+			"items": meta,
+			"slot": meta ? "meta" : ""
+		})}` : null}`
+	})}`;
+}, undefined, undefined);
+export default $$Component;
