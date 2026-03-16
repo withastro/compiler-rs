@@ -1,5 +1,21 @@
 # @astrojs/compiler-rs
 
+## 0.1.5
+
+### Patch Changes
+
+- ddf38ff: Fixes dynamic slots not working correctly
+- 21b6cd5: Fixes CSS scoping not working correctly when using :global with pseudo elements
+- e93a108: Fixes the compiler scoping nested selectors in certain cases
+- c8f6dc5: Fixed an issue where define:vars scripts would not be handled correctly
+- c8f6dc5: Fixes an issue where set:html did not work correctly in certain cases
+- Updated dependencies [ddf38ff]
+- Updated dependencies [21b6cd5]
+- Updated dependencies [e93a108]
+- Updated dependencies [c8f6dc5]
+- Updated dependencies [c8f6dc5]
+  - @astrojs/compiler-binding@0.1.5
+
 ## 0.1.4
 
 ### Patch Changes
