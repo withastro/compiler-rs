@@ -182,6 +182,11 @@ fn collect_slots_from_expression<'a>(
                 collect_slots_from_function_body(&arrow.body, slots);
             }
         }
+        JSXExpression::CallExpression(call) => {
+            // e.g. items.map(item => <div slot="content">{item}</div>)
+            // Walk into callback arguments to find slotted JSX.
+            collect_slots_from_call_arguments(&call.arguments, slots);
+        }
         _ => {}
     }
 }
@@ -231,7 +236,47 @@ fn collect_slots_from_inner_expression<'a>(
                 collect_slots_from_function_body(&arrow.body, slots);
             }
         }
+        Expression::CallExpression(call) => {
+            // e.g. items.map(item => <div slot="content">{item}</div>)
+            // Walk into callback arguments to find slotted JSX.
+            collect_slots_from_call_arguments(&call.arguments, slots);
+        }
         _ => {}
+    }
+}
+
+/// Walk into the arguments of a call expression looking for arrow functions
+/// or other expressions that may contain slotted JSX elements.
+/// This handles patterns like `items.map(item => <div slot="name">...</div>)`.
+fn collect_slots_from_call_arguments<'a>(
+    arguments: &'a [oxc_ast::ast::Argument<'a>],
+    slots: &mut Vec<CollectedSlot<'a>>,
+) {
+    for arg in arguments {
+        match arg {
+            oxc_ast::ast::Argument::ArrowFunctionExpression(arrow) => {
+                if arrow.expression {
+                    if let Some(oxc_ast::ast::Statement::ExpressionStatement(expr_stmt)) =
+                        arrow.body.statements.first()
+                    {
+                        collect_slots_from_inner_expression(&expr_stmt.expression, slots);
+                    }
+                } else {
+                    collect_slots_from_function_body(&arrow.body, slots);
+                }
+            }
+            oxc_ast::ast::Argument::FunctionExpression(func) => {
+                if let Some(body) = &func.body {
+                    collect_slots_from_function_body(body, slots);
+                }
+            }
+            _ => {
+                // For other argument types, try to recurse as an expression
+                if let Some(expr) = arg.as_expression() {
+                    collect_slots_from_inner_expression(expr, slots);
+                }
+            }
+        }
     }
 }
 
