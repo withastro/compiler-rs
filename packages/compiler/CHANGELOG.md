@@ -1,5 +1,13 @@
 # @astrojs/compiler-rs
 
+## 0.1.6
+
+### Patch Changes
+
+- 6e274fe: Fixes dynamic slots not being collected properly
+- Updated dependencies [6e274fe]
+  - @astrojs/compiler-binding@0.1.6
+
 ## 0.1.5
 
 ### Patch Changes
