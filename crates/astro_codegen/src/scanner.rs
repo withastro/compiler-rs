@@ -309,9 +309,10 @@ impl<'a> Visit<'a> for AstroScanner<'a> {
         // Check for directives on the opening element
         self.process_element_directives(&el.opening_element);
 
+        let name = get_jsx_element_name(&el.opening_element.name);
+
         // Check for hoistable scripts — if we collect one, skip walking
         // children to avoid visit_astro_script double-collecting the same script.
-        let name = get_jsx_element_name(&el.opening_element.name);
         if name == "script" {
             if should_hoist_script(&el.opening_element.attributes) {
                 self.try_collect_script(el);
