@@ -98,6 +98,8 @@ mod runtime {
     pub const RENDER_TRANSITION: &str = "$$renderTransition";
     pub const CREATE_TRANSITION_SCOPE: &str = "$$createTransitionScope";
     pub const RENDER_SCRIPT: &str = "$$renderScript";
+    pub const TEMPLATE_ENTER: &str = "$$templateEnter";
+    pub const TEMPLATE_EXIT: &str = "$$templateExit";
     pub const CREATE_METADATA: &str = "$$createMetadata";
     pub const RESULT: &str = "$$result";
 }
@@ -631,6 +633,10 @@ impl<'a> AstroCodegen<'a> {
             runtime::CREATE_TRANSITION_SCOPE
         ));
         self.println(&format!("  renderScript as {},", runtime::RENDER_SCRIPT));
+        if self.scan_result.has_template_element {
+            self.println(&format!("  templateEnter as {},", runtime::TEMPLATE_ENTER));
+            self.println(&format!("  templateExit as {},", runtime::TEMPLATE_EXIT));
+        }
         if !self.options.has_resolve_path() {
             self.println(&format!("  createMetadata as {}", runtime::CREATE_METADATA));
         }

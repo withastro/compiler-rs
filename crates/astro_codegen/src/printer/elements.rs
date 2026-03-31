@@ -162,9 +162,9 @@ impl<'a> AstroCodegen<'a> {
         // Emit template depth tracking for HTML <template> elements
         if is_template {
             self.print(&format!(
-                "${{({}.{},\"\")}}",
-                runtime::RESULT,
-                "_metadata.templateDepth++"
+                "${{{}({})}}",
+                runtime::TEMPLATE_ENTER,
+                runtime::RESULT
             ));
         }
 
@@ -226,9 +226,9 @@ impl<'a> AstroCodegen<'a> {
 
         if is_template {
             self.print(&format!(
-                "${{({}.{},\"\")}}",
-                runtime::RESULT,
-                "_metadata.templateDepth--"
+                "${{{}({})}}",
+                runtime::TEMPLATE_EXIT,
+                runtime::RESULT
             ));
         }
 

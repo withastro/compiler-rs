@@ -47,6 +47,8 @@ pub struct ScanResult {
     pub hydration_directives: Vec<String>,
     /// Collected hoisted scripts
     pub hoisted_scripts: Vec<TransformResultHoistedScript>,
+    /// Whether the source contains an HTML `<template>` element
+    pub has_template_element: bool,
 }
 
 /// Scans an Astro AST to collect metadata in a single pass.
@@ -62,6 +64,8 @@ pub struct AstroScanner<'a> {
     uses_astro_global: bool,
     /// Whether we've found transition directives
     uses_transitions: bool,
+    /// Whether we've found an HTML `<template>` element
+    has_template_element: bool,
     /// Whether we've found an `await` expression
     has_await: bool,
     /// Set of component names that use `client:only`
@@ -84,6 +88,7 @@ impl<'a> AstroScanner<'a> {
             allocator,
             uses_astro_global: false,
             uses_transitions: false,
+            has_template_element: false,
             has_await: false,
             client_only_component_names: FxHashSet::default(),
             hydrated_components: Vec::new(),
@@ -107,6 +112,7 @@ impl<'a> AstroScanner<'a> {
             server_deferred_components: self.server_deferred_components,
             hydration_directives: self.hydration_directives,
             hoisted_scripts: self.hoisted_scripts,
+            has_template_element: self.has_template_element,
         }
     }
 
@@ -310,6 +316,11 @@ impl<'a> Visit<'a> for AstroScanner<'a> {
         self.process_element_directives(&el.opening_element);
 
         let name = get_jsx_element_name(&el.opening_element.name);
+
+        // Check for HTML <template> elements (not components)
+        if name == "template" && !is_component_name(&name) {
+            self.has_template_element = true;
+        }
 
         // Check for hoistable scripts — if we collect one, skip walking
         // children to avoid visit_astro_script double-collecting the same script.
