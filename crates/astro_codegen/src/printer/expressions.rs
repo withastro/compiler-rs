@@ -356,10 +356,26 @@ impl<'a> AstroCodegen<'a> {
             }
             Statement::VariableDeclaration(decl) => {
                 self.add_source_mapping_for_span(decl.span);
-                // Use regular codegen for variable declarations
-                let code = gen_to_string(decl.as_ref());
-                self.print(&code);
-                self.print("\n");
+                self.print(match decl.kind {
+                    oxc_ast::ast::VariableDeclarationKind::Var => "var ",
+                    oxc_ast::ast::VariableDeclarationKind::Let => "let ",
+                    oxc_ast::ast::VariableDeclarationKind::Const => "const ",
+                    oxc_ast::ast::VariableDeclarationKind::Using => "using ",
+                    oxc_ast::ast::VariableDeclarationKind::AwaitUsing => "await using ",
+                });
+                let mut first = true;
+                for declarator in &decl.declarations {
+                    if !first {
+                        self.print(", ");
+                    }
+                    first = false;
+                    self.print_binding_pattern(&declarator.id);
+                    if let Some(init) = &declarator.init {
+                        self.print(" = ");
+                        self.print_expression(init);
+                    }
+                }
+                self.print(";\n");
             }
             Statement::IfStatement(if_stmt) => {
                 self.add_source_mapping_for_span(if_stmt.span);
