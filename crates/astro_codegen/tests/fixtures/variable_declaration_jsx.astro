@@ -1,0 +1,13 @@
+---
+const items = ["a", "b"];
+---
+<div>
+  {items.map((item) => {
+    const el = <span>{item}</span>;
+    let a = <b>1</b>, b = <i>2</i>;
+    const ternary = item === "a" ? <strong>A</strong> : <em>B</em>;
+    const frag = <><p>one</p><p>two</p></>;
+    const plain = 1;
+    return [el, a, b, ternary, frag, plain];
+  })}
+</div>

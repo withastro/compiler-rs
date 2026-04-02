@@ -358,12 +358,10 @@ impl<'a> AstroCodegen<'a> {
                 self.add_source_mapping_for_span(decl.span);
                 self.print(decl.kind.as_str());
                 self.print(" ");
-                let mut first = true;
-                for declarator in &decl.declarations {
-                    if !first {
+                for (i, declarator) in decl.declarations.iter().enumerate() {
+                    if i > 0 {
                         self.print(", ");
                     }
-                    first = false;
                     self.print_binding_pattern(&declarator.id);
                     if let Some(init) = &declarator.init {
                         self.print(" = ");
