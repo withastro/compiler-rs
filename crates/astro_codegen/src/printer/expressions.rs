@@ -356,13 +356,8 @@ impl<'a> AstroCodegen<'a> {
             }
             Statement::VariableDeclaration(decl) => {
                 self.add_source_mapping_for_span(decl.span);
-                self.print(match decl.kind {
-                    oxc_ast::ast::VariableDeclarationKind::Var => "var ",
-                    oxc_ast::ast::VariableDeclarationKind::Let => "let ",
-                    oxc_ast::ast::VariableDeclarationKind::Const => "const ",
-                    oxc_ast::ast::VariableDeclarationKind::Using => "using ",
-                    oxc_ast::ast::VariableDeclarationKind::AwaitUsing => "await using ",
-                });
+                self.print(decl.kind.as_str());
+                self.print(" ");
                 let mut first = true;
                 for declarator in &decl.declarations {
                     if !first {
