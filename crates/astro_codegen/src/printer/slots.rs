@@ -626,6 +626,9 @@ impl<'a> AstroCodegen<'a> {
                 self.add_source_mapping_for_span(arrow.span);
                 self.print_slot_aware_arrow_function(arrow);
             }
+            Expression::ParenthesizedExpression(paren) => {
+                self.print_conditional_slot_branch_expr(&paren.expression);
+            }
             Expression::ConditionalExpression(cond) => {
                 self.add_source_mapping_for_span(cond.span);
                 self.print_expression(&cond.test);
@@ -765,6 +768,9 @@ impl<'a> AstroCodegen<'a> {
                         self.print("`}");
                     }
                 }
+            }
+            Expression::ParenthesizedExpression(paren) => {
+                self.print_conditional_slot_branch(&paren.expression);
             }
             Expression::ConditionalExpression(cond) => {
                 // Nested ternary
