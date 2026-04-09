@@ -1424,7 +1424,7 @@ impl<'a> AstroCodegen<'a> {
                     }
                 }));
 
-        if name == "script" && is_hoisted_script {
+        if name == "script" && !self.in_non_hoistable && is_hoisted_script {
             self.add_source_mapping_for_span(el.opening_element.span);
 
             let filename = self
