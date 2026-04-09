@@ -187,7 +187,11 @@ fn collect_slots_from_expression<'a>(
             // Walk into callback arguments to find slotted JSX.
             collect_slots_from_call_arguments(&call.arguments, slots);
         }
-        _ => {}
+        _ => {
+            if let Some(inner) = expr.as_expression() {
+                collect_slots_from_inner_expression(inner, slots);
+            }
+        }
     }
 }
 
@@ -240,6 +244,13 @@ fn collect_slots_from_inner_expression<'a>(
             // e.g. items.map(item => <div slot="content">{item}</div>)
             // Walk into callback arguments to find slotted JSX.
             collect_slots_from_call_arguments(&call.arguments, slots);
+        }
+        Expression::ChainExpression(chain) => {
+            // e.g. items?.map(item => <div slot="item">{item}</div>)
+            // Unwrap the chain to reach the inner CallExpression.
+            if let oxc_ast::ast::ChainElement::CallExpression(call) = &chain.expression {
+                collect_slots_from_call_arguments(&call.arguments, slots);
+            }
         }
         _ => {}
     }
