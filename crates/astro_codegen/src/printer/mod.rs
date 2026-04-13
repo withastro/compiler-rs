@@ -1107,12 +1107,15 @@ impl<'a> AstroCodegen<'a> {
 
         // Also skip trailing whitespace-only text nodes at the template root
         // level (matching Go compiler's TrimTrailingSpace behaviour).
+        // Extracted elements (e.g. <style>, hoisted <script>) are also
+        // skipped so that whitespace between the last real element and an
+        // extracted element doesn't leak into the output.
         let last_real_idx = remaining
             .iter()
             .rposition(|c| match c {
                 JSXChild::Text(t) => !t.value.trim().is_empty(),
                 JSXChild::AstroDoctype(_) | JSXChild::AstroScript(_) => false,
-                _ => true,
+                _ => !self.is_extracted_child(c),
             })
             .map(|i| i + 1) // exclusive end
             .unwrap_or(remaining.len());
@@ -1338,6 +1341,8 @@ impl<'a> AstroCodegen<'a> {
     /// Check if a JSX child will be completely removed from output (extracted).
     /// Currently this only covers `<style>` elements that will be extracted
     /// (not `is:inline`, not inside svg/noscript/template).
+    /// Note: hoisted `<script>` elements still emit `$$renderScript` calls,
+    /// so they are NOT considered fully extracted.
     fn is_extracted_child(&self, child: &JSXChild<'a>) -> bool {
         if let JSXChild::Element(el) = child {
             let name = get_jsx_element_name(&el.opening_element.name);
