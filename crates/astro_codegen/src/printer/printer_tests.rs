@@ -2697,3 +2697,143 @@ fn test_expression_implicit_fragment_inline_elements_no_extra_space() {
         "should not inject trailing whitespace after inline element: {output}"
     );
 }
+
+#[test]
+fn test_compact_whitespace_before_style_no_trailing_space() {
+    let source = "// @config compact=html\n<a href=\"#\"><slot /></a>\n\n<style>\n  a { color: red; }\n</style>";
+    let result = compile_astro_with_options(
+        source,
+        crate::TransformOptions::new()
+            .with_internal_url("http://localhost:3000/")
+            .with_compact(crate::CompactMode::Html),
+    );
+    let output = result.code;
+    eprintln!("COMPACT OUTPUT:\n{output}");
+    assert!(
+        !output.contains("</a> "),
+        "Should not have trailing space after </a> when next sibling is extracted style: {output}"
+    );
+}
+
+#[test]
+fn test_whitespace_between_inline_elements_preserved() {
+    let source = "<span>hello</span>\n<span>world</span>";
+    let output = compile_astro(source);
+
+    // The whitespace between two inline elements must be preserved
+    // so they don't collapse into "helloworld"
+    assert!(
+        output.contains("</span>\n<span>") || output.contains("</span> <span>"),
+        "Whitespace between inline elements should be preserved: {output}"
+    );
+}
+
+#[test]
+fn test_no_trailing_whitespace_before_style_noncompact() {
+    let source = "<a href=\"#\"><slot /></a>\n\n<style>\n  a { color: red; }\n</style>";
+    let output = compile_astro(source);
+    assert!(
+        !output.contains("</a>\n\n"),
+        "Non-compact: should not have trailing whitespace before extracted style: {output}"
+    );
+}
+
+#[test]
+fn test_no_trailing_whitespace_before_style_compact() {
+    let source = "<a href=\"#\"><slot /></a>\n\n<style>\n  a { color: red; }\n</style>";
+    let result = compile_astro_with_options(
+        source,
+        crate::TransformOptions::new()
+            .with_internal_url("http://localhost:3000/")
+            .with_compact(crate::CompactMode::Html),
+    );
+    assert!(
+        !result.code.contains("</a> "),
+        "Compact: should not have trailing space before extracted style: {}",
+        result.code
+    );
+}
+
+#[test]
+fn test_whitespace_before_style_inside_div() {
+    let source =
+        "<div>\n  <span>hello</span>\n\n  <style>\n    span { color: red; }\n  </style>\n</div>";
+    let output = compile_astro(source);
+    // The whitespace between </span> and <style> inside a div
+    // should also be stripped since the style is extracted
+    assert!(
+        !output.contains("</span>\n\n"),
+        "Should strip whitespace before extracted style inside div: {output}"
+    );
+}
+
+#[test]
+fn test_whitespace_before_style_all_compact_modes() {
+    let source = "<a href=\"#\"><slot /></a>\n\n<style>\n  a { color: red; }\n</style>";
+
+    // compact=false (disabled)
+    let output = compile_astro(source);
+    assert!(
+        !output.contains("</a>\n\n") && !output.contains("</a> "),
+        "compact=false: trailing whitespace before style should be stripped: {output}"
+    );
+
+    // compact=html
+    let result = compile_astro_with_options(
+        source,
+        crate::TransformOptions::new()
+            .with_internal_url("http://localhost:3000/")
+            .with_compact(crate::CompactMode::Html),
+    );
+    assert!(
+        !result.code.contains("</a> ") && !result.code.contains("</a>\n"),
+        "compact=html: trailing whitespace before style should be stripped: {}",
+        result.code
+    );
+
+    // compact=jsx
+    let result = compile_astro_with_options(
+        source,
+        crate::TransformOptions::new()
+            .with_internal_url("http://localhost:3000/")
+            .with_compact(crate::CompactMode::Jsx),
+    );
+    assert!(
+        !result.code.contains("</a> ") && !result.code.contains("</a>\n\n"),
+        "compact=jsx: trailing whitespace before style should be stripped: {}",
+        result.code
+    );
+}
+
+#[test]
+fn test_span_before_style_no_trailing_space() {
+    // From https://github.com/withastro/astro/issues/14593
+    let source = "<span>\n  <slot />\n</span>\n\n<style>\n  span { color: red; }\n</style>";
+    let output = compile_astro(source);
+    assert!(
+        !output.contains("</span>\n\n") && !output.contains("</span> "),
+        "Should not have trailing whitespace after inline element before style: {output}"
+    );
+}
+
+#[test]
+fn test_fragment_workaround_not_needed() {
+    // The fragment workaround from Starlight should produce the same
+    // result as the direct version now
+    let direct = "<span>\n  <slot />\n</span>\n\n<style>\n  span { color: red; }\n</style>";
+    let fragment =
+        "<>\n  <span>\n    <slot />\n  </span>\n</>\n\n<style>\n  span { color: red; }\n</style>";
+
+    let direct_output = compile_astro(direct);
+    let fragment_output = compile_astro(fragment);
+
+    // Neither should have trailing whitespace
+    assert!(
+        !direct_output.contains("</span>\n\n") && !direct_output.contains("</span> "),
+        "Direct: should not have trailing whitespace: {direct_output}"
+    );
+    assert!(
+        !fragment_output.contains("</span>\n\n") && !fragment_output.contains("</span> "),
+        "Fragment: should not have trailing whitespace: {fragment_output}"
+    );
+}
