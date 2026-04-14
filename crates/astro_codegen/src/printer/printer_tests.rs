@@ -2698,7 +2698,6 @@ fn test_expression_implicit_fragment_inline_elements_no_extra_space() {
     );
 }
 
-
 #[test]
 fn test_compact_whitespace_before_style_no_trailing_space() {
     let source = "// @config compact=html\n<a href=\"#\"><slot /></a>\n\n<style>\n  a { color: red; }\n</style>";
@@ -2750,13 +2749,15 @@ fn test_no_trailing_whitespace_before_style_compact() {
     );
     assert!(
         !result.code.contains("</a> "),
-        "Compact: should not have trailing space before extracted style: {}", result.code
+        "Compact: should not have trailing space before extracted style: {}",
+        result.code
     );
 }
 
 #[test]
 fn test_whitespace_before_style_inside_div() {
-    let source = "<div>\n  <span>hello</span>\n\n  <style>\n    span { color: red; }\n  </style>\n</div>";
+    let source =
+        "<div>\n  <span>hello</span>\n\n  <style>\n    span { color: red; }\n  </style>\n</div>";
     let output = compile_astro(source);
     // The whitespace between </span> and <style> inside a div
     // should also be stripped since the style is extracted
@@ -2765,7 +2766,6 @@ fn test_whitespace_before_style_inside_div() {
         "Should strip whitespace before extracted style inside div: {output}"
     );
 }
-
 
 #[test]
 fn test_whitespace_before_style_all_compact_modes() {
@@ -2787,7 +2787,8 @@ fn test_whitespace_before_style_all_compact_modes() {
     );
     assert!(
         !result.code.contains("</a> ") && !result.code.contains("</a>\n"),
-        "compact=html: trailing whitespace before style should be stripped: {}", result.code
+        "compact=html: trailing whitespace before style should be stripped: {}",
+        result.code
     );
 
     // compact=jsx
@@ -2799,7 +2800,8 @@ fn test_whitespace_before_style_all_compact_modes() {
     );
     assert!(
         !result.code.contains("</a> ") && !result.code.contains("</a>\n\n"),
-        "compact=jsx: trailing whitespace before style should be stripped: {}", result.code
+        "compact=jsx: trailing whitespace before style should be stripped: {}",
+        result.code
     );
 }
 
@@ -2819,7 +2821,8 @@ fn test_fragment_workaround_not_needed() {
     // The fragment workaround from Starlight should produce the same
     // result as the direct version now
     let direct = "<span>\n  <slot />\n</span>\n\n<style>\n  span { color: red; }\n</style>";
-    let fragment = "<>\n  <span>\n    <slot />\n  </span>\n</>\n\n<style>\n  span { color: red; }\n</style>";
+    let fragment =
+        "<>\n  <span>\n    <slot />\n  </span>\n</>\n\n<style>\n  span { color: red; }\n</style>";
 
     let direct_output = compile_astro(direct);
     let fragment_output = compile_astro(fragment);
