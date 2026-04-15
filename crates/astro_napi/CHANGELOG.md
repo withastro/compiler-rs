@@ -1,5 +1,15 @@
 # @astrojs/compiler-binding
 
+## 0.1.7
+
+### Patch Changes
+
+- 4c9a9ed: Fixes edge cases where certain niche types of expressions wouldn't properly compile
+- 1b17201: Fixes slots not working inside parenthesized conditional slots
+- cace524: Fixes the compiler sometimes adding extra whitespace between root elements when one of the root elements would be hoisted (e.g. style tags, scripts etc.)
+- 4ebb68d: Fixes slots not being collected inside optional chain expressions
+- dc9cbe4: Fixes scripts inside template elements not being rendered as-is
+
 ## 0.1.6
 
 ### Patch Changes
