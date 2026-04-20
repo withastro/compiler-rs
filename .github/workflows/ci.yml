@@ -224,6 +224,8 @@ jobs:
       - name: Build
         run: ${{ matrix.settings.build }}
         shell: bash
+        env:
+          TARGET_CC: clang
 
       - name: Upload artifact
         uses: actions/upload-artifact@v6
