@@ -1,5 +1,12 @@
 # @astrojs/compiler-rs
 
+## 0.1.8
+
+### Patch Changes
+
+- 6945d30: Fixed linux-gnu binaries requiring glibc 2.35+, which broke on Vercel, Amazon Linux 2023, and other environments with older glibc. Binaries now target glibc 2.17.
+  - @astrojs/compiler-binding@0.1.8
+
 ## 0.1.7
 
 ### Patch Changes
