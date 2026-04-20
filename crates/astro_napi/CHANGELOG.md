@@ -1,5 +1,7 @@
 # @astrojs/compiler-binding
 
+## 0.1.8
+
 ## 0.1.7
 
 ### Patch Changes
