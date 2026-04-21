@@ -20,7 +20,8 @@
   "files": [
     "index.d.ts",
     "index.js",
-    "browser.js"
+    "browser.js",
+    "webcontainer-fallback.cjs"
   ],
   "type": "module",
   "main": "index.js",
@@ -31,7 +32,7 @@
   },
   "scripts": {
     "artifacts": "napi artifacts",
-    "build-dev": "napi build --esm --platform",
+    "build-dev": "napi build --esm --platform && node patch-binding.js",
     "build-test": "pnpm run build-dev",
     "build": "pnpm run build-dev --features allocator --release",
     "prepublishOnly": "napi prepublish -t npm",
