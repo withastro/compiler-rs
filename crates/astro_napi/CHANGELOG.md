@@ -1,5 +1,11 @@
 # @astrojs/compiler-binding
 
+## 0.1.9
+
+### Patch Changes
+
+- 8b7a46f: Add fallback download for Webcontainers
+
 ## 0.1.8
 
 ## 0.1.7
