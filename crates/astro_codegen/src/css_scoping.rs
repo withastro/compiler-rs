@@ -178,7 +178,12 @@ impl ScopeVisitor<'_> {
     }
 
     /// Merge pseudo-element compounds back into the preceding compound.
-    /// `Combinator::PseudoElement` is an internal marker, not a real CSS combinator.
+    ///
+    /// `Combinator::PseudoElement`, `Combinator::Part`, and `Combinator::SlotAssignment`
+    /// are all internal markers (not real CSS combinators) that parcel_selectors emits
+    /// to the left of `::before`/`::after`, `::part(...)`, and `::slotted(...)`
+    /// respectively. All three serialize as the empty string and must be re-attached
+    /// to the preceding compound so scoping treats e.g. `.x::part(y)` as one unit.
     fn merge_pseudo_element_compounds<'i>(
         &self,
         compounds: &[(Option<Combinator>, Vec<Component<'i>>)],
@@ -186,7 +191,10 @@ impl ScopeVisitor<'_> {
         let mut result: Vec<(Option<Combinator>, Vec<Component<'i>>)> = Vec::new();
 
         for (combinator, compound) in compounds {
-            if matches!(combinator, Some(Combinator::PseudoElement)) {
+            if matches!(
+                combinator,
+                Some(Combinator::PseudoElement | Combinator::Part | Combinator::SlotAssignment)
+            ) {
                 // Merge into the previous compound
                 if let Some(last) = result.last_mut() {
                     last.1.extend(compound.iter().cloned());
@@ -343,9 +351,10 @@ impl ScopeVisitor<'_> {
                 result.extend(inner_components);
                 continue;
             }
-            // Pseudo-elements (e.g. `::after` in `:global(.fallback)::after`) attach to
-            // the content extracted from :global() and must NOT trigger scoping.
-            if matches!(component, Component::PseudoElement(_)) {
+            // Pseudo-elements (e.g. `::after` in `:global(.fallback)::after`, or
+            // `::part(x)` / `::slotted(x)`) attach to the content extracted from
+            // :global() and must NOT trigger scoping.
+            if is_pseudo_element(component) {
                 result.push(component.clone());
                 continue;
             }
@@ -438,7 +447,9 @@ impl ScopeVisitor<'_> {
                     }
                     result.push(component.clone());
                 }
-                Component::PseudoElement(_) => {
+                Component::PseudoElement(_)
+                | Component::Part(_)
+                | Component::Slotted(_) => {
                     if !scoped {
                         result.push(scope_component.clone());
                         scoped = true;
@@ -489,8 +500,15 @@ impl ScopeVisitor<'_> {
 // ---------------------------------------------------------------------------
 
 /// Check if a component is a pseudo-element.
+///
+/// Includes `::part(...)` and `::slotted(...)`, which are distinct `Component`
+/// variants in parcel_selectors but follow the same scoping rules as `::before`
+/// and friends — attribute selectors may not be emitted after them.
 fn is_pseudo_element(component: &Component<'_>) -> bool {
-    matches!(component, Component::PseudoElement(_))
+    matches!(
+        component,
+        Component::PseudoElement(_) | Component::Part(_) | Component::Slotted(_)
+    )
 }
 
 /// Check if a component is a "real" selector (type, class, id, attribute).
@@ -507,6 +525,11 @@ fn is_real_selector(component: &Component<'_>) -> bool {
 }
 
 /// Check if a component is a pseudo-class.
+///
+/// Includes `:host` / `:host(...)` (stored as its own `Component::Host` variant
+/// in parcel_selectors rather than a `NonTSPseudoClass`) so a compound that is
+/// only `:host` or only `:host(...)` is recognized as pseudo-only and gets the
+/// scope injected before it — matching the Go compiler's output shape.
 fn is_pseudo_class(component: &Component<'_>) -> bool {
     matches!(
         component,
@@ -520,6 +543,7 @@ fn is_pseudo_class(component: &Component<'_>) -> bool {
             | Component::Is(_)
             | Component::Where(_)
             | Component::Has(_)
+            | Component::Host(_)
     )
 }
 
@@ -812,6 +836,99 @@ mod tests {
             ".class[data-astro-cid-xxxxxx] {\n}\n"
         );
     }
+
+    #[test]
+    fn test_attribute_strategy_with_part_pseudo_element() {
+        // Regression: attribute selector must NOT be emitted after `::part(...)`.
+        // CSS disallows attribute selectors following a pseudo-element, and
+        // lightningcss minification rejects it as a SyntaxError.
+        assert_eq!(
+            scope_attribute(".baseline-status::part(root){}"),
+            ".baseline-status[data-astro-cid-xxxxxx]::part(root) {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_attribute_strategy_with_before_pseudo_element() {
+        assert_eq!(
+            scope_attribute("h3::before{}"),
+            "h3[data-astro-cid-xxxxxx]:before {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_attribute_strategy_with_slotted_pseudo_element() {
+        // `::slotted(...)` uses `Combinator::SlotAssignment` internally, the same
+        // dummy-combinator pattern as `::part(...)`.
+        assert_eq!(
+            scope_attribute(".host::slotted(span){}"),
+            ".host[data-astro-cid-xxxxxx]::slotted(span) {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_where_strategy_with_part_pseudo_element() {
+        assert_eq!(
+            scope(".baseline-status::part(root){}"),
+            ".baseline-status:where(.astro-xxxxxx)::part(root) {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_attribute_strategy_with_host_pseudo_class() {
+        // Go compiler emits the scope attribute BEFORE `:host` because `:host`
+        // acts like a type selector (the compound has no "real" selector to scope after).
+        assert_eq!(
+            scope_attribute(":host{}"),
+            "[data-astro-cid-xxxxxx]:host {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_attribute_strategy_with_host_function() {
+        assert_eq!(
+            scope_attribute(":host(.dark){}"),
+            "[data-astro-cid-xxxxxx]:host(.dark) {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_attribute_strategy_with_host_context() {
+        assert_eq!(
+            scope_attribute(":host-context(.dark){}"),
+            "[data-astro-cid-xxxxxx]:host-context(.dark) {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_attribute_strategy_with_chained_pseudo_elements() {
+        // Two pseudo-elements in the same compound parse as nested `PseudoElement`
+        // combinator jumps; all three must collapse into one compound so the scope
+        // attribute is injected once, before the first pseudo-element.
+        assert_eq!(
+            scope_attribute(".host::part(root)::before{}"),
+            ".host[data-astro-cid-xxxxxx]::part(root):before {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_attribute_strategy_with_part_then_pseudo_class() {
+        assert_eq!(
+            scope_attribute(".host::part(root):hover{}"),
+            ".host[data-astro-cid-xxxxxx]::part(root):hover {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_attribute_strategy_global_with_part() {
+        // `:global(.fallback)::part(y)` — the `::part(...)` attaches to global
+        // content and must stay completely unscoped.
+        assert_eq!(
+            scope_attribute(":global(.fallback)::part(y){}"),
+            ".fallback::part(y) {\n}\n"
+        );
+    }
+
 
     #[test]
     fn test_nesting_combinator() {
