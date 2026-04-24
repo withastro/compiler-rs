@@ -1,5 +1,12 @@
 # @astrojs/compiler-rs
 
+## 0.1.10
+
+### Patch Changes
+
+- 551f3e0: Fixed invalid CSS output when using `::part()` or `::slotted()` pseudo-elements in scoped styles
+  - @astrojs/compiler-binding@0.1.10
+
 ## 0.1.9
 
 ### Patch Changes

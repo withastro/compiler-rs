@@ -1,6 +1,6 @@
 {
   "name": "@astrojs/compiler-binding",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "Astro Compiler",
   "keywords": [
     "astro",
