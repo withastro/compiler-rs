@@ -447,9 +447,7 @@ impl ScopeVisitor<'_> {
                     }
                     result.push(component.clone());
                 }
-                Component::PseudoElement(_)
-                | Component::Part(_)
-                | Component::Slotted(_) => {
+                Component::PseudoElement(_) | Component::Part(_) | Component::Slotted(_) => {
                     if !scoped {
                         result.push(scope_component.clone());
                         scoped = true;
@@ -928,7 +926,6 @@ mod tests {
             ".fallback::part(y) {\n}\n"
         );
     }
-
 
     #[test]
     fn test_nesting_combinator() {
