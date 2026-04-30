@@ -101,6 +101,7 @@ impl<'a> AstroCodegen<'a> {
 
         // Check if this is a special element
         let is_head = name == "head";
+        let is_template = name == "template";
         let was_in_head = self.in_head;
 
         // Track non-hoistable context for nested style elements
@@ -158,6 +159,15 @@ impl<'a> AstroCodegen<'a> {
         // Close the opening tag and handle content
         self.print(">");
 
+        // Emit template depth tracking for HTML <template> elements
+        if is_template {
+            self.print(&format!(
+                "${{{}({})}}",
+                runtime::TEMPLATE_ENTER,
+                runtime::RESULT
+            ));
+        }
+
         // Handle special head insertion
         if is_head {
             // Children (use compact-aware printing)
@@ -212,6 +222,14 @@ impl<'a> AstroCodegen<'a> {
         } else {
             // Regular children with compact-aware printing
             self.print_jsx_children_compact(&el.children);
+        }
+
+        if is_template {
+            self.print(&format!(
+                "${{{}({})}}",
+                runtime::TEMPLATE_EXIT,
+                runtime::RESULT
+            ));
         }
 
         // Closing tag (skip for void elements like <meta>, <input>, <br>, etc.)
