@@ -1,5 +1,43 @@
 # @astrojs/compiler-rs
 
+## 0.1.10
+
+### Patch Changes
+
+- 551f3e0: Fixed invalid CSS output when using `::part()` or `::slotted()` pseudo-elements in scoped styles
+  - @astrojs/compiler-binding@0.1.10
+
+## 0.1.9
+
+### Patch Changes
+
+- 8b7a46f: Add fallback download for Webcontainers
+- Updated dependencies [8b7a46f]
+  - @astrojs/compiler-binding@0.1.9
+
+## 0.1.8
+
+### Patch Changes
+
+- 6945d30: Fixed linux-gnu binaries requiring glibc 2.35+, which broke on Vercel, Amazon Linux 2023, and other environments with older glibc. Binaries now target glibc 2.17.
+  - @astrojs/compiler-binding@0.1.8
+
+## 0.1.7
+
+### Patch Changes
+
+- 4c9a9ed: Fixes edge cases where certain niche types of expressions wouldn't properly compile
+- 1b17201: Fixes slots not working inside parenthesized conditional slots
+- cace524: Fixes the compiler sometimes adding extra whitespace between root elements when one of the root elements would be hoisted (e.g. style tags, scripts etc.)
+- 4ebb68d: Fixes slots not being collected inside optional chain expressions
+- dc9cbe4: Fixes scripts inside template elements not being rendered as-is
+- Updated dependencies [4c9a9ed]
+- Updated dependencies [1b17201]
+- Updated dependencies [cace524]
+- Updated dependencies [4ebb68d]
+- Updated dependencies [dc9cbe4]
+  - @astrojs/compiler-binding@0.1.7
+
 ## 0.1.6
 
 ### Patch Changes

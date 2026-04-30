@@ -223,6 +223,79 @@ impl<'a> AstroCodegen<'a> {
                 }
                 self.print("]");
             }
+            Expression::AssignmentExpression(assign) => {
+                self.add_source_mapping_for_span(expr.span());
+                let left_code = gen_to_string(&assign.left);
+                self.print(&left_code);
+                self.print(&format!(" {} ", assign.operator.as_str()));
+                self.print_expression(&assign.right);
+            }
+            Expression::SequenceExpression(seq) => {
+                self.add_source_mapping_for_span(expr.span());
+                for (i, expr) in seq.expressions.iter().enumerate() {
+                    if i > 0 {
+                        self.print(", ");
+                    }
+                    self.print_expression(expr);
+                }
+            }
+            Expression::ObjectExpression(obj) => {
+                self.add_source_mapping_for_span(expr.span());
+                self.print("{");
+                let mut first = true;
+                for prop in &obj.properties {
+                    if !first {
+                        self.print(", ");
+                    }
+                    first = false;
+                    match prop {
+                        oxc_ast::ast::ObjectPropertyKind::ObjectProperty(p) => {
+                            if p.computed {
+                                self.print("[");
+                                self.print_expression(p.key.as_expression().unwrap());
+                                self.print("]");
+                            } else {
+                                let key_code = gen_to_string(&p.key);
+                                self.print(&key_code);
+                            }
+                            if !p.shorthand {
+                                self.print(": ");
+                                self.print_expression(&p.value);
+                            }
+                        }
+                        oxc_ast::ast::ObjectPropertyKind::SpreadProperty(spread) => {
+                            self.print("...");
+                            self.print_expression(&spread.argument);
+                        }
+                    }
+                }
+                self.print("}");
+            }
+            Expression::NewExpression(new_expr) => {
+                self.add_source_mapping_for_span(expr.span());
+                self.print("new ");
+                self.print_expression(&new_expr.callee);
+                self.print("(");
+                let mut first = true;
+                for arg in &new_expr.arguments {
+                    if !first {
+                        self.print(", ");
+                    }
+                    first = false;
+                    match arg {
+                        oxc_ast::ast::Argument::SpreadElement(spread) => {
+                            self.print("...");
+                            self.print_expression(&spread.argument);
+                        }
+                        _ => {
+                            if let Some(e) = arg.as_expression() {
+                                self.print_expression(e);
+                            }
+                        }
+                    }
+                }
+                self.print(")");
+            }
             _ => {
                 self.add_source_mapping_for_span(expr.span());
                 // For all other expressions, use regular codegen
@@ -356,10 +429,28 @@ impl<'a> AstroCodegen<'a> {
             }
             Statement::VariableDeclaration(decl) => {
                 self.add_source_mapping_for_span(decl.span);
-                // Use regular codegen for variable declarations
-                let code = gen_to_string(decl.as_ref());
-                self.print(&code);
-                self.print("\n");
+                let kind = match decl.kind {
+                    VariableDeclarationKind::Var => "var",
+                    VariableDeclarationKind::Let => "let",
+                    VariableDeclarationKind::Const => "const",
+                    VariableDeclarationKind::Using => "using",
+                    VariableDeclarationKind::AwaitUsing => "await using",
+                };
+                for (i, declarator) in decl.declarations.iter().enumerate() {
+                    if i == 0 {
+                        self.print(kind);
+                        self.print(" ");
+                    } else {
+                        self.print(", ");
+                    }
+                    let pattern_code = gen_to_string(&declarator.id);
+                    self.print(&pattern_code);
+                    if let Some(init) = &declarator.init {
+                        self.print(" = ");
+                        self.print_expression(init);
+                    }
+                }
+                self.print(";\n");
             }
             Statement::IfStatement(if_stmt) => {
                 self.add_source_mapping_for_span(if_stmt.span);
@@ -423,6 +514,99 @@ impl<'a> AstroCodegen<'a> {
                     self.print("\n");
                 }
                 self.print("}");
+            }
+            Statement::TryStatement(try_stmt) => {
+                self.add_source_mapping_for_span(try_stmt.span);
+                self.print("try {\n");
+                for s in &try_stmt.block.body {
+                    self.print_jsx_aware_statement(s);
+                }
+                self.print("}");
+                if let Some(handler) = &try_stmt.handler {
+                    self.print(" catch");
+                    if let Some(param) = &handler.param {
+                        self.print("(");
+                        let code = gen_to_string(&param.pattern);
+                        self.print(&code);
+                        self.print(")");
+                    }
+                    self.print(" {\n");
+                    for s in &handler.body.body {
+                        self.print_jsx_aware_statement(s);
+                    }
+                    self.print("}");
+                }
+                if let Some(finalizer) = &try_stmt.finalizer {
+                    self.print(" finally {\n");
+                    for s in &finalizer.body {
+                        self.print_jsx_aware_statement(s);
+                    }
+                    self.print("}");
+                }
+                self.print("\n");
+            }
+            Statement::ForStatement(for_stmt) => {
+                self.add_source_mapping_for_span(for_stmt.span);
+                self.print("for(");
+                if let Some(init) = &for_stmt.init {
+                    let code = gen_to_string(init);
+                    self.print(&code);
+                }
+                self.print(";");
+                if let Some(test) = &for_stmt.test {
+                    self.print_expression(test);
+                }
+                self.print(";");
+                if let Some(update) = &for_stmt.update {
+                    self.print_expression(update);
+                }
+                self.print(") ");
+                self.print_jsx_aware_statement(&for_stmt.body);
+                self.print("\n");
+            }
+            Statement::ForInStatement(for_in) => {
+                self.add_source_mapping_for_span(for_in.span);
+                self.print("for(");
+                match &for_in.left {
+                    oxc_ast::ast::ForStatementLeft::VariableDeclaration(decl) => {
+                        let code = gen_to_string(decl.as_ref());
+                        self.print(&code);
+                    }
+                    other => {
+                        let start = other.span().start as usize;
+                        let end = other.span().end as usize;
+                        if start < self.source_text.len() && end <= self.source_text.len() {
+                            self.print(&self.source_text[start..end]);
+                        }
+                    }
+                }
+                self.print(" in ");
+                self.print_expression(&for_in.right);
+                self.print(") ");
+                self.print_jsx_aware_statement(&for_in.body);
+                self.print("\n");
+            }
+            Statement::WhileStatement(while_stmt) => {
+                self.add_source_mapping_for_span(while_stmt.span);
+                self.print("while (");
+                self.print_expression(&while_stmt.test);
+                self.print(") ");
+                self.print_jsx_aware_statement(&while_stmt.body);
+                self.print("\n");
+            }
+            Statement::DoWhileStatement(do_while) => {
+                self.add_source_mapping_for_span(do_while.span);
+                self.print("do ");
+                self.print_jsx_aware_statement(&do_while.body);
+                self.print(" while (");
+                self.print_expression(&do_while.test);
+                self.print(");\n");
+            }
+            Statement::LabeledStatement(labeled) => {
+                self.add_source_mapping_for_span(labeled.span);
+                self.print(&labeled.label.name);
+                self.print(": ");
+                self.print_jsx_aware_statement(&labeled.body);
             }
             _ => {
                 self.add_source_mapping_for_span(stmt.span());

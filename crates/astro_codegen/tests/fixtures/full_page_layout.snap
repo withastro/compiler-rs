@@ -100,8 +100,6 @@ const $$Component = $$createComponent(($$result, $$props, $$slots) => {
 		"class": "astro-wxukq3mn"
 	})}
 	</body>
-</html>
-
-`;
+</html>`;
 }, undefined, undefined);
 export default $$Component;

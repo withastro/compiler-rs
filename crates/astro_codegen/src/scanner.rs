@@ -80,6 +80,8 @@ pub struct AstroScanner<'a> {
     hydration_directives: Vec<String>,
     /// Collected hoisted scripts
     hoisted_scripts: Vec<TransformResultHoistedScript>,
+    /// Whether we are currently inside a non-hoistable element (`<template>`, `<svg>`, `<noscript>`)
+    in_non_hoistable: bool,
 }
 
 impl<'a> AstroScanner<'a> {
@@ -96,6 +98,7 @@ impl<'a> AstroScanner<'a> {
             server_deferred_components: Vec::new(),
             hydration_directives: Vec::new(),
             hoisted_scripts: Vec::new(),
+            in_non_hoistable: false,
         }
     }
 
@@ -325,7 +328,7 @@ impl<'a> Visit<'a> for AstroScanner<'a> {
         // Check for hoistable scripts — if we collect one, skip walking
         // children to avoid visit_astro_script double-collecting the same script.
         if name == "script" {
-            if should_hoist_script(&el.opening_element.attributes) {
+            if !self.in_non_hoistable && should_hoist_script(&el.opening_element.attributes) {
                 self.try_collect_script(el);
             }
             // Don't walk children for any <script> element — AstroScript children
@@ -333,8 +336,18 @@ impl<'a> Visit<'a> for AstroScanner<'a> {
             return;
         }
 
+        // Track non-hoistable context (template, svg, noscript) so scripts
+        // inside these elements are not extracted, matching the Go compiler.
+        let is_non_hoistable = matches!(name.as_str(), "svg" | "noscript" | "template");
+        let was_in_non_hoistable = self.in_non_hoistable;
+        if is_non_hoistable {
+            self.in_non_hoistable = true;
+        }
+
         // Continue walking children (the default walk handles this)
         walk::walk_jsx_element(self, el);
+
+        self.in_non_hoistable = was_in_non_hoistable;
     }
 
     /// Detect `await` expressions — used to determine if async wrappers are needed.

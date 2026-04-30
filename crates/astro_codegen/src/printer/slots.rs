@@ -187,7 +187,11 @@ fn collect_slots_from_expression<'a>(
             // Walk into callback arguments to find slotted JSX.
             collect_slots_from_call_arguments(&call.arguments, slots);
         }
-        _ => {}
+        _ => {
+            if let Some(inner) = expr.as_expression() {
+                collect_slots_from_inner_expression(inner, slots);
+            }
+        }
     }
 }
 
@@ -240,6 +244,13 @@ fn collect_slots_from_inner_expression<'a>(
             // e.g. items.map(item => <div slot="content">{item}</div>)
             // Walk into callback arguments to find slotted JSX.
             collect_slots_from_call_arguments(&call.arguments, slots);
+        }
+        Expression::ChainExpression(chain) => {
+            // e.g. items?.map(item => <div slot="item">{item}</div>)
+            // Unwrap the chain to reach the inner CallExpression.
+            if let oxc_ast::ast::ChainElement::CallExpression(call) = &chain.expression {
+                collect_slots_from_call_arguments(&call.arguments, slots);
+            }
         }
         _ => {}
     }
@@ -319,6 +330,39 @@ fn collect_slots_from_statement<'a>(
             if let Some(alt) = &if_stmt.alternate {
                 collect_slots_from_statement(alt, slots);
             }
+        }
+        Statement::TryStatement(try_stmt) => {
+            for s in &try_stmt.block.body {
+                collect_slots_from_statement(s, slots);
+            }
+            if let Some(handler) = &try_stmt.handler {
+                for s in &handler.body.body {
+                    collect_slots_from_statement(s, slots);
+                }
+            }
+            if let Some(finalizer) = &try_stmt.finalizer {
+                for s in &finalizer.body {
+                    collect_slots_from_statement(s, slots);
+                }
+            }
+        }
+        Statement::ForStatement(for_stmt) => {
+            collect_slots_from_statement(&for_stmt.body, slots);
+        }
+        Statement::ForInStatement(for_in) => {
+            collect_slots_from_statement(&for_in.body, slots);
+        }
+        Statement::ForOfStatement(for_of) => {
+            collect_slots_from_statement(&for_of.body, slots);
+        }
+        Statement::WhileStatement(while_stmt) => {
+            collect_slots_from_statement(&while_stmt.body, slots);
+        }
+        Statement::DoWhileStatement(do_while) => {
+            collect_slots_from_statement(&do_while.body, slots);
+        }
+        Statement::LabeledStatement(labeled) => {
+            collect_slots_from_statement(&labeled.body, slots);
         }
         _ => {}
     }
@@ -626,6 +670,9 @@ impl<'a> AstroCodegen<'a> {
                 self.add_source_mapping_for_span(arrow.span);
                 self.print_slot_aware_arrow_function(arrow);
             }
+            Expression::ParenthesizedExpression(paren) => {
+                self.print_conditional_slot_branch_expr(&paren.expression);
+            }
             Expression::ConditionalExpression(cond) => {
                 self.add_source_mapping_for_span(cond.span);
                 self.print_expression(&cond.test);
@@ -634,10 +681,65 @@ impl<'a> AstroCodegen<'a> {
                 self.print(" : ");
                 self.print_conditional_slot_branch(&cond.alternate);
             }
+            Expression::CallExpression(call) => {
+                self.print_slot_aware_call_expression(call);
+            }
+            Expression::ChainExpression(chain) => {
+                if let oxc_ast::ast::ChainElement::CallExpression(call) = &chain.expression {
+                    self.print_slot_aware_call_expression(call);
+                } else {
+                    self.print_expression(expr);
+                }
+            }
             _ => {
                 self.print_expression(expr);
             }
         }
+    }
+
+    /// Print a call expression where callback arguments may return slotted JSX.
+    fn print_slot_aware_call_expression(&mut self, call: &oxc_ast::ast::CallExpression<'a>) {
+        // Print callee (same as regular call expression printing)
+        match &call.callee {
+            Expression::StaticMemberExpression(member) => {
+                self.print_expression(&member.object);
+                self.print(if member.optional { "?." } else { "." });
+                self.print(member.property.name.as_str());
+            }
+            Expression::ComputedMemberExpression(member) => {
+                self.print_expression(&member.object);
+                self.print(if member.optional { "?.[" } else { "[" });
+                self.print_expression(&member.expression);
+                self.print("]");
+            }
+            other => {
+                self.print_expression(other);
+            }
+        }
+        if call.optional {
+            self.print("?.");
+        }
+        // Print arguments — route arrow/function args through slot-aware printing
+        self.print("(");
+        let mut first = true;
+        for arg in &call.arguments {
+            if !first {
+                self.print(", ");
+            }
+            first = false;
+            match arg {
+                oxc_ast::ast::Argument::SpreadElement(spread) => {
+                    self.print("...");
+                    self.print_conditional_slot_branch_expr(&spread.argument);
+                }
+                _ => {
+                    if let Some(expr) = arg.as_expression() {
+                        self.print_conditional_slot_branch_expr(expr);
+                    }
+                }
+            }
+        }
+        self.print(")");
     }
 
     /// Print an arrow function where return statements may contain slotted JSX.
@@ -720,6 +822,121 @@ impl<'a> AstroCodegen<'a> {
                     self.print_slot_aware_statement(alt);
                 }
             }
+            Statement::TryStatement(try_stmt) => {
+                self.add_source_mapping_for_span(try_stmt.span);
+                self.print("try {\n");
+                for s in &try_stmt.block.body {
+                    self.print_slot_aware_statement(s);
+                }
+                self.print("}");
+                if let Some(handler) = &try_stmt.handler {
+                    self.print(" catch");
+                    if let Some(param) = &handler.param {
+                        self.print("(");
+                        let code = gen_to_string(&param.pattern);
+                        self.print(&code);
+                        self.print(")");
+                    }
+                    self.print(" {\n");
+                    for s in &handler.body.body {
+                        self.print_slot_aware_statement(s);
+                    }
+                    self.print("}");
+                }
+                if let Some(finalizer) = &try_stmt.finalizer {
+                    self.print(" finally {\n");
+                    for s in &finalizer.body {
+                        self.print_slot_aware_statement(s);
+                    }
+                    self.print("}");
+                }
+                self.print("\n");
+            }
+            Statement::ForStatement(for_stmt) => {
+                self.add_source_mapping_for_span(for_stmt.span);
+                self.print("for(");
+                if let Some(init) = &for_stmt.init {
+                    let code = gen_to_string(init);
+                    self.print(&code);
+                }
+                self.print(";");
+                if let Some(test) = &for_stmt.test {
+                    self.print_expression(test);
+                }
+                self.print(";");
+                if let Some(update) = &for_stmt.update {
+                    self.print_expression(update);
+                }
+                self.print(") ");
+                self.print_slot_aware_statement(&for_stmt.body);
+                self.print("\n");
+            }
+            Statement::ForInStatement(for_in) => {
+                self.add_source_mapping_for_span(for_in.span);
+                self.print("for(");
+                match &for_in.left {
+                    oxc_ast::ast::ForStatementLeft::VariableDeclaration(decl) => {
+                        let code = gen_to_string(decl.as_ref());
+                        self.print(&code);
+                    }
+                    other => {
+                        let start = other.span().start as usize;
+                        let end = other.span().end as usize;
+                        if start < self.source_text.len() && end <= self.source_text.len() {
+                            self.print(&self.source_text[start..end]);
+                        }
+                    }
+                }
+                self.print(" in ");
+                self.print_expression(&for_in.right);
+                self.print(") ");
+                self.print_slot_aware_statement(&for_in.body);
+                self.print("\n");
+            }
+            Statement::ForOfStatement(for_of) => {
+                self.add_source_mapping_for_span(for_of.span);
+                self.print(if for_of.r#await { "for await(" } else { "for(" });
+                match &for_of.left {
+                    oxc_ast::ast::ForStatementLeft::VariableDeclaration(decl) => {
+                        let code = gen_to_string(decl.as_ref());
+                        self.print(&code);
+                    }
+                    other => {
+                        let start = other.span().start as usize;
+                        let end = other.span().end as usize;
+                        if start < self.source_text.len() && end <= self.source_text.len() {
+                            self.print(&self.source_text[start..end]);
+                        }
+                    }
+                }
+                self.print(" of ");
+                self.print_expression(&for_of.right);
+                self.print(") ");
+                self.print_slot_aware_statement(&for_of.body);
+                self.print("\n");
+            }
+            Statement::WhileStatement(while_stmt) => {
+                self.add_source_mapping_for_span(while_stmt.span);
+                self.print("while (");
+                self.print_expression(&while_stmt.test);
+                self.print(") ");
+                self.print_slot_aware_statement(&while_stmt.body);
+                self.print("\n");
+            }
+            Statement::DoWhileStatement(do_while) => {
+                self.add_source_mapping_for_span(do_while.span);
+                self.print("do ");
+                self.print_slot_aware_statement(&do_while.body);
+                self.print(" while (");
+                self.print_expression(&do_while.test);
+                self.print(");\n");
+            }
+            Statement::LabeledStatement(labeled) => {
+                self.add_source_mapping_for_span(labeled.span);
+                self.print(&labeled.label.name);
+                self.print(": ");
+                self.print_slot_aware_statement(&labeled.body);
+            }
             _ => {
                 self.add_source_mapping_for_span(stmt.span());
                 let code = gen_to_string(stmt);
@@ -766,6 +983,9 @@ impl<'a> AstroCodegen<'a> {
                     }
                 }
             }
+            Expression::ParenthesizedExpression(paren) => {
+                self.print_conditional_slot_branch(&paren.expression);
+            }
             Expression::ConditionalExpression(cond) => {
                 // Nested ternary
                 self.add_source_mapping_for_span(cond.span);
@@ -774,6 +994,11 @@ impl<'a> AstroCodegen<'a> {
                 self.print_conditional_slot_branch(&cond.consequent);
                 self.print(" : ");
                 self.print_conditional_slot_branch(&cond.alternate);
+            }
+            Expression::CallExpression(_)
+            | Expression::ChainExpression(_)
+            | Expression::ArrowFunctionExpression(_) => {
+                self.print_conditional_slot_branch_expr(expr);
             }
             _ => {
                 // Other expression types — use default codegen

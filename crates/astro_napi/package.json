@@ -1,6 +1,6 @@
 {
   "name": "@astrojs/compiler-binding",
-  "version": "0.1.6",
+  "version": "0.1.10",
   "description": "Astro Compiler",
   "keywords": [
     "astro",
@@ -20,7 +20,8 @@
   "files": [
     "index.d.ts",
     "index.js",
-    "browser.js"
+    "browser.js",
+    "webcontainer-fallback.cjs"
   ],
   "type": "module",
   "main": "index.js",
@@ -32,8 +33,10 @@
   "scripts": {
     "artifacts": "napi artifacts",
     "build-dev": "napi build --esm --platform",
+    "postbuild-dev": "node patch-binding.js",
     "build-test": "pnpm run build-dev",
-    "build": "pnpm run build-dev --features allocator --release",
+    "build": "napi build --esm --platform --features allocator --release",
+    "postbuild": "node patch-binding.js",
     "prepublishOnly": "napi prepublish -t npm",
     "test": "node --import tsx --test ./test/*.test.ts",
     "version": "napi version"
