@@ -1,0 +1,37 @@
+[package]
+name                 = "astro2tsx"
+version              = "0.1.0"
+authors.workspace    = true
+edition.workspace    = true
+license.workspace    = true
+repository.workspace = true
+rust-version.workspace = true
+publish              = false
+description          = "Converts .astro files to .tsx for tsserver intellisense, using Biome's HTML CST"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+test       = true
+doctest    = false
+
+# Path deps into a sibling Biome checkout. Cargo follows the path into
+# Biome's own workspace, so the `workspace = true` deps inside each
+# Biome crate resolve from `../../../biome/Cargo.toml`. Switch to git
+# deps once the Astro-specific lexer changes (template-literal attribute
+# values) land in a published Biome version.
+[dependencies]
+biome_html_parser = { path = "../../../biome/crates/biome_html_parser" }
+biome_html_syntax = { path = "../../../biome/crates/biome_html_syntax" }
+biome_js_parser   = { path = "../../../biome/crates/biome_js_parser" }
+biome_js_syntax   = { path = "../../../biome/crates/biome_js_syntax" }
+biome_rowan       = { path = "../../../biome/crates/biome_rowan" }
+
+napi        = { workspace = true }
+napi-derive = { workspace = true }
+
+[dev-dependencies]
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[build-dependencies]
+napi-build = { workspace = true }
