@@ -27,6 +27,15 @@ importers:
         specifier: ~5.9.3
         version: 5.9.3
 
+  crates/astro2tsx:
+    devDependencies:
+      '@napi-rs/cli':
+        specifier: ^3
+        version: 3.5.1(@emnapi/runtime@1.8.1)(@types/node@22.19.9)(node-addon-api@7.1.1)
+      '@types/node':
+        specifier: ^22
+        version: 22.19.9
+
   crates/astro_napi:
     devDependencies:
       '@emnapi/runtime':
