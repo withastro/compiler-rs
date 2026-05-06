@@ -1,0 +1,16 @@
+---
+source: crates/astro_codegen/tests/snapshots.rs
+input_file: crates/astro_codegen/tests/fixtures/_33_unquoted_numeric_attribute.astro
+---
+import { render as $$render, createComponent as $$createComponent, maybeRenderHead as $$maybeRenderHead, createMetadata as $$createMetadata } from "http://localhost:3000/";
+export const $$metadata = $$createMetadata(import.meta.url, {
+	modules: [],
+	hydratedComponents: [],
+	clientOnlyComponents: [],
+	hydrationDirectives: new Set([]),
+	hoisted: []
+});
+const $$Component = $$createComponent(($$result, $$props, $$slots) => {
+	return $$render`${$$maybeRenderHead($$result)}<input type="text" minlength="4" maxlength="255">`;
+}, undefined, undefined);
+export default $$Component;
