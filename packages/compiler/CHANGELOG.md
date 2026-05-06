@@ -1,5 +1,18 @@
 # @astrojs/compiler-rs
 
+## 0.2.0
+
+### Minor Changes
+
+- 0726e00: Emit `templateEnter` / `templateExit` instructions when printing `<template>` elements for https://github.com/withastro/astro/pull/15980
+
+### Patch Changes
+
+- 0bddba4: Fixes `Unexpected token` error when an HTML attribute has an unquoted value such as a number (`<input maxlength=255>`) or contains characters like `-` or `#`.
+- Updated dependencies [0bddba4]
+- Updated dependencies [0726e00]
+  - @astrojs/compiler-binding@0.2.0
+
 ## 0.1.10
 
 ### Patch Changes
