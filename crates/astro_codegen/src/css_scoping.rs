@@ -142,6 +142,19 @@ impl ScopeVisitor<'_> {
         // `h3::before` as one unit.
         let merged = self.merge_pseudo_element_compounds(&compounds);
 
+        // Selectors that only reference `&` from inside `:is()`/`:where()`/`:not()`/`:has()`
+        // have no top-level nesting to scope against — leaving them untouched avoids
+        // injecting a redundant scope next to the hidden parent reference.
+        let has_top_level_nesting = merged
+            .iter()
+            .any(|(_, compound)| compound.iter().any(|c| matches!(c, Component::Nesting)));
+        let has_any_nesting = merged
+            .iter()
+            .any(|(_, compound)| compound.iter().any(component_contains_nesting));
+        if has_any_nesting && !has_top_level_nesting {
+            return vec![selector.clone()];
+        }
+
         let mut result_components: Vec<Component<'i>> = Vec::new();
 
         let starts_with_bare_nesting = merged
@@ -376,32 +389,10 @@ impl ScopeVisitor<'_> {
         result
     }
 
-    /// Scope a compound that contains a nesting selector `&`.
+    /// `&` already carries scope via the parent rule, so a compound containing
+    /// `&` is returned unchanged — re-injecting scope here would require the
+    /// parent element to carry the scope class, which descendants don't always do.
     fn scope_nesting_compound<'i>(&self, compound: &[Component<'i>]) -> Vec<Component<'i>> {
-        // If the compound is just `&` alone, return as-is
-        if compound.len() == 1 && matches!(&compound[0], Component::Nesting) {
-            return compound.to_vec();
-        }
-
-        // Check if compound has a pseudo-element but no "real" selectors
-        let has_pseudo_element = compound.iter().any(|c| is_pseudo_element(c));
-        let has_real_selector = compound.iter().any(|c| is_real_selector(c));
-
-        if has_pseudo_element && !has_real_selector {
-            // e.g., `&::after` — inject scope before the pseudo-element
-            let mut result = Vec::new();
-            let mut scope_inserted = false;
-            for c in compound {
-                if is_pseudo_element(c) && !scope_inserted {
-                    result.push(self.scope_component());
-                    scope_inserted = true;
-                }
-                result.push(c.clone());
-            }
-            return result;
-        }
-
-        // Otherwise, `&.dark`, `&:hover`, etc. — return as-is
         compound.to_vec()
     }
 
@@ -497,6 +488,20 @@ impl ScopeVisitor<'_> {
 // Helper functions
 // ---------------------------------------------------------------------------
 
+/// Walks recursively into `:is(...)`, `:where(...)`, `:not(...)`, and `:has(...)`.
+fn component_contains_nesting(component: &Component<'_>) -> bool {
+    match component {
+        Component::Nesting => true,
+        Component::Is(list) | Component::Where(list) | Component::Has(list) => list
+            .iter()
+            .any(|s| s.iter_raw_match_order().any(component_contains_nesting)),
+        Component::Negation(list) => list
+            .iter()
+            .any(|s| s.iter_raw_match_order().any(component_contains_nesting)),
+        _ => false,
+    }
+}
+
 /// Check if a component is a pseudo-element.
 ///
 /// Includes `::part(...)` and `::slotted(...)`, which are distinct `Component`
@@ -506,19 +511,6 @@ fn is_pseudo_element(component: &Component<'_>) -> bool {
     matches!(
         component,
         Component::PseudoElement(_) | Component::Part(_) | Component::Slotted(_)
-    )
-}
-
-/// Check if a component is a "real" selector (type, class, id, attribute).
-fn is_real_selector(component: &Component<'_>) -> bool {
-    matches!(
-        component,
-        Component::LocalName(_)
-            | Component::Class(_)
-            | Component::ID(_)
-            | Component::AttributeInNoNamespaceExists { .. }
-            | Component::AttributeInNoNamespace { .. }
-            | Component::AttributeOther(_)
     )
 }
 
@@ -1050,10 +1042,14 @@ mod tests {
             output.contains("li:where(.astro-xxxxxx)"),
             "> li should be scoped: {output}"
         );
-        // &::before — pseudo-element on nav itself, should be scoped
+        // &::before — `&` refers to the parent (nav, already scoped); no extra scope on the &::before compound
         assert!(
-            output.contains("&:where(.astro-xxxxxx):before"),
-            "&::before should be scoped: {output}"
+            output.contains("&:before"),
+            "&::before should be preserved: {output}"
+        );
+        assert!(
+            !output.contains("&:where(.astro-xxxxxx):before"),
+            "&::before should not get extra scope: {output}"
         );
     }
 
@@ -1061,10 +1057,10 @@ mod tests {
     fn test_nested_only_pseudo_element() {
         // `.class { & .other_class { &::after {} } }`:
         // - `& .other_class` — descendant, NOT scoped (withastro/astro#15907)
-        // - `&::after` — attaches to `.other_class` itself, still scoped
+        // - `&::after` — `&` already refers to `.other_class`, no extra scope needed
         assert_eq!(
             scope(".class{& .other_class{&::after{}}}"),
-            ".class:where(.astro-xxxxxx) {\n  & .other_class {\n    &:where(.astro-xxxxxx):after {\n    }\n  }\n}\n"
+            ".class:where(.astro-xxxxxx) {\n  & .other_class {\n    &:after {\n    }\n  }\n}\n"
         );
     }
 
@@ -1127,6 +1123,73 @@ mod tests {
                 ":global(.theme-dark) .icon.dark, :global(html:not(.theme-dark)) .icon.light, button[aria-pressed='false'] .icon.light { color: var(--accent-text-over); }"
             ),
             ".theme-dark .icon:where(.astro-xxxxxx).dark, html:not(.theme-dark) .icon:where(.astro-xxxxxx).light, button:where(.astro-xxxxxx)[aria-pressed=\"false\"] .icon:where(.astro-xxxxxx).light {\n  color: var(--accent-text-over);\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_nesting_inside_is_pseudo() {
+        // The literal output is `& .x` rather than `:is(&) .x` because lightningcss
+        // simplifies `:is(&)` → `&` at print time — semantically equivalent.
+        assert_eq!(
+            scope(".box{:is(&) .x{color:red}}"),
+            ".box:where(.astro-xxxxxx) {\n  & .x {\n    color: red;\n  }\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_nesting_inside_where_pseudo() {
+        // lightningcss preserves `:where(&)` (different specificity from `&`).
+        assert_eq!(
+            scope(".box{:where(&) .x{color:red}}"),
+            ".box:where(.astro-xxxxxx) {\n  :where(&) .x {\n    color: red;\n  }\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_nesting_inside_not_pseudo() {
+        assert_eq!(
+            scope(".box{:not(&){color:red}}"),
+            ".box:where(.astro-xxxxxx) {\n  :not(&) {\n    color: red;\n  }\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_nesting_inside_has_pseudo_only() {
+        // `:has(&)` has no top-level `&` to scope against — leave the rule alone.
+        assert_eq!(
+            scope(".box{:has(&){color:red}}"),
+            ".box:where(.astro-xxxxxx) {\n  :has(&) {\n    color: red;\n  }\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_issue_39_nested_pseudo_element_under_descendant() {
+        // Regression for withastro/compiler-rs#39: exact CSS reported in the bug.
+        // `&::marker`, `&::before`, `&::after` nested under a descendant (`li` is a
+        // descendant of `nav` and intentionally unscoped) must not have scope injected.
+        let css = r#"nav {
+	ul {
+		row-gap: 0;
+		margin: 0;
+	}
+
+	li {
+		position: relative;
+
+		&::marker {
+			content: "";
+		}
+
+		&:has(> a:hover) {
+			&::before, &::after {
+				border-color: var(--accent);
+			}
+		}
+	}
+}"#;
+        assert_eq!(
+            scope(css),
+            "nav:where(.astro-xxxxxx) {\n  & ul {\n    row-gap: 0;\n    margin: 0;\n  }\n\n  & li {\n    position: relative;\n\n    &::marker {\n      content: \"\";\n    }\n\n    &:has( > a:hover) {\n      &:before, &:after {\n        border-color: var(--accent);\n      }\n    }\n  }\n}\n"
         );
     }
 
