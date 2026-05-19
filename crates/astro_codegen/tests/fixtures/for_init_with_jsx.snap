@@ -1,0 +1,18 @@
+---
+source: crates/astro_codegen/tests/snapshots.rs
+input_file: crates/astro_codegen/tests/fixtures/for_init_with_jsx.astro
+---
+import { render as $$render, createComponent as $$createComponent, renderComponent as $$renderComponent, createMetadata as $$createMetadata } from "http://localhost:3000/";
+export const $$metadata = $$createMetadata(import.meta.url, {
+	modules: [],
+	hydratedComponents: [],
+	clientOnlyComponents: [],
+	hydrationDirectives: new Set([]),
+	hoisted: []
+});
+const $$Component = $$createComponent(($$result, $$props, $$slots) => {
+	return $$render`${() => {
+		for (let x = $$render`${$$renderComponent($$result, "Component", Component, {})}`; false;) {}
+	}}`;
+}, undefined, undefined);
+export default $$Component;

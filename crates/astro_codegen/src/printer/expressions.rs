@@ -176,9 +176,11 @@ impl<'a> AstroCodegen<'a> {
             }
             Expression::FunctionExpression(func) => {
                 self.add_source_mapping_for_span(expr.span());
-                // Handle regular/async/generator function expressions that may
-                // contain JSX (e.g. `async function* () { yield <Foo /> }`)
-                self.print_function_expression(func);
+                self.print_function(func);
+            }
+            Expression::ClassExpression(class) => {
+                self.add_source_mapping_for_span(expr.span());
+                self.print_class(class);
             }
             Expression::YieldExpression(yield_expr) => {
                 self.add_source_mapping_for_span(expr.span());
@@ -549,8 +551,7 @@ impl<'a> AstroCodegen<'a> {
                 self.add_source_mapping_for_span(for_stmt.span);
                 self.print("for(");
                 if let Some(init) = &for_stmt.init {
-                    let code = gen_to_string(init);
-                    self.print(&code);
+                    self.print_for_init(init);
                 }
                 self.print(";");
                 if let Some(test) = &for_stmt.test {
@@ -608,6 +609,22 @@ impl<'a> AstroCodegen<'a> {
                 self.print(": ");
                 self.print_jsx_aware_statement(&labeled.body);
             }
+            Statement::FunctionDeclaration(func) => {
+                self.add_source_mapping_for_span(func.span);
+                self.print_function(func);
+                self.print("\n");
+            }
+            Statement::ClassDeclaration(class) => {
+                self.add_source_mapping_for_span(class.span);
+                self.print_class(class);
+                self.print("\n");
+            }
+            Statement::ThrowStatement(throw_stmt) => {
+                self.add_source_mapping_for_span(throw_stmt.span);
+                self.print("throw ");
+                self.print_expression(&throw_stmt.argument);
+                self.print(";\n");
+            }
             _ => {
                 self.add_source_mapping_for_span(stmt.span());
                 // For other statements, use regular codegen
@@ -618,9 +635,8 @@ impl<'a> AstroCodegen<'a> {
         }
     }
 
-    /// Print a regular/async/generator function expression with JSX-aware body.
-    pub(super) fn print_function_expression(&mut self, func: &oxc_ast::ast::Function<'a>) {
-        // `async function* name(params) { body }`
+    /// Print a function declaration or expression with JSX-aware body.
+    pub(super) fn print_function(&mut self, func: &oxc_ast::ast::Function<'a>) {
         if func.r#async {
             self.print("async ");
         }
@@ -633,16 +649,37 @@ impl<'a> AstroCodegen<'a> {
             self.print(id.name.as_str());
         }
         self.print("(");
-        let params = &func.params;
-        for (i, param) in params.items.iter().enumerate() {
-            if i > 0 {
-                self.print(", ");
-            }
-            self.print_binding_pattern(&param.pattern);
-        }
+        self.print_formal_parameters(&func.params);
         self.print(") ");
         if let Some(body) = &func.body {
             self.print_jsx_aware_function_body(body);
+        }
+    }
+
+    /// Print a `FormalParameters` list, including default-value initializers
+    /// and the rest parameter. No surrounding parens.
+    pub(super) fn print_formal_parameters(
+        &mut self,
+        params: &oxc_ast::ast::FormalParameters<'a>,
+    ) {
+        let mut first = true;
+        for param in &params.items {
+            if !first {
+                self.print(", ");
+            }
+            first = false;
+            self.print_binding_pattern(&param.pattern);
+            if let Some(init) = &param.initializer {
+                self.print(" = ");
+                self.print_expression(init);
+            }
+        }
+        if let Some(rest) = &params.rest {
+            if !first {
+                self.print(", ");
+            }
+            self.print("...");
+            self.print_binding_pattern(&rest.rest.argument);
         }
     }
 
@@ -653,6 +690,130 @@ impl<'a> AstroCodegen<'a> {
             // For complex patterns, use regular codegen
             let code = gen_to_string(pattern);
             self.print(&code);
+        }
+    }
+
+    /// Print a class declaration or expression with JSX-aware method bodies,
+    /// property initializers, and static blocks.
+    pub(super) fn print_class(&mut self, class: &oxc_ast::ast::Class<'a>) {
+        self.print("class");
+        if let Some(id) = &class.id {
+            self.print(" ");
+            self.print(id.name.as_str());
+        }
+        if let Some(super_class) = &class.super_class {
+            self.print(" extends ");
+            self.print_expression(super_class);
+        }
+        self.print(" {\n");
+        for element in &class.body.body {
+            self.print_class_element(element);
+        }
+        self.print("}");
+    }
+
+    fn print_class_element(&mut self, element: &oxc_ast::ast::ClassElement<'a>) {
+        use oxc_ast::ast::{ClassElement, MethodDefinitionKind};
+        match element {
+            ClassElement::MethodDefinition(method) => {
+                self.add_source_mapping_for_span(method.span);
+                if method.r#static {
+                    self.print("static ");
+                }
+                match method.kind {
+                    MethodDefinitionKind::Get => self.print("get "),
+                    MethodDefinitionKind::Set => self.print("set "),
+                    MethodDefinitionKind::Constructor | MethodDefinitionKind::Method => {}
+                }
+                if method.value.r#async {
+                    self.print("async ");
+                }
+                if method.value.generator {
+                    self.print("*");
+                }
+                if method.computed {
+                    self.print("[");
+                }
+                let key_code = gen_to_string(&method.key);
+                self.print(&key_code);
+                if method.computed {
+                    self.print("]");
+                }
+                self.print("(");
+                self.print_formal_parameters(&method.value.params);
+                self.print(") ");
+                if let Some(body) = &method.value.body {
+                    self.print_jsx_aware_function_body(body);
+                }
+                self.print("\n");
+            }
+            ClassElement::PropertyDefinition(prop) => {
+                self.add_source_mapping_for_span(prop.span);
+                if prop.r#static {
+                    self.print("static ");
+                }
+                if prop.computed {
+                    self.print("[");
+                }
+                let key_code = gen_to_string(&prop.key);
+                self.print(&key_code);
+                if prop.computed {
+                    self.print("]");
+                }
+                if let Some(value) = &prop.value {
+                    self.print(" = ");
+                    self.print_expression(value);
+                }
+                self.print(";\n");
+            }
+            ClassElement::StaticBlock(block) => {
+                self.add_source_mapping_for_span(block.span);
+                self.print("static {\n");
+                for stmt in &block.body {
+                    self.print_jsx_aware_statement(stmt);
+                }
+                self.print("}\n");
+            }
+            // TSIndexSignature is type-only; AccessorProperty rarely carries
+            // JSX. Both fall back to plain codegen.
+            ClassElement::AccessorProperty(_) | ClassElement::TSIndexSignature(_) => {
+                let code = gen_to_string(element);
+                self.print(&code);
+                self.print("\n");
+            }
+        }
+    }
+
+    fn print_for_init(&mut self, init: &oxc_ast::ast::ForStatementInit<'a>) {
+        match init {
+            oxc_ast::ast::ForStatementInit::VariableDeclaration(decl) => {
+                let kind = match decl.kind {
+                    VariableDeclarationKind::Var => "var",
+                    VariableDeclarationKind::Let => "let",
+                    VariableDeclarationKind::Const => "const",
+                    VariableDeclarationKind::Using => "using",
+                    VariableDeclarationKind::AwaitUsing => "await using",
+                };
+                for (i, declarator) in decl.declarations.iter().enumerate() {
+                    if i == 0 {
+                        self.print(kind);
+                        self.print(" ");
+                    } else {
+                        self.print(", ");
+                    }
+                    let pattern_code = gen_to_string(&declarator.id);
+                    self.print(&pattern_code);
+                    if let Some(init_expr) = &declarator.init {
+                        self.print(" = ");
+                        self.print_expression(init_expr);
+                    }
+                }
+            }
+            other => {
+                if let Some(expr) = other.as_expression() {
+                    self.print_expression(expr);
+                }
+            }
         }
     }
 }
