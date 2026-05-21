@@ -658,16 +658,35 @@ impl<'a> AstroCodegen<'a> {
 
     /// Print a `FormalParameters` list, including default-value initializers
     /// and the rest parameter. No surrounding parens.
+    ///
+    /// Constructor parameter-property modifiers (`public`/`private`/`protected`/
+    /// `readonly`/`override`) and parameter decorators are emitted faithfully —
+    /// they have runtime effect and the Phase 2 TypeScript transform relies on
+    /// them to generate the `this.x = x` assignments.
     pub(super) fn print_formal_parameters(
         &mut self,
         params: &oxc_ast::ast::FormalParameters<'a>,
     ) {
+        use oxc_ast::ast::TSAccessibility;
         let mut first = true;
         for param in &params.items {
             if !first {
                 self.print(", ");
             }
             first = false;
+            self.print_decorators(&param.decorators);
+            match param.accessibility {
+                Some(TSAccessibility::Public) => self.print("public "),
+                Some(TSAccessibility::Protected) => self.print("protected "),
+                Some(TSAccessibility::Private) => self.print("private "),
+                None => {}
+            }
+            if param.r#override {
+                self.print("override ");
+            }
+            if param.readonly {
+                self.print("readonly ");
+            }
             self.print_binding_pattern(&param.pattern);
             if let Some(init) = &param.initializer {
                 self.print(" = ");
@@ -693,9 +712,19 @@ impl<'a> AstroCodegen<'a> {
         }
     }
 
+    /// Print leading decorators as `@expr `.
+    fn print_decorators(&mut self, decorators: &[oxc_ast::ast::Decorator<'a>]) {
+        for decorator in decorators {
+            self.print("@");
+            self.print_expression(&decorator.expression);
+            self.print(" ");
+        }
+    }
+
     /// Print a class declaration or expression with JSX-aware method bodies,
     /// property initializers, and static blocks.
     pub(super) fn print_class(&mut self, class: &oxc_ast::ast::Class<'a>) {
+        self.print_decorators(&class.decorators);
         self.print("class");
         if let Some(id) = &class.id {
             self.print(" ");
@@ -717,6 +746,7 @@ impl<'a> AstroCodegen<'a> {
         match element {
             ClassElement::MethodDefinition(method) => {
                 self.add_source_mapping_for_span(method.span);
+                self.print_decorators(&method.decorators);
                 if method.r#static {
                     self.print("static ");
                 }
@@ -749,6 +779,7 @@ impl<'a> AstroCodegen<'a> {
             }
             ClassElement::PropertyDefinition(prop) => {
                 self.add_source_mapping_for_span(prop.span);
+                self.print_decorators(&prop.decorators);
                 if prop.r#static {
                     self.print("static ");
                 }
