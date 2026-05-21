@@ -349,43 +349,30 @@ impl<'a> AstroCodegen<'a> {
         self.code.print_char('\n');
     }
 
-    /// Print arrow function parameters including parentheses and the `=>` arrow.
-    ///
-    /// Prints the async prefix (if applicable), the parameter list (with
-    /// optional parentheses for single-identifier params), and ` => `.
-    /// The caller is responsible for printing the body.
+    /// Print the arrow function header: async prefix, params, ` => `.
+    /// The caller prints the body.
     fn print_arrow_params(&mut self, arrow: &ArrowFunctionExpression<'a>) {
         if arrow.r#async {
             self.print("async ");
         }
-        // Single simple identifier param doesn't need parens, but destructuring patterns do
         let needs_parens = arrow.params.items.len() != 1
             || arrow.params.rest.is_some()
-            || !matches!(
-                arrow.params.items.first().map(|p| &p.pattern),
-                Some(BindingPattern::BindingIdentifier(_))
-            );
+            || arrow
+                .params
+                .items
+                .first()
+                .map(|p| {
+                    !matches!(p.pattern, BindingPattern::BindingIdentifier(_))
+                        || p.initializer.is_some()
+                        || p.type_annotation.is_some()
+                        || p.optional
+                })
+                .unwrap_or(true);
 
         if needs_parens {
             self.print("(");
         }
-
-        let mut first = true;
-        for param in &arrow.params.items {
-            if !first {
-                self.print(", ");
-            }
-            first = false;
-            self.print_binding_pattern(&param.pattern);
-        }
-        if let Some(rest) = &arrow.params.rest {
-            if !first {
-                self.print(", ");
-            }
-            self.print("...");
-            self.print_binding_pattern(&rest.rest.argument);
-        }
-
+        self.print_formal_parameters(&arrow.params);
         if needs_parens {
             self.print(")");
         }
