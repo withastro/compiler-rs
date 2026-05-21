@@ -6,7 +6,7 @@
 
 use super::AstroCodegen;
 use super::elements::ScopeId;
-use super::escape::{decode_html_entities, escape_double_quotes};
+use super::escape::{decode_html_entities, escape_double_quotes, escape_newlines};
 use super::expr_to_string;
 use super::runtime;
 use super::whitespace::has_is_raw_attr;
@@ -441,7 +441,10 @@ impl<'a> AstroCodegen<'a> {
                                 if val.is_empty() {
                                     self.print(&format!("\"{sc}\""));
                                 } else {
-                                    self.print(&format!("\"{} {sc}\"", escape_double_quotes(val)));
+                                    self.print(&format!(
+                                        "\"{} {sc}\"",
+                                        escape_double_quotes(&escape_newlines(val))
+                                    ));
                                 }
                             }
                             Some(JSXAttributeValue::ExpressionContainer(expr)) => {
@@ -463,7 +466,7 @@ impl<'a> AstroCodegen<'a> {
                         }
                         Some(JSXAttributeValue::StringLiteral(lit)) => {
                             self.print("\"");
-                            self.print(&escape_double_quotes(lit.value.as_str()));
+                            self.print(&escape_double_quotes(&escape_newlines(lit.value.as_str())));
                             self.print("\"");
                         }
                         Some(JSXAttributeValue::ExpressionContainer(expr)) => {

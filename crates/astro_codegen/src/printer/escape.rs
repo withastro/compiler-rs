@@ -45,6 +45,16 @@ pub fn escape_single_quote(s: &str) -> String {
     s.cow_replace('\'', "\\'").into_owned()
 }
 
+/// Escape literal newlines (`\n`, `\r`) for embedding inside a JS string literal.
+///
+/// Quoted attribute values may legally contain raw newlines in HTML (e.g. from
+/// `prettier-plugin-classnames`), but those break a JS `"..."` string. Matches
+/// the Go compiler's `escapeNewlines`.
+pub fn escape_newlines(s: &str) -> String {
+    let s = s.cow_replace('\n', "\\n");
+    s.cow_replace('\r', "\\r").into_owned()
+}
+
 /// Escape a string for use as an HTML attribute value inside a template literal.
 ///
 /// Escapes template literal syntax (`` ` `` and `${`), HTML special characters
@@ -311,6 +321,37 @@ mod tests {
     #[test]
     fn single_quote_preserves_backslash() {
         assert_eq!(escape_single_quote("a\\b"), "a\\b");
+    }
+
+    // ---- escape_newlines ----
+
+    #[test]
+    fn newlines_basic() {
+        assert_eq!(escape_newlines("hello"), "hello");
+    }
+
+    #[test]
+    fn newlines_escapes_lf() {
+        assert_eq!(escape_newlines("a\nb"), "a\\nb");
+    }
+
+    #[test]
+    fn newlines_escapes_cr() {
+        assert_eq!(escape_newlines("a\rb"), "a\\rb");
+    }
+
+    #[test]
+    fn newlines_escapes_crlf() {
+        assert_eq!(escape_newlines("a\r\nb"), "a\\r\\nb");
+    }
+
+    #[test]
+    fn newlines_multiline_class() {
+        // The motivating case: prettier-plugin-classnames-style class attribute
+        assert_eq!(
+            escape_newlines("some-class\n  another-class\n  third-class"),
+            "some-class\\n  another-class\\n  third-class"
+        );
     }
 
     // ---- escape_html_attribute ----
