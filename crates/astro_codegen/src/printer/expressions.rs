@@ -663,10 +663,7 @@ impl<'a> AstroCodegen<'a> {
     /// `readonly`/`override`) and parameter decorators are emitted faithfully —
     /// they have runtime effect and the Phase 2 TypeScript transform relies on
     /// them to generate the `this.x = x` assignments.
-    pub(super) fn print_formal_parameters(
-        &mut self,
-        params: &oxc_ast::ast::FormalParameters<'a>,
-    ) {
+    pub(super) fn print_formal_parameters(&mut self, params: &oxc_ast::ast::FormalParameters<'a>) {
         use oxc_ast::ast::TSAccessibility;
         let mut first = true;
         for param in &params.items {
