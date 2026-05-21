@@ -1,5 +1,17 @@
 # @astrojs/compiler-rs
 
+## 0.2.1
+
+### Patch Changes
+
+- eddd417: Fixes CSS scoping incorrectly adding a scope to `&::pseudo-element` selectors (e.g. `&::marker`, `&::before`) and to selectors that only reference `&` inside `:is()`/`:where()`/`:not()`/`:has()`.
+- f4adcce: Fixes `Unterminated string literal` error when a quoted attribute on a component contains literal newlines (e.g. multi-line `class`).
+- ecb43d3: Fixes JSX not being transformed inside function declarations, class declarations and expressions, `throw` statements, and `for`-loop initializers.
+- Updated dependencies [eddd417]
+- Updated dependencies [f4adcce]
+- Updated dependencies [ecb43d3]
+  - @astrojs/compiler-binding@0.2.1
+
 ## 0.2.0
 
 ### Minor Changes
