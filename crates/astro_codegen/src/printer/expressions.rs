@@ -659,10 +659,8 @@ impl<'a> AstroCodegen<'a> {
     /// Print a `FormalParameters` list, including default-value initializers
     /// and the rest parameter. No surrounding parens.
     ///
-    /// Constructor parameter-property modifiers (`public`/`private`/`protected`/
-    /// `readonly`/`override`) and parameter decorators are emitted faithfully —
-    /// they have runtime effect and the Phase 2 TypeScript transform relies on
-    /// them to generate the `this.x = x` assignments.
+    /// Parameter-property modifiers and decorators have runtime effect (Phase 2
+    /// turns them into `this.x = x` assignments), so they're emitted faithfully.
     pub(super) fn print_formal_parameters(&mut self, params: &oxc_ast::ast::FormalParameters<'a>) {
         use oxc_ast::ast::TSAccessibility;
         let mut first = true;
