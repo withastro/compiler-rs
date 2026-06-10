@@ -1,5 +1,15 @@
 # @astrojs/compiler-rs
 
+## 0.2.2
+
+### Patch Changes
+
+- 6133672: Improved diagnostics when Astro sees a stray closing tag. Now Astro correctly shows the closing tag that doesn't match an open tag.
+- 23038db: Fixes `compact: 'jsx'` stripping significant same-line whitespace. JSX whitespace is now only trimmed where it borders a line break (matching React/Babel's rules), so a space at a text/expression, text/element, or element/element boundary is preserved. `<h1>Page {n}</h1>` now keeps its space (`Page 1`), as does `<span>hello</span> <em>world</em>`. Whitespace adjacent to newlines is still collapsed.
+- Updated dependencies [6133672]
+- Updated dependencies [23038db]
+  - @astrojs/compiler-binding@0.2.2
+
 ## 0.2.1
 
 ### Patch Changes
