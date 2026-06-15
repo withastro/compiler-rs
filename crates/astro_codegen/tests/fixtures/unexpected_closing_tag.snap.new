@@ -1,0 +1,7 @@
+---
+source: crates/astro_codegen/tests/snapshots.rs
+assertion_line: 81
+input_file: crates/astro_codegen/tests/fixtures/unexpected_closing_tag.astro
+---
+Parse errors:
+Expected corresponding JSX closing tag for 'section'.

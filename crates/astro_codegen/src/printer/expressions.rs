@@ -15,8 +15,7 @@ use super::{expr_to_string, gen_to_string};
 impl<'a> AstroCodegen<'a> {
     pub(super) fn print_jsx_fragment(&mut self, frag: &JSXFragment<'a>) {
         self.add_source_mapping_for_span(frag.span);
-        // Render fragment using $$renderComponent with Fragment
-        let async_prefix = self.get_async_prefix();
+        let async_prefix = Self::async_prefix(Self::children_have_await(&frag.children));
         let slot_params = self.get_slot_params();
         self.print("${");
         self.print(runtime::RENDER_COMPONENT);
@@ -108,12 +107,13 @@ impl<'a> AstroCodegen<'a> {
                 if is_explicit_fragment {
                     // Explicit <>...</> syntax gets wrapped in $$renderComponent with Fragment.
                     // Whitespace inside <>..</> is intentional authored content — preserve it.
+                    let async_prefix = Self::async_prefix(Self::children_have_await(&frag.children));
                     let slot_params = self.get_slot_params();
                     self.print(runtime::RENDER);
                     self.print("`${");
                     self.print(runtime::RENDER_COMPONENT);
                     self.print(&format!(
-                        "($$result,\"Fragment\",Fragment,{{}},{{\"default\":{slot_params}"
+                        "($$result,\"Fragment\",Fragment,{{}},{{\"default\":{async_prefix}{slot_params}"
                     ));
                     self.print(runtime::RENDER);
                     self.print("`");

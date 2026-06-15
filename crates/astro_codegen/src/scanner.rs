@@ -356,6 +356,18 @@ impl<'a> Visit<'a> for AstroScanner<'a> {
         walk::walk_await_expression(self, it);
     }
 
+    /// Detect `for await (... of ...)` — needs async, but is not an `AwaitExpression`.
+    fn visit_for_of_statement(&mut self, it: &ForOfStatement<'a>) {
+        self.has_await |= it.r#await;
+        walk::walk_for_of_statement(self, it);
+    }
+
+    /// Detect `await using x = ...` — needs async, but is not an `AwaitExpression`.
+    fn visit_variable_declaration(&mut self, it: &VariableDeclaration<'a>) {
+        self.has_await |= it.kind == VariableDeclarationKind::AwaitUsing;
+        walk::walk_variable_declaration(self, it);
+    }
+
     /// Process standalone AstroScript nodes (direct children of the root,
     /// not inside a `<script>` JSXElement — those are handled by visit_jsx_element).
     fn visit_astro_script(&mut self, script: &AstroScript<'a>) {
