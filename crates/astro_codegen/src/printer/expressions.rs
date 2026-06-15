@@ -107,7 +107,8 @@ impl<'a> AstroCodegen<'a> {
                 if is_explicit_fragment {
                     // Explicit <>...</> syntax gets wrapped in $$renderComponent with Fragment.
                     // Whitespace inside <>..</> is intentional authored content — preserve it.
-                    let async_prefix = Self::async_prefix(Self::children_have_await(&frag.children));
+                    let async_prefix =
+                        Self::async_prefix(Self::children_have_await(&frag.children));
                     let slot_params = self.get_slot_params();
                     self.print(runtime::RENDER);
                     self.print("`${");

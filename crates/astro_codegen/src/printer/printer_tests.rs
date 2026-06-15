@@ -2734,7 +2734,10 @@ fn test_async_slot_is_precise_not_file_wide() {
         "slots without their own await must not be async: {output}"
     );
     // The wrapper still gets `async` for the top-level frontmatter await.
-    assert!(output.contains("async ($$result"), "wrapper should be async: {output}");
+    assert!(
+        output.contains("async ($$result"),
+        "wrapper should be async: {output}"
+    );
 }
 
 #[test]
