@@ -3,4 +3,4 @@ source: crates/astro_codegen/tests/snapshots.rs
 input_file: crates/astro_codegen/tests/fixtures/aspire_dev_page.astro
 ---
 Parse errors:
-Expected corresponding JSX closing tag for 'StarlightPage'.
+Closing tag '</div>' has no matching opening tag.
