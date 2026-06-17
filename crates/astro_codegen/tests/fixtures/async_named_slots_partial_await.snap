@@ -1,0 +1,19 @@
+---
+source: crates/astro_codegen/tests/snapshots.rs
+input_file: crates/astro_codegen/tests/fixtures/async_named_slots_partial_await.astro
+---
+import { render as $$render, createComponent as $$createComponent, renderComponent as $$renderComponent, maybeRenderHead as $$maybeRenderHead, createMetadata as $$createMetadata } from "http://localhost:3000/";
+export const $$metadata = $$createMetadata(import.meta.url, {
+	modules: [],
+	hydratedComponents: [],
+	clientOnlyComponents: [],
+	hydrationDirectives: new Set([]),
+	hoisted: []
+});
+const $$Component = $$createComponent(async ($$result, $$props, $$slots) => {
+	return $$render`${$$renderComponent($$result, "Layout", Layout, {}, {
+		"head": async () => $$render`${$$maybeRenderHead($$result)}<div>${await loadHead()}</div>`,
+		"body": () => $$render`<div>static body</div>`
+	})}`;
+}, undefined, undefined);
+export default $$Component;

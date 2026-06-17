@@ -3,4 +3,4 @@ source: crates/astro_codegen/tests/snapshots.rs
 input_file: crates/astro_codegen/tests/fixtures/unexpected_closing_tag.astro
 ---
 Parse errors:
-Closing tag '</div>' has no matching opening tag.
+Expected corresponding JSX closing tag for 'section'.

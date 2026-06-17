@@ -12,3 +12,6 @@ crates/astro_napi/npm
 # Rust
 /target
 Cargo.lock
+
+# insta pending snapshots
+*.snap.new

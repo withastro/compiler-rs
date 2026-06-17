@@ -31,7 +31,7 @@ struct AwaitDetector {
 
 impl<'a> Visit<'a> for AwaitDetector {
     fn visit_await_expression(&mut self, _it: &AwaitExpression<'a>) {
-        // No need to recurse — one `await` is enough to make the function async.
+        // One `await` is enough to make the function async; no need to recurse.
         self.found = true;
     }
 
@@ -47,6 +47,32 @@ impl<'a> Visit<'a> for AwaitDetector {
         if !self.found {
             walk::walk_variable_declaration(self, it);
         }
+    }
+}
+
+impl AwaitDetector {
+    /// Subtree checks used to decide whether a slot callback must be `async`.
+    /// Scanning the whole subtree (a superset of the slot's own scope) can
+    /// over-mark but never under-mark. An `await` left in a non-`async` callback
+    /// would be invalid JS.
+    fn found_in_child<'a>(child: &JSXChild<'a>) -> bool {
+        let mut detector = Self::default();
+        detector.visit_jsx_child(child);
+        detector.found
+    }
+
+    fn found_in_element<'a>(el: &JSXElement<'a>) -> bool {
+        let mut detector = Self::default();
+        detector.visit_jsx_element(el);
+        detector.found
+    }
+
+    fn found_in_children<'a>(children: &[JSXChild<'a>]) -> bool {
+        children.iter().any(Self::found_in_child)
+    }
+
+    fn found_in_refs<'a>(children: &[&JSXChild<'a>]) -> bool {
+        children.iter().copied().any(Self::found_in_child)
     }
 }
 
@@ -359,27 +385,6 @@ impl<'a> AstroCodegen<'a> {
 
     fn async_prefix(has_await: bool) -> &'static str {
         if has_await { "async " } else { "" }
-    }
-
-    /// Whether a slot's children need an `async` callback. Deliberately a
-    /// *subtree* check, not a scope check: a subtree is a superset of what lands
-    /// in the slot's scope, so it can never be a false negative (an `await` left
-    /// in a non-`async` function = invalid JS) — it only spares sibling slots
-    /// that contain no `await`.
-    fn children_have_await(children: &[JSXChild<'a>]) -> bool {
-        children.iter().any(Self::child_has_await)
-    }
-
-    fn child_has_await(child: &JSXChild<'a>) -> bool {
-        let mut detector = AwaitDetector::default();
-        detector.visit_jsx_child(child);
-        detector.found
-    }
-
-    fn element_has_await(el: &JSXElement<'a>) -> bool {
-        let mut detector = AwaitDetector::default();
-        detector.visit_jsx_element(el);
-        detector.found
     }
 
     /// Get the slot callback parameter list.

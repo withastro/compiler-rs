@@ -9,13 +9,14 @@ use oxc_ast::ast::*;
 use oxc_span::GetSpan;
 
 use super::AstroCodegen;
+use super::AwaitDetector;
 use super::runtime;
 use super::{expr_to_string, gen_to_string};
 
 impl<'a> AstroCodegen<'a> {
     pub(super) fn print_jsx_fragment(&mut self, frag: &JSXFragment<'a>) {
         self.add_source_mapping_for_span(frag.span);
-        let async_prefix = Self::async_prefix(Self::children_have_await(&frag.children));
+        let async_prefix = Self::async_prefix(AwaitDetector::found_in_children(&frag.children));
         let slot_params = self.get_slot_params();
         self.print("${");
         self.print(runtime::RENDER_COMPONENT);
@@ -108,7 +109,7 @@ impl<'a> AstroCodegen<'a> {
                     // Explicit <>...</> syntax gets wrapped in $$renderComponent with Fragment.
                     // Whitespace inside <>..</> is intentional authored content — preserve it.
                     let async_prefix =
-                        Self::async_prefix(Self::children_have_await(&frag.children));
+                        Self::async_prefix(AwaitDetector::found_in_children(&frag.children));
                     let slot_params = self.get_slot_params();
                     self.print(runtime::RENDER);
                     self.print("`${");

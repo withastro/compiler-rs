@@ -2684,9 +2684,7 @@ fn test_expression_explicit_fragment_preserves_all_whitespace() {
 
 #[test]
 fn test_expression_fragment_slot_is_async_with_await() {
-    // Regression for issue #46: a fragment inside an expression that uses `await`
-    // must emit an `async` slot callback, otherwise the `await` lands in a
-    // non-async arrow and the generated JS is invalid.
+    // Regression for #46: await inside a fragment-in-expression must make the slot async.
     let source = "---\nconst item = { cover: '' };\n---\n{item.cover && <>\n  <Image src={item.cover} style={{ ...await getThumb(item.cover) }} />\n</>}";
     let output = compile_astro(source);
     let compact: String = output.split_whitespace().collect();
@@ -2698,8 +2696,7 @@ fn test_expression_fragment_slot_is_async_with_await() {
 
 #[test]
 fn test_expression_fragment_in_arrow_slot_is_async_with_await() {
-    // Same as above, but the fragment is the body of an `async` arrow passed to
-    // `.map(...)` — the other shape reported in issue #46.
+    // #46, other shape: fragment as the body of an async arrow passed to `.map(...)`.
     let source = "---\nconst items = [];\n---\n{items.map(async (item) => <>\n  <img src={item.cover} alt={await describe(item)} />\n</>)}";
     let output = compile_astro(source);
     let compact: String = output.split_whitespace().collect();
@@ -2723,9 +2720,8 @@ fn test_expression_fragment_slot_not_async_without_await() {
 
 #[test]
 fn test_async_slot_is_precise_not_file_wide() {
-    // A slot is `async` only when its OWN body uses `await` — not whenever the
-    // file does. Here `await` lives only in the frontmatter, so both template
-    // slots must stay plain (the Go compiler makes both `async`).
+    // A slot is async only if its OWN body awaits, not when the file does. Here
+    // await is frontmatter-only, so both slots stay plain (Go marks both async).
     let source = "---\nimport C from 'c';\nconst d = await load();\n---\n<C>plain</C>{cond && <><span>no await</span></>}";
     let output = compile_astro(source);
     let compact: String = output.split_whitespace().collect();
@@ -2758,8 +2754,7 @@ fn test_async_slot_only_on_awaiting_named_slot() {
 
 #[test]
 fn test_for_await_frontmatter_makes_wrapper_async() {
-    // Regression for issue #47: `for await (... of ...)` requires an async
-    // wrapper even though it is not an `await` expression.
+    // Regression for #47: for-await needs an async wrapper though it's not an await expression.
     let source = "---\nasync function* g() { yield 1; }\nconst nums = [];\nfor await (const n of g()) { nums.push(n); }\n---\n<h1>{nums.join(',')}</h1>";
     let output = compile_astro(source);
     assert!(
@@ -2770,8 +2765,7 @@ fn test_for_await_frontmatter_makes_wrapper_async() {
 
 #[test]
 fn test_await_using_frontmatter_makes_wrapper_async() {
-    // `await using` is the other async-requiring construct that is not an
-    // `await` expression.
+    // await using also needs async, though it's not an await expression.
     let source = "---\nawait using r = getResource();\n---\n<h1>hi</h1>";
     let output = compile_astro(source);
     assert!(
