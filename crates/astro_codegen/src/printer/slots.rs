@@ -431,13 +431,13 @@ impl<'a> AstroCodegen<'a> {
         self.print_slot_fn_open(AwaitDetector::found_in_children(children));
 
         // DO NOT set skip_slot_attribute — we want to preserve slot="..." for custom elements
-        for child in children {
-            // Skip HTML comments in slots if configured
-            if self.options.strip_slot_comments && matches!(child, JSXChild::AstroComment(_)) {
-                continue;
-            }
-            self.print_jsx_child(child);
-        }
+        let rendered: Vec<&JSXChild<'a>> = children
+            .iter()
+            .filter(|child| {
+                !(self.options.strip_slot_comments && matches!(child, JSXChild::AstroComment(_)))
+            })
+            .collect();
+        self.print_jsx_children_compact_refs(&rendered);
 
         self.print("`,}");
     }
@@ -554,9 +554,7 @@ impl<'a> AstroCodegen<'a> {
         if has_meaningful_content {
             self.print("\"default\": ");
             self.print_slot_fn_open(AwaitDetector::found_in_refs(&default_children));
-            for child in &default_children {
-                self.print_jsx_child(child);
-            }
+            self.print_jsx_children_compact_refs(&default_children);
             self.print("`,");
         }
 
@@ -569,9 +567,7 @@ impl<'a> AstroCodegen<'a> {
             // Skip slot attribute when printing these children
             let prev = self.skip_slot_attribute;
             self.skip_slot_attribute = true;
-            for child in slot_children {
-                self.print_jsx_child(child);
-            }
+            self.print_jsx_children_compact_refs(slot_children);
             self.skip_slot_attribute = prev;
             self.print("`,");
         }
@@ -598,9 +594,7 @@ impl<'a> AstroCodegen<'a> {
             self.print_slot_fn_open(AwaitDetector::found_in_refs(slot_children));
             let prev = self.skip_slot_attribute;
             self.skip_slot_attribute = true;
-            for child in slot_children {
-                self.print_jsx_child(child);
-            }
+            self.print_jsx_children_compact_refs(slot_children);
             self.skip_slot_attribute = prev;
             self.print("`,");
         }
