@@ -7,6 +7,7 @@ use std::hash::{Hash, Hasher};
 
 use oxc_allocator::Allocator;
 use oxc_ast::ast::*;
+use oxc_ast_visit::{Visit, walk};
 use oxc_codegen::{Codegen, Context, Gen, GenExpr};
 use oxc_data_structures::code_buffer::CodeBuffer;
 use oxc_span::{GetSpan, Span};
@@ -20,6 +21,60 @@ use crate::scanner::{
 };
 use crate::{SourcemapOption, TransformOptions};
 use whitespace::{TextPosition, collapse_html, collapse_jsx};
+
+/// Records whether an AST subtree contains a construct that needs an `async`
+/// context: an `await` expression, `for await...of`, or `await using`.
+#[derive(Default)]
+struct AwaitDetector {
+    found: bool,
+}
+
+impl<'a> Visit<'a> for AwaitDetector {
+    fn visit_await_expression(&mut self, _it: &AwaitExpression<'a>) {
+        // One `await` is enough to make the function async; no need to recurse.
+        self.found = true;
+    }
+
+    fn visit_for_of_statement(&mut self, it: &ForOfStatement<'a>) {
+        self.found |= it.r#await;
+        if !self.found {
+            walk::walk_for_of_statement(self, it);
+        }
+    }
+
+    fn visit_variable_declaration(&mut self, it: &VariableDeclaration<'a>) {
+        self.found |= it.kind == VariableDeclarationKind::AwaitUsing;
+        if !self.found {
+            walk::walk_variable_declaration(self, it);
+        }
+    }
+}
+
+impl AwaitDetector {
+    /// Subtree checks used to decide whether a slot callback must be `async`.
+    /// Scanning the whole subtree (a superset of the slot's own scope) can
+    /// over-mark but never under-mark. An `await` left in a non-`async` callback
+    /// would be invalid JS.
+    fn found_in_child<'a>(child: &JSXChild<'a>) -> bool {
+        let mut detector = Self::default();
+        detector.visit_jsx_child(child);
+        detector.found
+    }
+
+    fn found_in_element<'a>(el: &JSXElement<'a>) -> bool {
+        let mut detector = Self::default();
+        detector.visit_jsx_element(el);
+        detector.found
+    }
+
+    fn found_in_children<'a>(children: &[JSXChild<'a>]) -> bool {
+        children.iter().any(Self::found_in_child)
+    }
+
+    fn found_in_refs<'a>(children: &[&JSXChild<'a>]) -> bool {
+        children.iter().copied().any(Self::found_in_child)
+    }
+}
 
 mod components;
 mod elements;
@@ -322,13 +377,14 @@ impl<'a> AstroCodegen<'a> {
         }
     }
 
-    /// Get the async function prefix if needed (`"async "` or `""`).
+    /// Async prefix for the component wrapper (and `set:*` slots), which enclose
+    /// the whole file, so the file-level `has_await` flag is the right signal.
     fn get_async_prefix(&self) -> &'static str {
-        if self.scan_result.has_await {
-            "async "
-        } else {
-            ""
-        }
+        Self::async_prefix(self.scan_result.has_await)
+    }
+
+    fn async_prefix(has_await: bool) -> &'static str {
+        if has_await { "async " } else { "" }
     }
 
     /// Get the slot callback parameter list.

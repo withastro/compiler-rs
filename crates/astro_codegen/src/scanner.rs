@@ -350,10 +350,22 @@ impl<'a> Visit<'a> for AstroScanner<'a> {
         self.in_non_hoistable = was_in_non_hoistable;
     }
 
-    /// Detect `await` expressions — used to determine if async wrappers are needed.
+    /// Detect `await` expressions, used to determine if async wrappers are needed.
     fn visit_await_expression(&mut self, it: &AwaitExpression<'a>) {
         self.has_await = true;
         walk::walk_await_expression(self, it);
+    }
+
+    /// Detect `for await (... of ...)`: needs async, but is not an `AwaitExpression`.
+    fn visit_for_of_statement(&mut self, it: &ForOfStatement<'a>) {
+        self.has_await |= it.r#await;
+        walk::walk_for_of_statement(self, it);
+    }
+
+    /// Detect `await using x = ...`: needs async, but is not an `AwaitExpression`.
+    fn visit_variable_declaration(&mut self, it: &VariableDeclaration<'a>) {
+        self.has_await |= it.kind == VariableDeclarationKind::AwaitUsing;
+        walk::walk_variable_declaration(self, it);
     }
 
     /// Process standalone AstroScript nodes (direct children of the root,

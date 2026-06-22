@@ -2683,6 +2683,122 @@ fn test_expression_explicit_fragment_preserves_all_whitespace() {
 }
 
 #[test]
+fn test_expression_fragment_slot_is_async_with_await() {
+    // Regression for #46: await inside a fragment-in-expression must make the slot async.
+    let source = "---\nconst item = { cover: '' };\n---\n{item.cover && <>\n  <Image src={item.cover} style={{ ...await getThumb(item.cover) }} />\n</>}";
+    let output = compile_astro(source);
+    let compact: String = output.split_whitespace().collect();
+    assert!(
+        compact.contains("\"Fragment\",Fragment,{},{\"default\":async()=>"),
+        "fragment slot in expression should be async when await is used: {output}"
+    );
+}
+
+#[test]
+fn test_expression_fragment_in_arrow_slot_is_async_with_await() {
+    // #46, other shape: fragment as the body of an async arrow passed to `.map(...)`.
+    let source = "---\nconst items = [];\n---\n{items.map(async (item) => <>\n  <img src={item.cover} alt={await describe(item)} />\n</>)}";
+    let output = compile_astro(source);
+    let compact: String = output.split_whitespace().collect();
+    assert!(
+        compact.contains("\"Fragment\",Fragment,{},{\"default\":async()=>"),
+        "fragment slot in arrow should be async when await is used: {output}"
+    );
+}
+
+#[test]
+fn test_expression_fragment_slot_not_async_without_await() {
+    // Without `await` anywhere, the slot stays a plain arrow (no spurious `async`).
+    let source = "{cond && <>\n  <span>hi</span>\n</>}";
+    let output = compile_astro(source);
+    let compact: String = output.split_whitespace().collect();
+    assert!(
+        compact.contains("\"Fragment\",Fragment,{},{\"default\":()=>"),
+        "fragment slot should not be async without await: {output}"
+    );
+}
+
+#[test]
+fn test_async_slot_is_precise_not_file_wide() {
+    // A slot is async only if its OWN body awaits, not when the file does. Here
+    // await is frontmatter-only, so both slots stay plain (Go marks both async).
+    let source = "---\nimport C from 'c';\nconst d = await load();\n---\n<C>plain</C>{cond && <><span>no await</span></>}";
+    let output = compile_astro(source);
+    let compact: String = output.split_whitespace().collect();
+    assert!(
+        !compact.contains("\"default\":async()=>"),
+        "slots without their own await must not be async: {output}"
+    );
+    // The wrapper still gets `async` for the top-level frontmatter await.
+    assert!(
+        output.contains("async ($$result"),
+        "wrapper should be async: {output}"
+    );
+}
+
+#[test]
+fn test_async_slot_only_on_awaiting_named_slot() {
+    // Named slot "a" awaits; named slot "b" does not. Only "a" should be async.
+    let source = "---\nimport C from 'c';\n---\n<C><div slot=\"a\">{await x()}</div><div slot=\"b\">plain</div></C>";
+    let output = compile_astro(source);
+    let compact: String = output.split_whitespace().collect();
+    assert!(
+        compact.contains("\"a\":async()=>"),
+        "awaiting named slot should be async: {output}"
+    );
+    assert!(
+        compact.contains("\"b\":()=>") && !compact.contains("\"b\":async()=>"),
+        "non-awaiting named slot should stay plain: {output}"
+    );
+}
+
+#[test]
+fn test_for_await_frontmatter_makes_wrapper_async() {
+    // Regression for #47: for-await needs an async wrapper though it's not an await expression.
+    let source = "---\nasync function* g() { yield 1; }\nconst nums = [];\nfor await (const n of g()) { nums.push(n); }\n---\n<h1>{nums.join(',')}</h1>";
+    let output = compile_astro(source);
+    assert!(
+        output.contains("async ($$result"),
+        "for-await in frontmatter should make the wrapper async: {output}"
+    );
+}
+
+#[test]
+fn test_await_using_frontmatter_makes_wrapper_async() {
+    // await using also needs async, though it's not an await expression.
+    let source = "---\nawait using r = getResource();\n---\n<h1>hi</h1>";
+    let output = compile_astro(source);
+    assert!(
+        output.contains("async ($$result"),
+        "await-using in frontmatter should make the wrapper async: {output}"
+    );
+}
+
+#[test]
+fn test_async_slot_detects_nested_for_await() {
+    // for-await can only sit in a nested function, so the slot is over-marked async by AwaitDetector's subtree scan — not the frontmatter scanner.
+    let source = "---\nasync function* stream() { yield 'a'; }\n---\n<Wrapper>{(async () => {\n  let out = '';\n  for await (const chunk of stream()) { out += chunk; }\n  return out;\n})()}</Wrapper>";
+    let output = compile_astro(source);
+    let compact: String = output.split_whitespace().collect();
+    assert!(
+        compact.contains("\"default\":async()=>"),
+        "slot with nested for-await should be async: {output}"
+    );
+}
+
+#[test]
+fn test_async_slot_detects_nested_await_using() {
+    // Same for await-using: nested-only, so the slot is over-marked async via the subtree scan.
+    let source = "<Wrapper>{(async () => {\n  await using res = getResource();\n  return res.value;\n})()}</Wrapper>";
+    let output = compile_astro(source);
+    let compact: String = output.split_whitespace().collect();
+    assert!(
+        compact.contains("\"default\":async()=>"),
+        "slot with nested await-using should be async: {output}"
+    );
+}
+
+#[test]
 fn test_expression_implicit_fragment_inline_elements_no_extra_space() {
     // Inline elements shouldn't get extra whitespace injected
     let source = "<span>{\n  <strong>hello</strong>\n  <em>world</em>\n}</span>";

@@ -14,6 +14,7 @@ use oxc_ast::ast::*;
 use oxc_span::GetSpan;
 
 use super::AstroCodegen;
+use super::AwaitDetector;
 use super::escape::escape_double_quotes;
 use super::runtime;
 use super::{expr_to_string, gen_to_string};
@@ -414,8 +415,8 @@ impl<'a> AstroCodegen<'a> {
     ///
     /// This is the common suffix after a slot key. After calling this, the
     /// caller should print the slot body and then close with `` \` ``.
-    fn print_slot_fn_open(&mut self) {
-        let async_prefix = self.get_async_prefix();
+    fn print_slot_fn_open(&mut self, body_has_await: bool) {
+        let async_prefix = Self::async_prefix(body_has_await);
         let slot_params = self.get_slot_params();
         self.print(async_prefix);
         self.print(slot_params);
@@ -427,7 +428,7 @@ impl<'a> AstroCodegen<'a> {
     /// Used for custom elements (web components) where the browser handles slots.
     pub(super) fn print_component_default_slot_only(&mut self, children: &[JSXChild<'a>]) {
         self.print("{\"default\": ");
-        self.print_slot_fn_open();
+        self.print_slot_fn_open(AwaitDetector::found_in_children(children));
 
         // DO NOT set skip_slot_attribute — we want to preserve slot="..." for custom elements
         for child in children {
@@ -552,7 +553,7 @@ impl<'a> AstroCodegen<'a> {
             .any(|c| Self::jsx_child_has_content(c));
         if has_meaningful_content {
             self.print("\"default\": ");
-            self.print_slot_fn_open();
+            self.print_slot_fn_open(AwaitDetector::found_in_refs(&default_children));
             for child in &default_children {
                 self.print_jsx_child(child);
             }
@@ -564,7 +565,7 @@ impl<'a> AstroCodegen<'a> {
             self.print("\"");
             self.print(&escape_double_quotes(name));
             self.print("\": ");
-            self.print_slot_fn_open();
+            self.print_slot_fn_open(AwaitDetector::found_in_refs(slot_children));
             // Skip slot attribute when printing these children
             let prev = self.skip_slot_attribute;
             self.skip_slot_attribute = true;
@@ -580,7 +581,7 @@ impl<'a> AstroCodegen<'a> {
             self.print("\"");
             self.print(&escape_double_quotes(name));
             self.print("\": ");
-            self.print_slot_fn_open();
+            self.print_slot_fn_open(AwaitDetector::found_in_child(child));
             let prev = self.skip_slot_attribute;
             self.skip_slot_attribute = true;
             self.print_jsx_child(child);
@@ -594,7 +595,7 @@ impl<'a> AstroCodegen<'a> {
             self.print("[");
             self.print(expr);
             self.print("]: ");
-            self.print_slot_fn_open();
+            self.print_slot_fn_open(AwaitDetector::found_in_refs(slot_children));
             let prev = self.skip_slot_attribute;
             self.skip_slot_attribute = true;
             for child in slot_children {
@@ -612,7 +613,7 @@ impl<'a> AstroCodegen<'a> {
             self.print("[");
             self.print(expr_str);
             self.print("]: ");
-            self.print_slot_fn_open();
+            self.print_slot_fn_open(AwaitDetector::found_in_child(child));
             // Do NOT set skip_slot_attribute — Go compiler keeps the slot prop on the component
             self.print_jsx_child(child);
             self.print("`,");
@@ -956,7 +957,7 @@ impl<'a> AstroCodegen<'a> {
                         self.print("{\"");
                         self.print(&escape_double_quotes(&slot_name));
                         self.print("\": ");
-                        self.print_slot_fn_open();
+                        self.print_slot_fn_open(AwaitDetector::found_in_element(el));
                         let prev = self.skip_slot_attribute;
                         self.skip_slot_attribute = true;
                         self.print_jsx_element(el);
@@ -969,7 +970,7 @@ impl<'a> AstroCodegen<'a> {
                         self.print("{[");
                         self.print(&expr_str);
                         self.print("]: ");
-                        self.print_slot_fn_open();
+                        self.print_slot_fn_open(AwaitDetector::found_in_element(el));
                         // Keep the slot prop on the component (matches Go compiler behavior)
                         self.print_jsx_element(el);
                         self.print("`}");
@@ -977,7 +978,7 @@ impl<'a> AstroCodegen<'a> {
                     None => {
                         // No slot attribute — print as default
                         self.print("{\"default\": ");
-                        self.print_slot_fn_open();
+                        self.print_slot_fn_open(AwaitDetector::found_in_element(el));
                         self.print_jsx_element(el);
                         self.print("`}");
                     }
