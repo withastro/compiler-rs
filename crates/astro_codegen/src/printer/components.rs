@@ -421,7 +421,8 @@ impl<'a> AstroCodegen<'a> {
 
                     self.add_source_mapping_for_span(attr.span);
                     self.print("\"");
-                    self.print(&name);
+                    // Shorthand names can be arbitrary expression text, so escape as a JS string key.
+                    self.print(&escape_double_quotes(&escape_newlines(&name)));
                     self.print("\":");
 
                     // Merge scope class into class attribute value (matches Go compiler).

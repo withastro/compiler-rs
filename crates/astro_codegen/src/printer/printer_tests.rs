@@ -2953,3 +2953,72 @@ fn test_fragment_workaround_not_needed() {
         "Fragment: should not have trailing whitespace: {fragment_output}"
     );
 }
+
+// Regression test for https://github.com/withastro/compiler-rs/issues/51:
+// a non-identifier `{expr}` is a shorthand whose prop name is the expression text.
+#[test]
+fn test_shorthand_object_attribute() {
+    let source = r"---
+const sum = (a, b) => a + b;
+---
+<Debug {{answer: sum(2, 4)}} />";
+    let output = compile_astro(source);
+
+    assert!(
+        output.contains(r#""{answer: sum(2, 4)}":"#),
+        "Missing shorthand prop name derived from the expression, got:\n{output}"
+    );
+    assert!(
+        output.contains("{ answer: sum(2, 4) }"),
+        "Missing shorthand prop value, got:\n{output}"
+    );
+}
+
+// Diverges from Go: the shorthand prop name is escaped so quotes/newlines still emit valid JS.
+#[test]
+fn test_shorthand_attribute_name_is_escaped() {
+    let source = "---\n---\n<Debug {{ \"a\": 1 }} />";
+    let output = compile_astro(source);
+
+    assert!(
+        output.contains(r#""{ \"a\": 1 }":"#),
+        "Shorthand prop name should be escaped, got:\n{output}"
+    );
+
+    let allocator = Allocator::default();
+    let parsed = Parser::new(&allocator, &output, SourceType::mjs()).parse();
+    assert!(
+        parsed.errors.is_empty(),
+        "Generated module is not valid JS: {:?}",
+        parsed.errors
+    );
+}
+
+// On a plain element the shorthand goes through `$$addAttribute`, with the same
+// name escaping as the component path. A newline in the name must also be escaped.
+#[test]
+fn test_shorthand_attribute_name_is_escaped_on_element() {
+    let source = "---\n---\n<div {{ \"a\": 1 }}></div>";
+    let output = compile_astro(source);
+
+    assert!(
+        output.contains(r#", "{ \"a\": 1 }")"#),
+        "Element shorthand name should be escaped in $$addAttribute, got:\n{output}"
+    );
+
+    let multiline = compile_astro("---\n---\n<div {{\n  \"a\": 1\n}}></div>");
+    assert!(
+        multiline.contains(r#"\n"#),
+        "Newline in shorthand name should be escaped, got:\n{multiline}"
+    );
+
+    let allocator = Allocator::default();
+    for out in [&output, &multiline] {
+        let parsed = Parser::new(&allocator, out, SourceType::mjs()).parse();
+        assert!(
+            parsed.errors.is_empty(),
+            "Generated module is not valid JS: {:?}",
+            parsed.errors
+        );
+    }
+}
