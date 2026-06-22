@@ -2775,6 +2775,30 @@ fn test_await_using_frontmatter_makes_wrapper_async() {
 }
 
 #[test]
+fn test_async_slot_detects_nested_for_await() {
+    // for-await can only sit in a nested function, so the slot is over-marked async by AwaitDetector's subtree scan — not the frontmatter scanner.
+    let source = "---\nasync function* stream() { yield 'a'; }\n---\n<Wrapper>{(async () => {\n  let out = '';\n  for await (const chunk of stream()) { out += chunk; }\n  return out;\n})()}</Wrapper>";
+    let output = compile_astro(source);
+    let compact: String = output.split_whitespace().collect();
+    assert!(
+        compact.contains("\"default\":async()=>"),
+        "slot with nested for-await should be async: {output}"
+    );
+}
+
+#[test]
+fn test_async_slot_detects_nested_await_using() {
+    // Same for await-using: nested-only, so the slot is over-marked async via the subtree scan.
+    let source = "<Wrapper>{(async () => {\n  await using res = getResource();\n  return res.value;\n})()}</Wrapper>";
+    let output = compile_astro(source);
+    let compact: String = output.split_whitespace().collect();
+    assert!(
+        compact.contains("\"default\":async()=>"),
+        "slot with nested await-using should be async: {output}"
+    );
+}
+
+#[test]
 fn test_expression_implicit_fragment_inline_elements_no_extra_space() {
     // Inline elements shouldn't get extra whitespace injected
     let source = "<span>{\n  <strong>hello</strong>\n  <em>world</em>\n}</span>";
