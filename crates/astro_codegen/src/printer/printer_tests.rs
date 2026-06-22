@@ -3022,3 +3022,14 @@ fn test_shorthand_attribute_name_is_escaped_on_element() {
         );
     }
 }
+
+// Unquoted hex-color attributes (`#` + digit) must not error — the JS lexer's
+// "Invalid Character" from pre-lexing `#18b218` as a private name is dropped.
+#[test]
+fn test_unquoted_hash_color_attribute() {
+    let output = compile_astro("<div color=#18b218 background=#686868>x</div>");
+    assert!(
+        output.contains(r##"<div color="#18b218" background="#686868">"##),
+        "Unquoted hex colors should emit as quoted attributes, got:\n{output}"
+    );
+}
