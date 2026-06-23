@@ -1,5 +1,19 @@
 # @astrojs/compiler-rs
 
+## 0.2.3
+
+### Patch Changes
+
+- c5b8921: Fixes compact mode not collapsing whitespace inside component and custom-element slot content.
+- fd756ce: Fixes several cases where `await` failed to make the generated code `async`, producing invalid JavaScript.
+- 7bd7e32: Fixes a parse error on `{{ ... }}` shorthand attributes containing an object expression, such as `<Debug {{ answer: sum(2, 4) }} />`. These now compile correctly instead of suggesting to use a spread attribute.
+- 8b6d424: Fixes an "Invalid Character" error on unquoted attribute values that start with `#` followed by a digit, such as `<div color=#18b218 />`. Unquoted hex colors now parse correctly.
+- Updated dependencies [c5b8921]
+- Updated dependencies [fd756ce]
+- Updated dependencies [7bd7e32]
+- Updated dependencies [8b6d424]
+  - @astrojs/compiler-binding@0.2.3
+
 ## 0.2.2
 
 ### Patch Changes
