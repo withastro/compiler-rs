@@ -1,0 +1,27 @@
+---
+source: crates/astro_codegen/tests/snapshots.rs
+input_file: crates/astro_codegen/tests/fixtures/slot_whitespace_verbatim_when_not_compact.astro
+---
+import { render as $$render, createComponent as $$createComponent, renderComponent as $$renderComponent, maybeRenderHead as $$maybeRenderHead, createMetadata as $$createMetadata } from "http://localhost:3000/";
+import Card from "./Card.astro";
+import "<stdin>?astro&type=style&index=0&lang.css";
+import * as $$module1 from "./Card.astro";
+export const $$metadata = $$createMetadata(import.meta.url, {
+	modules: [{
+		module: $$module1,
+		specifier: "./Card.astro",
+		assert: {}
+	}],
+	hydratedComponents: [],
+	clientOnlyComponents: [],
+	hydrationDirectives: new Set([]),
+	hoisted: []
+});
+const $$Component = $$createComponent(($$result, $$props, $$slots) => {
+	return $$render`${$$renderComponent($$result, "Card", Card, { "class": "astro-rwgrried" }, { "default": () => $$render`
+  
+  ${$$maybeRenderHead($$result)}<p class="astro-rwgrried">hi</p>
+  text
+` })}`;
+}, undefined, undefined);
+export default $$Component;

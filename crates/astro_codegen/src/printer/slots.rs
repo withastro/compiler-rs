@@ -18,6 +18,7 @@ use super::AwaitDetector;
 use super::escape::escape_double_quotes;
 use super::runtime;
 use super::{expr_to_string, gen_to_string};
+use crate::options::CompactMode;
 
 /// Represents a slot attribute value — either a static string or a dynamic expression.
 #[derive(Debug, Clone)]
@@ -424,6 +425,20 @@ impl<'a> AstroCodegen<'a> {
         self.print("`");
     }
 
+    /// Emit slot body children. Under compact mode they route through the shared
+    /// whitespace-collapsing path so slotted content is trimmed like regular
+    /// template children; with compact disabled they are emitted verbatim, which
+    /// is what the Go compiler does for slot whitespace.
+    fn print_slot_children(&mut self, children: &[&JSXChild<'a>]) {
+        if self.options.compact == CompactMode::Disabled {
+            for child in children {
+                self.print_jsx_child(child);
+            }
+        } else {
+            self.print_jsx_children_compact_refs(children);
+        }
+    }
+
     /// Print all children as a single default slot, preserving slot attributes.
     /// Used for custom elements (web components) where the browser handles slots.
     pub(super) fn print_component_default_slot_only(&mut self, children: &[JSXChild<'a>]) {
@@ -431,13 +446,13 @@ impl<'a> AstroCodegen<'a> {
         self.print_slot_fn_open(AwaitDetector::found_in_children(children));
 
         // DO NOT set skip_slot_attribute — we want to preserve slot="..." for custom elements
-        for child in children {
-            // Skip HTML comments in slots if configured
-            if self.options.strip_slot_comments && matches!(child, JSXChild::AstroComment(_)) {
-                continue;
-            }
-            self.print_jsx_child(child);
-        }
+        let rendered: Vec<&JSXChild<'a>> = children
+            .iter()
+            .filter(|child| {
+                !(self.options.strip_slot_comments && matches!(child, JSXChild::AstroComment(_)))
+            })
+            .collect();
+        self.print_slot_children(&rendered);
 
         self.print("`,}");
     }
@@ -554,9 +569,7 @@ impl<'a> AstroCodegen<'a> {
         if has_meaningful_content {
             self.print("\"default\": ");
             self.print_slot_fn_open(AwaitDetector::found_in_refs(&default_children));
-            for child in &default_children {
-                self.print_jsx_child(child);
-            }
+            self.print_slot_children(&default_children);
             self.print("`,");
         }
 
@@ -569,9 +582,7 @@ impl<'a> AstroCodegen<'a> {
             // Skip slot attribute when printing these children
             let prev = self.skip_slot_attribute;
             self.skip_slot_attribute = true;
-            for child in slot_children {
-                self.print_jsx_child(child);
-            }
+            self.print_slot_children(slot_children);
             self.skip_slot_attribute = prev;
             self.print("`,");
         }
@@ -598,9 +609,7 @@ impl<'a> AstroCodegen<'a> {
             self.print_slot_fn_open(AwaitDetector::found_in_refs(slot_children));
             let prev = self.skip_slot_attribute;
             self.skip_slot_attribute = true;
-            for child in slot_children {
-                self.print_jsx_child(child);
-            }
+            self.print_slot_children(slot_children);
             self.skip_slot_attribute = prev;
             self.print("`,");
         }

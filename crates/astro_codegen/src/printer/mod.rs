@@ -1326,18 +1326,26 @@ impl<'a> AstroCodegen<'a> {
     /// context about its siblings (lone child detection, whitespace-insensitive
     /// parent).  When compact is disabled, it falls through to `print_jsx_child`.
     fn print_jsx_children_compact(&mut self, children: &[JSXChild<'a>]) {
+        let refs: Vec<&JSXChild<'a>> = children.iter().collect();
+        self.print_jsx_children_compact_refs(&refs);
+    }
+
+    /// Reference-slice variant of [`Self::print_jsx_children_compact`]: slot
+    /// bodies hold their children as `Vec<&JSXChild>`, so they route here to get
+    /// the same whitespace collapsing as regular element children.
+    fn print_jsx_children_compact_refs(&mut self, children: &[&JSXChild<'a>]) {
         let compact = self.options.compact;
 
         // Pre-compute which children will be extracted (produce no output),
         // so we can exclude them from whitespace decisions.
         let extracted: Vec<bool> = children
             .iter()
-            .map(|c| self.is_extracted_child(c))
+            .map(|&c| self.is_extracted_child(c))
             .collect();
 
         if compact == CompactMode::Disabled {
             for (i, child) in children.iter().enumerate() {
-                if let JSXChild::Text(text) = child {
+                if let JSXChild::Text(text) = *child {
                     // In non-compact mode, skip whitespace-only text nodes
                     // that are at the edge of visible content (adjacent only
                     // to extracted elements like <style>).
@@ -1367,7 +1375,7 @@ impl<'a> AstroCodegen<'a> {
             .count();
 
         for (i, child) in children.iter().enumerate() {
-            if let JSXChild::Text(text) = child {
+            if let JSXChild::Text(text) = *child {
                 // Skip whitespace-only text nodes at the edge of visible
                 // content (e.g. between the last real element and an
                 // extracted <style>).
@@ -1570,7 +1578,7 @@ impl<'a> AstroCodegen<'a> {
 /// This is used to remove trailing whitespace before extracted `<style>`
 /// elements (and leading whitespace after them), which would otherwise
 /// render as a spurious space in the HTML output.
-fn is_edge_whitespace(children: &[JSXChild<'_>], extracted: &[bool], idx: usize) -> bool {
+fn is_edge_whitespace(children: &[&JSXChild<'_>], extracted: &[bool], idx: usize) -> bool {
     let is_ignorable = |i: usize, c: &JSXChild<'_>| -> bool {
         extracted[i]
             || matches!(c, JSXChild::AstroScript(_) | JSXChild::AstroDoctype(_))
