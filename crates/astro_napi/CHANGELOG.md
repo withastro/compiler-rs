@@ -1,5 +1,21 @@
 # @astrojs/compiler-binding
 
+## 0.2.3
+
+### Patch Changes
+
+- 6a56dea: Fixes several cases of adjacent JSX elements inside a `{...}` expression acting weirdly, including:
+
+  - HTML comments between the elements now render instead of being dropped, including when a comment is on its own line.
+  - Whitespace between the elements is preserved.
+  - A `<script>` that is not the first element no longer fails to parse when its body contains an HTML closing tag inside a template literal.
+
+- c5b8921: Fixes compact mode not collapsing whitespace inside component and custom-element slot content.
+- fd756ce: Fixes several cases where `await` failed to make the generated code `async`, producing invalid JavaScript.
+- 7bd7e32: Fixes a parse error on `{{ ... }}` shorthand attributes containing an object expression, such as `<Debug {{ answer: sum(2, 4) }} />`. These now compile correctly instead of suggesting to use a spread attribute.
+- 6a56dea: Fixes a `<style>` nested in a `{...}` expression (e.g. `{cond && <style>…</style>}`) being silently dropped from the output.
+- 8b6d424: Fixes an "Invalid Character" error on unquoted attribute values that start with `#` followed by a digit, such as `<div color=#18b218 />`. Unquoted hex colors now parse correctly.
+
 ## 0.2.2
 
 ### Patch Changes
