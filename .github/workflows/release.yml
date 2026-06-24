@@ -4,7 +4,7 @@ on:
   workflow_run:
     workflows: [CI]
     types: [completed]
-    branches: [main, feat/rust]
+    branches: [main]
 
 permissions:
   contents: write
