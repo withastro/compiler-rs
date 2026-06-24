@@ -31,7 +31,8 @@ const $$Component = $$createComponent(($$result, $$props, $$slots) => {
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital@0;1&display=swap" rel="stylesheet">
 
 <!-- Scrollable a11y code helper -->
-<script type="module" src="/make-scrollable-code-focusable.js"><\/script><script>
+<script type="module" src="/make-scrollable-code-focusable.js"><\/script><!-- This is intentionally inlined to avoid FOUC -->
+<script>
   const root = document.documentElement;
   const theme = localStorage.getItem('theme');
   if (theme === 'dark' || (!theme) && window.matchMedia('(prefers-color-scheme: dark)').matches) {

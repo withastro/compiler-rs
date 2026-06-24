@@ -227,6 +227,12 @@ pub struct AstroCodegen<'a> {
     /// Tracks whether we're inside an element that prevents style hoisting
     /// (svg, noscript, template).
     in_non_hoistable: bool,
+    /// Tracks whether we're inside a `{...}` expression. Astro treats an
+    /// expression as a `<template>` node, which makes nested `<style>` elements
+    /// non-hoistable (rendered inline). Unlike [`Self::in_non_hoistable`], this
+    /// does NOT prevent `<script>` hoisting; the Go compiler still hoists
+    /// scripts inside expressions.
+    in_expression: bool,
     /// Depth counter for raw elements (`<pre>`, `<textarea>`, `<script>`,
     /// `<style>`, `is:raw`, …). When > 0, whitespace collapsing is disabled
     /// for all descendant text nodes.
@@ -320,6 +326,7 @@ impl<'a> AstroCodegen<'a> {
             extracted_css: Vec::new(),
             has_scoped_styles: false,
             in_non_hoistable: false,
+            in_expression: false,
             raw_element_depth: 0,
             define_vars_values: Vec::new(),
             define_vars_injected: false,
@@ -1403,7 +1410,10 @@ impl<'a> AstroCodegen<'a> {
     fn is_extracted_child(&self, child: &JSXChild<'a>) -> bool {
         if let JSXChild::Element(el) = child {
             let name = get_jsx_element_name(&el.opening_element.name);
-            name == "style" && !self.in_non_hoistable && style::should_extract_style_element(el)
+            name == "style"
+                && !self.in_non_hoistable
+                && !self.in_expression
+                && style::should_extract_style_element(el)
         } else {
             false
         }
@@ -1413,9 +1423,13 @@ impl<'a> AstroCodegen<'a> {
     fn print_jsx_element(&mut self, el: &JSXElement<'a>) {
         let name = get_jsx_element_name(&el.opening_element.name);
 
-        // Handle <style> elements — extract CSS, skip from template output
-        // (only if not inside svg/noscript/template)
-        if name == "style" && !self.in_non_hoistable && self.should_extract_style(el) {
+        // Skip styles already pulled out by prescan. Those in svg/noscript/template
+        // or a `{...}` expression are never extracted, so they fall through inline.
+        if name == "style"
+            && !self.in_non_hoistable
+            && !self.in_expression
+            && self.should_extract_style(el)
+        {
             // Style was already extracted during prescan — just skip it from template
             return;
         }

@@ -17,11 +17,14 @@ const $$Component = $$createComponent(($$result, $$props, $$slots) => {
         ${Object.entries(DUMMY_DATA).map(([dummyKey, dummyValue]) => {
 		return $$render`<p>
                         onlyp ${dummyKey}
-                    </p><h2>
+                    </p>
+                    <h2>
                         onlyh2 ${dummyKey}
-                    </h2><div>
+                    </h2>
+                    <div>
                         <h2>div+h2 ${dummyKey}</h2>
-                    </div><p>
+                    </div>
+                    <p>
                         <h2>p+h2 ${dummyKey}</h2>
                     </p>`;
 	})}

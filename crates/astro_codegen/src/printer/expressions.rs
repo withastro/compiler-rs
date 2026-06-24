@@ -49,7 +49,12 @@ impl<'a> AstroCodegen<'a> {
         }
 
         self.print("${");
+        // Prescan never descends into expressions, so a nested `<style>` is
+        // unextracted and must render inline rather than be skipped (`in_expression`).
+        let was_in_expression = self.in_expression;
+        self.in_expression = true;
         self.print_jsx_expression(&expr.expression);
+        self.in_expression = was_in_expression;
         self.print("}");
     }
 
