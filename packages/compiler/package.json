@@ -7,9 +7,9 @@
   "homepage": "https://astro.build",
   "version": "0.2.3",
   "scripts": {
-    "build": "tsup"
+    "build": "tsdown && publint"
   },
-  "main": "./dist/index.js",
+  "main": "./dist/index.cjs",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/withastro/compiler-rs.git"
@@ -26,22 +26,34 @@
   ],
   "exports": {
     ".": {
-      "types": "./dist/index.d.ts",
-      "import": "./dist/index.js",
-      "require": "./dist/index.cjs",
-      "default": "./dist/index.js"
+      "import": {
+        "types": "./dist/index.d.mts",
+        "default": "./dist/index.mjs"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
     },
     "./async": {
-      "types": "./dist/async.d.ts",
-      "import": "./dist/async.js",
-      "require": "./dist/async.cjs",
-      "default": "./dist/async.js"
+      "import": {
+        "types": "./dist/async.d.mts",
+        "default": "./dist/async.mjs"
+      },
+      "require": {
+        "types": "./dist/async.d.cts",
+        "default": "./dist/async.cjs"
+      }
     },
     "./utils": {
-      "types": "./dist/utils.d.ts",
-      "import": "./dist/utils.js",
-      "require": "./dist/utils.cjs",
-      "default": "./dist/utils.js"
+      "import": {
+        "types": "./dist/utils.d.mts",
+        "default": "./dist/utils.mjs"
+      },
+      "require": {
+        "types": "./dist/utils.d.cts",
+        "default": "./dist/utils.cjs"
+      }
     },
     "./package.json": "./package.json"
   },
@@ -51,7 +63,11 @@
   "devDependencies": {
     "@jridgewell/trace-mapping": "^0.3.16",
     "@types/node": "^22",
-    "tsup": "^6.7.0",
-    "typescript": "~5.5.3"
+    "tsdown": "^0.22.3",
+    "typescript": "~5.5.3",
+    "publint": "^0.3.21"
+  },
+  "engines": {
+    "node": ">=22.12.0"
   }
 }
