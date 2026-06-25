@@ -239,6 +239,19 @@ impl<'a> AstroCodegen<'a> {
                 self.print(&format!(" {} ", assign.operator.as_str()));
                 self.print_expression(&assign.right);
             }
+            Expression::StaticMemberExpression(member) => {
+                self.add_source_mapping_for_span(expr.span());
+                self.print_expression(&member.object);
+                self.print(if member.optional { "?." } else { "." });
+                self.print(member.property.name.as_str());
+            }
+            Expression::ComputedMemberExpression(member) => {
+                self.add_source_mapping_for_span(expr.span());
+                self.print_expression(&member.object);
+                self.print(if member.optional { "?.[" } else { "[" });
+                self.print_expression(&member.expression);
+                self.print("]");
+            }
             Expression::SequenceExpression(seq) => {
                 self.add_source_mapping_for_span(expr.span());
                 for (i, expr) in seq.expressions.iter().enumerate() {

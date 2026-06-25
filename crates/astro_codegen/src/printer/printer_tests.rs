@@ -3033,3 +3033,26 @@ fn test_unquoted_hash_color_attribute() {
         "Unquoted hex colors should emit as quoted attributes, got:\n{output}"
     );
 }
+
+#[test]
+fn test_jsx_object_literal_lookup() {
+    let source = include_str!("../../tests/fixtures/jsx_object_literal_lookup.astro");
+    let output = compile_astro(source);
+
+    assert!(
+        !output.contains("main: <Widget />"),
+        "JSX object literal values should be transformed, got:\n{output}"
+    );
+    assert!(
+        output.contains("$$renderComponent"),
+        "Expected transformed JSX in object literal lookup, got:\n{output}"
+    );
+
+    let allocator = Allocator::default();
+    let parsed = Parser::new(&allocator, &output, SourceType::mjs()).parse();
+    assert!(
+        parsed.errors.is_empty(),
+        "Generated module is not valid JS: {:?}",
+        parsed.errors
+    );
+}
