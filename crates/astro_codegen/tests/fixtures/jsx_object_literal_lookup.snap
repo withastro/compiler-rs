@@ -1,0 +1,29 @@
+---
+source: crates/astro_codegen/tests/snapshots.rs
+input_file: crates/astro_codegen/tests/fixtures/jsx_object_literal_lookup.astro
+---
+import { render as $$render, createComponent as $$createComponent, renderComponent as $$renderComponent, maybeRenderHead as $$maybeRenderHead, createMetadata as $$createMetadata } from "http://localhost:3000/";
+import Widget from "./Widget.astro";
+import * as $$module1 from "./Widget.astro";
+export const $$metadata = $$createMetadata(import.meta.url, {
+	modules: [{
+		module: $$module1,
+		specifier: "./Widget.astro",
+		assert: {}
+	}],
+	hydratedComponents: [],
+	clientOnlyComponents: [],
+	hydrationDirectives: new Set([]),
+	hoisted: []
+});
+const $$Component = $$createComponent(($$result, $$props, $$slots) => {
+	return $$render`<html>
+  ${$$maybeRenderHead($$result)}<body>
+    ${(layer = "main") => ({
+		main: $$render`${$$renderComponent($$result, "Widget", Widget, {})}`,
+		other: $$render`<p>Other layer</p>`
+	})[layer]}
+  </body>
+</html>`;
+}, undefined, undefined);
+export default $$Component;
