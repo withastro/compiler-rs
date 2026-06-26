@@ -7,7 +7,7 @@
 //! `is_head_element`).
 
 use super::escape::{
-    escape_double_quotes, escape_html_attribute, escape_newlines, escape_template_literal,
+    escape_double_quotes, escape_html_attribute, escape_template_literal,
 };
 use super::runtime;
 use super::whitespace::{has_is_raw_attr, is_raw_element_name};
@@ -853,7 +853,7 @@ impl<'a> AstroCodegen<'a> {
                     self.print_jsx_expression(&expr.expression);
                     self.print(", \"");
                     // Shorthand names can be arbitrary expression text, so escape as a JS string key.
-                    self.print(&escape_double_quotes(&escape_newlines(name)));
+                    self.print(&escape_double_quotes(name));
                     self.print("\")}");
                 }
                 JSXAttributeValue::Element(el) => {

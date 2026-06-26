@@ -6,7 +6,7 @@
 
 use super::AstroCodegen;
 use super::elements::ScopeId;
-use super::escape::{decode_html_entities, escape_double_quotes, escape_newlines};
+use super::escape::{decode_html_entities, escape_double_quotes};
 use super::expr_to_string;
 use super::runtime;
 use super::whitespace::has_is_raw_attr;
@@ -422,7 +422,7 @@ impl<'a> AstroCodegen<'a> {
                     self.add_source_mapping_for_span(attr.span);
                     self.print("\"");
                     // Shorthand names can be arbitrary expression text, so escape as a JS string key.
-                    self.print(&escape_double_quotes(&escape_newlines(&name)));
+                    self.print(&escape_double_quotes(&name));
                     self.print("\":");
 
                     // Merge scope class into class attribute value (matches Go compiler).
@@ -444,7 +444,7 @@ impl<'a> AstroCodegen<'a> {
                                 } else {
                                     self.print(&format!(
                                         "\"{} {sc}\"",
-                                        escape_double_quotes(&escape_newlines(val))
+                                        escape_double_quotes(val)
                                     ));
                                 }
                             }
@@ -467,7 +467,7 @@ impl<'a> AstroCodegen<'a> {
                         }
                         Some(JSXAttributeValue::StringLiteral(lit)) => {
                             self.print("\"");
-                            self.print(&escape_double_quotes(&escape_newlines(lit.value.as_str())));
+                            self.print(&escape_double_quotes(lit.value.as_str()));
                             self.print("\"");
                         }
                         Some(JSXAttributeValue::ExpressionContainer(expr)) => {

@@ -28,13 +28,17 @@ pub fn escape_template_literal(s: &str) -> String {
     result
 }
 
-/// Escape double quotes for embedding inside a `"..."` string.
+/// Escape a string for embedding inside a `"..."` JS string literal.
 ///
-/// Only escapes `"` — backslashes are not escaped because the inputs are
-/// HTML attribute values or AST string literals, which don't contain
-/// escape sequences. Matches the Go compiler's `escapeDoubleQuote`.
+/// Backslashes, then quotes, then newlines — in that order, so nothing is
+/// double-escaped. A `\` is doubled so it survives the Phase-2 codegen
+/// round-trip (else `pattern="^x\.y$"` collapses to `^x.y$`). Diverges from Go's
+/// `escapeDoubleQuote`, which escapes neither backslashes nor newlines.
 pub fn escape_double_quotes(s: &str) -> String {
-    s.cow_replace('"', "\\\"").into_owned()
+    let s = s.cow_replace('\\', "\\\\");
+    let s = s.cow_replace('"', "\\\"");
+    let s = s.cow_replace('\n', "\\n");
+    s.cow_replace('\r', "\\r").into_owned()
 }
 
 /// Escape single quotes for embedding inside a `'...'` string.
@@ -45,21 +49,15 @@ pub fn escape_single_quote(s: &str) -> String {
     s.cow_replace('\'', "\\'").into_owned()
 }
 
-/// Escape literal newlines (`\n`, `\r`) for embedding inside a JS string literal.
-///
-/// Quoted attribute values may legally contain raw newlines in HTML (e.g. from
-/// `prettier-plugin-classnames`), but those break a JS `"..."` string. Matches
-/// the Go compiler's `escapeNewlines`.
-pub fn escape_newlines(s: &str) -> String {
-    let s = s.cow_replace('\n', "\\n");
-    s.cow_replace('\r', "\\r").into_owned()
-}
-
 /// Escape a string for use as an HTML attribute value inside a template literal.
 ///
-/// Escapes template literal syntax (`` ` `` and `${`), HTML special characters
-/// (`"`, `<`, `>`), and ampersands that are not part of valid HTML entities.
+/// Escapes backslashes, template literal syntax (`` ` `` and `${`), HTML special
+/// characters (`"`, `<`, `>`), and ampersands that are not part of valid HTML
+/// entities.
 pub fn escape_html_attribute(s: &str) -> String {
+    // Double backslashes so the `$$render` template's cooked value keeps them
+    // (else `^x\.y$` → `^x.y$`); before the `` \` ``/`\${` escapes so those aren't doubled.
+    let s = s.cow_replace('\\', "\\\\");
     // Escape template literal syntax since we're inside a template literal
     let s = s.cow_replace('`', "\\`");
     let s = s.cow_replace("${", "\\${");
@@ -296,9 +294,21 @@ mod tests {
     }
 
     #[test]
-    fn double_quotes_preserves_backslash() {
-        // Per the doc: backslashes are NOT escaped
-        assert_eq!(escape_double_quotes("a\\b"), "a\\b");
+    fn double_quotes_escapes_backslash() {
+        assert_eq!(escape_double_quotes("a\\b"), "a\\\\b");
+        // backslash before quote, so the `\` isn't doubled into the escaped quote
+        assert_eq!(escape_double_quotes("a\\\"b"), "a\\\\\\\"b");
+    }
+
+    #[test]
+    fn double_quotes_escapes_newlines() {
+        // raw newlines (e.g. from prettier-plugin-classnames) become `\n`/`\r`
+        assert_eq!(escape_double_quotes("a\nb"), "a\\nb");
+        assert_eq!(escape_double_quotes("a\r\nb"), "a\\r\\nb");
+        assert_eq!(
+            escape_double_quotes("some-class\n  another-class"),
+            "some-class\\n  another-class"
+        );
     }
 
     // ---- escape_single_quote ----
@@ -323,37 +333,6 @@ mod tests {
         assert_eq!(escape_single_quote("a\\b"), "a\\b");
     }
 
-    // ---- escape_newlines ----
-
-    #[test]
-    fn newlines_basic() {
-        assert_eq!(escape_newlines("hello"), "hello");
-    }
-
-    #[test]
-    fn newlines_escapes_lf() {
-        assert_eq!(escape_newlines("a\nb"), "a\\nb");
-    }
-
-    #[test]
-    fn newlines_escapes_cr() {
-        assert_eq!(escape_newlines("a\rb"), "a\\rb");
-    }
-
-    #[test]
-    fn newlines_escapes_crlf() {
-        assert_eq!(escape_newlines("a\r\nb"), "a\\r\\nb");
-    }
-
-    #[test]
-    fn newlines_multiline_class() {
-        // The motivating case: prettier-plugin-classnames-style class attribute
-        assert_eq!(
-            escape_newlines("some-class\n  another-class\n  third-class"),
-            "some-class\\n  another-class\\n  third-class"
-        );
-    }
-
     // ---- escape_html_attribute ----
 
     #[test]
@@ -369,6 +348,14 @@ mod tests {
     #[test]
     fn html_attr_escapes_dollar_brace() {
         assert_eq!(escape_html_attribute("${x}"), "\\${x}");
+    }
+
+    #[test]
+    fn html_attr_escapes_backslash() {
+        assert_eq!(escape_html_attribute("^x\\.y$"), "^x\\\\.y$");
+        assert_eq!(escape_html_attribute("C:\\path"), "C:\\\\path");
+        // backslash before backtick, so the `\` isn't doubled into the escaped backtick
+        assert_eq!(escape_html_attribute("a\\`b"), "a\\\\\\`b");
     }
 
     #[test]
