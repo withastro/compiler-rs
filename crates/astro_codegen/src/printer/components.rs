@@ -442,10 +442,7 @@ impl<'a> AstroCodegen<'a> {
                                 if val.is_empty() {
                                     self.print(&format!("\"{sc}\""));
                                 } else {
-                                    self.print(&format!(
-                                        "\"{} {sc}\"",
-                                        escape_double_quotes(val)
-                                    ));
+                                    self.print(&format!("\"{} {sc}\"", escape_double_quotes(val)));
                                 }
                             }
                             Some(JSXAttributeValue::ExpressionContainer(expr)) => {

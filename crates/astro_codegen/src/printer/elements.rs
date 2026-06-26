@@ -6,9 +6,7 @@
 //! attributes, and element classification helpers (`is_void_element`,
 //! `is_head_element`).
 
-use super::escape::{
-    escape_double_quotes, escape_html_attribute, escape_template_literal,
-};
+use super::escape::{escape_double_quotes, escape_html_attribute, escape_template_literal};
 use super::runtime;
 use super::whitespace::{has_is_raw_attr, is_raw_element_name};
 use super::{AstroCodegen, expr_to_string};
