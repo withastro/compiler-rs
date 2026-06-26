@@ -3,7 +3,7 @@ import { defineConfig } from 'tsdown';
 export default defineConfig((inlineConfig) => ({
 	entry: ['src/**'],
 	outDir: 'dist',
-	format: ['cjs', 'esm'],
+	format: ['esm'],
 	dts: true,
 	clean: true,
 	minify: !inlineConfig.watch,
