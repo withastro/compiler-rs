@@ -10,8 +10,7 @@ use super::escape::{decode_html_entities, escape_double_quotes};
 use super::expr_to_string;
 use super::runtime;
 use super::whitespace::has_is_raw_attr;
-use crate::css_scoping;
-use crate::options::{CompactMode, ScopedStyleStrategy};
+use crate::options::CompactMode;
 use crate::scanner::{get_jsx_attribute_name, is_custom_element};
 use oxc_ast::ast::*;
 
@@ -203,15 +202,7 @@ impl<'a> AstroCodegen<'a> {
         // Determine if this component should receive a scope identifier.
         // Like the Go compiler, inject scope into all components (PascalCase and custom elements)
         // that are not in the NeverScopedElements list.
-        let scope_id = if self.has_scoped_styles && css_scoping::should_scope_element(name) {
-            let hash = &self.source_hash;
-            match self.options.scoped_style_strategy() {
-                ScopedStyleStrategy::Attribute => Some(ScopeId::DataAttribute(hash.clone())),
-                _ => Some(ScopeId::Class(format!("astro-{hash}"))),
-            }
-        } else {
-            None
-        };
+        let scope_id = self.scope_id_for(name);
 
         // Components always receive slot as a prop.
         // Only HTML elements have the slot attribute stripped when inside named slots.

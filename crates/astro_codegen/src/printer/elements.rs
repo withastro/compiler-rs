@@ -90,6 +90,18 @@ pub(super) fn is_head_element(name: &str) -> bool {
 
 impl<'a> AstroCodegen<'a> {
     /// Print an HTML (non-component) element.
+    pub(super) fn scope_id_for(&self, name: &str) -> Option<ScopeId> {
+        if self.has_scoped_styles && css_scoping::should_scope_element(name) {
+            let hash = &self.source_hash;
+            match self.options.scoped_style_strategy() {
+                ScopedStyleStrategy::Attribute => Some(ScopeId::DataAttribute(hash.clone())),
+                _ => Some(ScopeId::Class(format!("astro-{hash}"))),
+            }
+        } else {
+            None
+        }
+    }
+
     pub(super) fn print_html_element(&mut self, el: &JSXElement<'a>, name: &str) {
         self.add_source_mapping_for_span(el.opening_element.span);
         // Handle <slot> element specially — it's a slot placeholder, not an HTML element.
@@ -132,15 +144,7 @@ impl<'a> AstroCodegen<'a> {
         let set_directive = Self::extract_set_directive(&el.opening_element.attributes);
 
         // Determine if this element should receive a scope identifier
-        let scope_id = if self.has_scoped_styles && css_scoping::should_scope_element(name) {
-            let hash = &self.source_hash;
-            match self.options.scoped_style_strategy() {
-                ScopedStyleStrategy::Attribute => Some(ScopeId::DataAttribute(hash.clone())),
-                _ => Some(ScopeId::Class(format!("astro-{hash}"))),
-            }
-        } else {
-            None
-        };
+        let scope_id = self.scope_id_for(name);
 
         // Opening tag
         self.print("<");
