@@ -474,27 +474,7 @@ impl<'a> AstroCodegen<'a> {
             }
             Statement::VariableDeclaration(decl) => {
                 self.add_source_mapping_for_span(decl.span);
-                let kind = match decl.kind {
-                    VariableDeclarationKind::Var => "var",
-                    VariableDeclarationKind::Let => "let",
-                    VariableDeclarationKind::Const => "const",
-                    VariableDeclarationKind::Using => "using",
-                    VariableDeclarationKind::AwaitUsing => "await using",
-                };
-                for (i, declarator) in decl.declarations.iter().enumerate() {
-                    if i == 0 {
-                        self.print(kind);
-                        self.print(" ");
-                    } else {
-                        self.print(", ");
-                    }
-                    let pattern_code = gen_to_string(&declarator.id);
-                    self.print(&pattern_code);
-                    if let Some(init) = &declarator.init {
-                        self.print(" = ");
-                        self.print_expression(init);
-                    }
-                }
+                self.print_variable_declaration(decl);
                 self.print(";\n");
             }
             Statement::IfStatement(if_stmt) => {
@@ -824,30 +804,34 @@ impl<'a> AstroCodegen<'a> {
         }
     }
 
+    fn print_variable_declaration(&mut self, decl: &oxc_ast::ast::VariableDeclaration<'a>) {
+        let kind = match decl.kind {
+            VariableDeclarationKind::Var => "var",
+            VariableDeclarationKind::Let => "let",
+            VariableDeclarationKind::Const => "const",
+            VariableDeclarationKind::Using => "using",
+            VariableDeclarationKind::AwaitUsing => "await using",
+        };
+        for (i, declarator) in decl.declarations.iter().enumerate() {
+            if i == 0 {
+                self.print(kind);
+                self.print(" ");
+            } else {
+                self.print(", ");
+            }
+            let pattern_code = gen_to_string(&declarator.id);
+            self.print(&pattern_code);
+            if let Some(init) = &declarator.init {
+                self.print(" = ");
+                self.print_expression(init);
+            }
+        }
+    }
+
     fn print_for_init(&mut self, init: &oxc_ast::ast::ForStatementInit<'a>) {
         match init {
             oxc_ast::ast::ForStatementInit::VariableDeclaration(decl) => {
-                let kind = match decl.kind {
-                    VariableDeclarationKind::Var => "var",
-                    VariableDeclarationKind::Let => "let",
-                    VariableDeclarationKind::Const => "const",
-                    VariableDeclarationKind::Using => "using",
-                    VariableDeclarationKind::AwaitUsing => "await using",
-                };
-                for (i, declarator) in decl.declarations.iter().enumerate() {
-                    if i == 0 {
-                        self.print(kind);
-                        self.print(" ");
-                    } else {
-                        self.print(", ");
-                    }
-                    let pattern_code = gen_to_string(&declarator.id);
-                    self.print(&pattern_code);
-                    if let Some(init_expr) = &declarator.init {
-                        self.print(" = ");
-                        self.print_expression(init_expr);
-                    }
-                }
+                self.print_variable_declaration(decl);
             }
             other => {
                 if let Some(expr) = other.as_expression() {
