@@ -332,6 +332,14 @@ impl<'a> AstroCodegen<'a> {
         }
     }
 
+    pub(super) fn print_source_span_fallback(&mut self, span: oxc_span::Span) {
+        let start = span.start as usize;
+        let end = span.end as usize;
+        if start < self.source_text.len() && end <= self.source_text.len() {
+            self.print(&self.source_text[start..end]);
+        }
+    }
+
     fn print_chain_expression(&mut self, chain: &oxc_ast::ast::ChainExpression<'a>) {
         match &chain.expression {
             oxc_ast::ast::ChainElement::CallExpression(call) => {
@@ -350,11 +358,7 @@ impl<'a> AstroCodegen<'a> {
             }
             _ => {
                 // TSNonNullExpression, PrivateFieldExpression — use source text fallback
-                let start = chain.span.start as usize;
-                let end = chain.span.end as usize;
-                if start < self.source_text.len() && end <= self.source_text.len() {
-                    self.print(&self.source_text[start..end]);
-                }
+                self.print_source_span_fallback(chain.span);
             }
         }
     }
