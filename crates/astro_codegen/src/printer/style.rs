@@ -237,7 +237,7 @@ impl<'a> AstroCodegen<'a> {
         {
             preprocessed.clone()
         } else {
-            self.extract_style_text_content(el)
+            extract_style_text(el)
         };
         let css_trimmed = css_content.trim();
 
@@ -289,16 +289,5 @@ impl<'a> AstroCodegen<'a> {
             }
         }
         false
-    }
-
-    /// Extract the text content of a `<style>` element.
-    pub(super) fn extract_style_text_content(&self, el: &JSXElement<'a>) -> String {
-        let mut text = String::new();
-        for child in &el.children {
-            if let JSXChild::Text(t) = child {
-                text.push_str(t.value.as_str());
-            }
-        }
-        text
     }
 }
