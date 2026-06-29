@@ -865,19 +865,7 @@ impl<'a> AstroCodegen<'a> {
             Statement::ForInStatement(for_in) => {
                 self.add_source_mapping_for_span(for_in.span);
                 self.print("for(");
-                match &for_in.left {
-                    oxc_ast::ast::ForStatementLeft::VariableDeclaration(decl) => {
-                        let code = gen_to_string(decl.as_ref());
-                        self.print(&code);
-                    }
-                    other => {
-                        let start = other.span().start as usize;
-                        let end = other.span().end as usize;
-                        if start < self.source_text.len() && end <= self.source_text.len() {
-                            self.print(&self.source_text[start..end]);
-                        }
-                    }
-                }
+                self.print_for_statement_left(&for_in.left);
                 self.print(" in ");
                 self.print_expression(&for_in.right);
                 self.print(") ");
@@ -887,19 +875,7 @@ impl<'a> AstroCodegen<'a> {
             Statement::ForOfStatement(for_of) => {
                 self.add_source_mapping_for_span(for_of.span);
                 self.print(if for_of.r#await { "for await(" } else { "for(" });
-                match &for_of.left {
-                    oxc_ast::ast::ForStatementLeft::VariableDeclaration(decl) => {
-                        let code = gen_to_string(decl.as_ref());
-                        self.print(&code);
-                    }
-                    other => {
-                        let start = other.span().start as usize;
-                        let end = other.span().end as usize;
-                        if start < self.source_text.len() && end <= self.source_text.len() {
-                            self.print(&self.source_text[start..end]);
-                        }
-                    }
-                }
+                self.print_for_statement_left(&for_of.left);
                 self.print(" of ");
                 self.print_expression(&for_of.right);
                 self.print(") ");
