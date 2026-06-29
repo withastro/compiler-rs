@@ -112,6 +112,38 @@ pub(super) fn extract_slots_from_expression<'a>(
     }
 }
 
+fn collect_slot_from_attributes<'a>(
+    attrs: &'a [JSXAttributeItem<'a>],
+    slots: &mut Vec<CollectedSlot<'a>>,
+) {
+    match get_slot_attribute_value(attrs) {
+        Some(SlotValue::Static(_)) => {
+            if let Some(name_ref) = get_slot_attribute(attrs) {
+                slots.push(CollectedSlot::Static(name_ref));
+            }
+        }
+        Some(SlotValue::Dynamic(expr_str, span)) => {
+            slots.push(CollectedSlot::Dynamic(expr_str, span));
+        }
+        None => {}
+    }
+}
+
+fn collect_slots_from_arrow<'a>(
+    arrow: &'a oxc_ast::ast::ArrowFunctionExpression<'a>,
+    slots: &mut Vec<CollectedSlot<'a>>,
+) {
+    if arrow.expression {
+        if let Some(oxc_ast::ast::Statement::ExpressionStatement(expr_stmt)) =
+            arrow.body.statements.first()
+        {
+            collect_slots_from_inner_expression(&expr_stmt.expression, slots);
+        }
+    } else {
+        collect_slots_from_function_body(&arrow.body, slots);
+    }
+}
+
 /// Recursively collect slot entries from a JSX expression.
 fn collect_slots_from_expression<'a>(
     expr: &'a JSXExpression<'a>,
@@ -119,19 +151,7 @@ fn collect_slots_from_expression<'a>(
 ) {
     match expr {
         JSXExpression::JSXElement(el) => {
-            match get_slot_attribute_value(&el.opening_element.attributes) {
-                Some(SlotValue::Static(name)) => {
-                    if let Some(name_ref) = get_slot_attribute(&el.opening_element.attributes) {
-                        slots.push(CollectedSlot::Static(name_ref));
-                    } else {
-                        drop(name);
-                    }
-                }
-                Some(SlotValue::Dynamic(expr_str, span)) => {
-                    slots.push(CollectedSlot::Dynamic(expr_str, span));
-                }
-                None => {}
-            }
+            collect_slot_from_attributes(&el.opening_element.attributes, slots);
         }
         // A bare `<>` is opaque: its `slot=` children belong to the fragment, not the
         // parent, which receives the whole fragment as default content. Matches Go.
@@ -148,18 +168,7 @@ fn collect_slots_from_expression<'a>(
             collect_slots_from_inner_expression(&paren.expression, slots);
         }
         JSXExpression::ArrowFunctionExpression(arrow) => {
-            if arrow.expression {
-                // Expression-body arrow: `() => <span slot="c">C</span>`
-                // The body has one ExpressionStatement wrapping the JSX.
-                if let Some(oxc_ast::ast::Statement::ExpressionStatement(expr_stmt)) =
-                    arrow.body.statements.first()
-                {
-                    collect_slots_from_inner_expression(&expr_stmt.expression, slots);
-                }
-            } else {
-                // Block-body arrow: look inside return/switch/if statements
-                collect_slots_from_function_body(&arrow.body, slots);
-            }
+            collect_slots_from_arrow(arrow, slots);
         }
         JSXExpression::CallExpression(call) => {
             // e.g. items.map(item => <div slot="content">{item}</div>)
@@ -181,17 +190,7 @@ fn collect_slots_from_inner_expression<'a>(
 ) {
     match expr {
         Expression::JSXElement(el) => {
-            match get_slot_attribute_value(&el.opening_element.attributes) {
-                Some(SlotValue::Static(_)) => {
-                    if let Some(name_ref) = get_slot_attribute(&el.opening_element.attributes) {
-                        slots.push(CollectedSlot::Static(name_ref));
-                    }
-                }
-                Some(SlotValue::Dynamic(expr_str, span)) => {
-                    slots.push(CollectedSlot::Dynamic(expr_str, span));
-                }
-                None => {}
-            }
+            collect_slot_from_attributes(&el.opening_element.attributes, slots);
         }
         // Bare `<>` is opaque — see `collect_slots_from_expression`.
         Expression::JSXFragment(_) => {}
@@ -206,15 +205,7 @@ fn collect_slots_from_inner_expression<'a>(
             collect_slots_from_inner_expression(&paren.expression, slots);
         }
         Expression::ArrowFunctionExpression(arrow) => {
-            if arrow.expression {
-                if let Some(oxc_ast::ast::Statement::ExpressionStatement(expr_stmt)) =
-                    arrow.body.statements.first()
-                {
-                    collect_slots_from_inner_expression(&expr_stmt.expression, slots);
-                }
-            } else {
-                collect_slots_from_function_body(&arrow.body, slots);
-            }
+            collect_slots_from_arrow(arrow, slots);
         }
         Expression::CallExpression(call) => {
             // e.g. items.map(item => <div slot="content">{item}</div>)
@@ -242,15 +233,7 @@ fn collect_slots_from_call_arguments<'a>(
     for arg in arguments {
         match arg {
             oxc_ast::ast::Argument::ArrowFunctionExpression(arrow) => {
-                if arrow.expression {
-                    if let Some(oxc_ast::ast::Statement::ExpressionStatement(expr_stmt)) =
-                        arrow.body.statements.first()
-                    {
-                        collect_slots_from_inner_expression(&expr_stmt.expression, slots);
-                    }
-                } else {
-                    collect_slots_from_function_body(&arrow.body, slots);
-                }
+                collect_slots_from_arrow(arrow, slots);
             }
             oxc_ast::ast::Argument::FunctionExpression(func) => {
                 if let Some(body) = &func.body {
