@@ -1,29 +1,267 @@
 //! CSS scoping for Astro components.
 //!
-//! Transforms CSS selectors within `<style>` blocks to include scope identifiers,
-//! matching the behavior of the Go compiler's CSS scoping (using a vendored esbuild).
+//! Rewrites selectors in `<style>` blocks to carry a scope identifier, matching the Go
+//! compiler's behavior. lightningcss parses the stylesheet; scoping runs as a visitor pass.
 //!
-//! We use lightningcss for CSS parsing of the overall stylesheet structure,
-//! while performing selector scoping via the visitor pattern.
-//!
-//! CSS modules mode is enabled at parse time so that `:global()` is parsed as a
-//! first-class `PseudoClass::Global { selector }` node (a fully parsed `Selector`),
-//! rather than a raw `CustomFunction` with opaque `TokenList`. CSS modules is then
-//! disabled before printing so no class renaming occurs.
+//! `:global()` needs special handling: with CSS modules mode off it parses as an opaque
+//! `CustomFunction`, so a pre-pass re-parses its argument into a `PseudoClass::Global` and
+//! hoists any leading combinator (`:global(> *)`) out before the scope pass.
 
 use std::convert::Infallible;
 
-use lightningcss::css_modules;
-use lightningcss::printer::PrinterOptions;
+use lightningcss::printer::{Printer, PrinterOptions};
+use lightningcss::properties::custom::{TokenList, TokenOrValue};
 use lightningcss::selector::{Combinator, Component, PseudoClass, Selector, SelectorList};
 use lightningcss::stylesheet::{ParserFlags, ParserOptions, StyleSheet};
+use lightningcss::traits::{IntoOwned, ParseWithOptions, ToCss};
 use lightningcss::values::ident::Ident;
 use lightningcss::values::string::CowArcStr;
 use lightningcss::visit_types;
 use lightningcss::visitor::{Visit, VisitTypes, Visitor};
-use smallvec::smallvec;
 
 use crate::ScopedStyleStrategy;
+
+fn parser_options<'a, 'i>() -> ParserOptions<'a, 'i> {
+    ParserOptions {
+        flags: ParserFlags::NESTING,
+        error_recovery: true,
+        // Parse `:global()` as `CustomFunction` so arguments (including leading
+        // combinators) are preserved in the AST. We normalize to `Global` ourselves.
+        css_modules: None,
+        ..ParserOptions::default()
+    }
+}
+
+/// Normalize `:global()` custom functions and hoist leading combinators inside them.
+struct GlobalSelectorVisitor;
+
+impl<'i> Visitor<'i> for GlobalSelectorVisitor {
+    type Error = Infallible;
+
+    fn visit_types(&self) -> VisitTypes {
+        visit_types!(SELECTORS)
+    }
+
+    fn visit_selector_list(&mut self, selectors: &mut SelectorList<'i>) -> Result<(), Self::Error> {
+        Visit::visit_children(selectors, self)
+    }
+
+    fn visit_selector(&mut self, selector: &mut Selector<'i>) -> Result<(), Self::Error> {
+        // Both passes below flatten and rebuild the whole selector, so skip them unless
+        // there is actually a `:global()` to handle — most selectors have none.
+        if !selector_contains_global(selector) {
+            return Ok(());
+        }
+        // Don't descend into `:not()`/`:is()`/`:has()` arguments: like the Go compiler, a
+        // nested `:global(...)` stays opaque and is emitted verbatim.
+        normalize_global_pseudos(selector);
+        hoist_global_leading_combinators(selector);
+        Ok(())
+    }
+}
+
+/// Cheap, allocation-free check for a top-level `:global()` — the raw `CustomFunction`
+/// form or an already-normalized `Global`.
+fn selector_contains_global(selector: &Selector<'_>) -> bool {
+    selector
+        .iter_raw_match_order()
+        .any(|component| match component {
+            Component::NonTSPseudoClass(PseudoClass::CustomFunction { name, .. }) => {
+                name.eq_ignore_ascii_case("global")
+            }
+            Component::NonTSPseudoClass(PseudoClass::Global { .. }) => true,
+            _ => false,
+        })
+}
+
+fn normalize_global_pseudos(selector: &mut Selector<'_>) {
+    let flat = flatten_selector_parse_order(selector);
+    let normalized: Vec<Component<'_>> = flat.into_iter().map(normalize_component).collect();
+    *selector = normalized.into();
+}
+
+fn normalize_component(component: Component<'_>) -> Component<'_> {
+    match component {
+        Component::NonTSPseudoClass(PseudoClass::CustomFunction { name, arguments })
+            if name.eq_ignore_ascii_case("global") =>
+        {
+            let mut inner = parse_global_argument(&arguments);
+            if inner.len() == 0 {
+                Component::NonTSPseudoClass(PseudoClass::CustomFunction { name, arguments })
+            } else {
+                normalize_global_pseudos(&mut inner);
+                Component::NonTSPseudoClass(PseudoClass::Global {
+                    selector: Box::new(inner),
+                })
+            }
+        }
+        other => other,
+    }
+}
+
+fn empty_selector<'i>() -> Selector<'i> {
+    Selector::from(Vec::<Component<'i>>::new())
+}
+
+/// Parse a `:global(...)` argument into a `Selector` from its preserved `CustomFunction`
+/// tokens. `into_owned()` detaches the result from the temporary serialized string.
+fn parse_global_argument<'i>(tokens: &TokenList<'_>) -> Selector<'i> {
+    let serialized = token_list_to_css(tokens);
+    let argument_text = serialized.trim();
+    if argument_text.is_empty() {
+        return empty_selector();
+    }
+    let options = parser_options();
+
+    if let Some((combinator, rest)) = split_leading_combinator_str(argument_text) {
+        let Ok(rest_selector) = Selector::parse_string_with_options(rest.trim(), options) else {
+            return empty_selector();
+        };
+        let mut flat = vec![Component::Combinator(combinator)];
+        flat.extend(flatten_selector_parse_order(&rest_selector));
+        return Selector::from(flat).into_owned();
+    }
+
+    match Selector::parse_string_with_options(argument_text, options) {
+        Ok(selector) => selector.into_owned(),
+        Err(_) => empty_selector(),
+    }
+}
+
+fn split_leading_combinator_str(input: &str) -> Option<(Combinator, &str)> {
+    let input = input.trim_start();
+    match input.as_bytes().first()? {
+        b'>' => Some((Combinator::Child, input[1..].trim_start())),
+        b'+' => Some((Combinator::NextSibling, input[1..].trim_start())),
+        b'~' => Some((Combinator::LaterSibling, input[1..].trim_start())),
+        _ => None,
+    }
+}
+
+/// Serialize `:global(...)` argument tokens back to CSS so they can be re-parsed as a
+/// selector. lightningcss's own `Token` serializer handles escaping and number formatting;
+/// re-parsing discards any comments.
+fn token_list_to_css(tokens: &TokenList<'_>) -> String {
+    let mut result = String::new();
+    {
+        let mut printer = Printer::new(&mut result, PrinterOptions::default());
+        for item in &tokens.0 {
+            if let TokenOrValue::Token(token) = item {
+                let _ = token.to_css(&mut printer);
+            }
+        }
+    }
+    result
+}
+
+fn hoist_global_leading_combinators<'i>(selector: &mut Selector<'i>) {
+    for component in selector.iter_mut_raw_match_order() {
+        if let Component::NonTSPseudoClass(PseudoClass::Global { selector: inner }) = component {
+            hoist_global_leading_combinators(inner);
+        }
+    }
+
+    let mut flat = flatten_selector_parse_order(selector);
+
+    let mut index = 0;
+    while index < flat.len() {
+        let Component::NonTSPseudoClass(PseudoClass::Global { selector: inner }) = &flat[index]
+        else {
+            index += 1;
+            continue;
+        };
+
+        let Some((leading, rest)) = split_selector_leading_combinator(inner.as_ref()) else {
+            index += 1;
+            continue;
+        };
+
+        flat[index] = Component::NonTSPseudoClass(PseudoClass::Global {
+            selector: Box::new(rest),
+        });
+
+        // Sass nesting emits a descendant space before `:global(> …)`; the hoisted inner
+        // combinator replaces it (`article :global(> *)` → `article > *`).
+        if index > 0 && matches!(flat[index - 1], Component::Combinator(_)) {
+            flat[index - 1] = Component::Combinator(leading);
+        } else {
+            flat.insert(index, Component::Combinator(leading));
+            index += 1;
+        }
+
+        index += 1;
+    }
+
+    if !flat.is_empty() {
+        *selector = flat.into();
+    }
+}
+
+fn split_selector_leading_combinator<'i>(
+    selector: &Selector<'i>,
+) -> Option<(Combinator, Selector<'i>)> {
+    let flat = flatten_selector_parse_order(selector);
+    let (first, rest) = flat.split_first()?;
+    let Component::Combinator(combinator) = first else {
+        return None;
+    };
+    if !combinator.is_tree_combinator() {
+        return None;
+    }
+    Some((*combinator, rest.to_vec().into()))
+}
+
+/// Flatten a selector into a parse-order `Vec` with combinators interleaved.
+///
+/// The internal storage is right-to-left (match order) with intra-compound components in
+/// parse order, so we reverse the *compound* order while preserving each compound's internal
+/// order. A naive `.rev()` would also reverse intra-compound order, placing pseudo-classes
+/// before type selectors (`:not(.x)html` instead of `html:not(.x)`).
+fn flatten_selector_parse_order<'i>(selector: &Selector<'i>) -> Vec<Component<'i>> {
+    let mut flat = Vec::new();
+    for (index, (combinator, compound)) in split_into_compounds(selector).into_iter().enumerate() {
+        if index > 0
+            && let Some(combinator) = combinator
+        {
+            flat.push(Component::Combinator(combinator));
+        }
+        flat.extend(compound);
+    }
+    flat
+}
+
+fn split_into_compounds<'i>(
+    selector: &Selector<'i>,
+) -> Vec<(Option<Combinator>, Vec<Component<'i>>)> {
+    let raw_slice = selector.iter_raw_match_order().as_slice();
+    let mut combinators = selector
+        .iter_raw_match_order()
+        .rev()
+        .filter_map(|component| component.as_combinator());
+
+    let compound_slices: Vec<&[Component<'i>]> = raw_slice
+        .split(|component| component.is_combinator())
+        .rev()
+        .collect();
+
+    let mut result = Vec::with_capacity(compound_slices.len());
+    for (index, compound) in compound_slices.iter().enumerate() {
+        let combinator = if index == 0 { None } else { combinators.next() };
+        result.push((combinator, compound.to_vec()));
+    }
+
+    result
+}
+
+/// Stands in for a `*` during printing. Kept implausible as author CSS so the string
+/// restore below can't collide with a real selector.
+const GLOBAL_UNIVERSAL_MARKER_NAME: &str = "--astro-scope-global-universal";
+
+/// lightningcss drops bare `*` before functional pseudos when printing (`*:nth-child` →
+/// `:nth-child`). We emit the marker as a workaround, then restore the canonical `*`.
+fn restore_printable_global_universal(css: &str) -> String {
+    css.replace(&format!(":{GLOBAL_UNIVERSAL_MARKER_NAME}"), "*")
+}
 
 /// Scope CSS selectors.
 ///
@@ -32,38 +270,20 @@ use crate::ScopedStyleStrategy;
 ///
 /// If parsing fails, returns the original CSS unchanged.
 pub fn scope_css(css: &str, scope: &str, strategy: ScopedStyleStrategy) -> String {
-    // Parse with nesting support, error recovery, and CSS modules mode.
-    // CSS modules mode makes `:global()` parse as `PseudoClass::Global { selector }`
-    // instead of `PseudoClass::CustomFunction { name: "global", arguments: TokenList }`.
-    let options = ParserOptions {
-        flags: ParserFlags::NESTING,
-        error_recovery: true,
-        css_modules: Some(css_modules::Config {
-            // Identity pattern: [local] means names are output unchanged (no hashing).
-            pattern: css_modules::Pattern {
-                segments: smallvec![css_modules::Segment::Local],
-            },
-            animation: false,
-            grid: false,
-            custom_idents: false,
-            container: false,
-            dashed_idents: false,
-            pure: false,
-        }),
-        ..ParserOptions::default()
-    };
+    let options = parser_options();
 
     let mut stylesheet = match StyleSheet::parse(css, options) {
-        Ok(ss) => ss,
+        Ok(stylesheet) => stylesheet,
         Err(_) => return css.to_string(),
     };
 
-    // Visit all selectors and inject scope identifiers
+    let mut global_visitor = GlobalSelectorVisitor;
+    let _ = stylesheet.visit(&mut global_visitor);
+
     let mut visitor = ScopeVisitor { scope, strategy };
     let _ = stylesheet.visit(&mut visitor);
 
     // Print — no minification, that's handled elsewhere in the pipeline.
-    // CSS modules is active but with an identity pattern ([local]), so no renaming occurs.
     // Any remaining `PseudoClass::Global { selector }` nodes will have their `:global()`
     // wrapper stripped by the printer (it serializes the inner selector directly).
     let result = stylesheet
@@ -75,12 +295,8 @@ pub fn scope_css(css: &str, scope: &str, strategy: ScopedStyleStrategy) -> Strin
             dependencies: None,
         });
 
-    result.code
+    restore_printable_global_universal(&result.code)
 }
-
-// ---------------------------------------------------------------------------
-// Scope visitor
-// ---------------------------------------------------------------------------
 
 struct ScopeVisitor<'a> {
     scope: &'a str,
@@ -107,7 +323,6 @@ impl<'i> Visitor<'i> for ScopeVisitor<'_> {
 }
 
 impl ScopeVisitor<'_> {
-    /// Create the scope component based on the strategy.
     fn scope_component<'i>(&self) -> Component<'i> {
         match self.strategy {
             ScopedStyleStrategy::Where => {
@@ -134,12 +349,7 @@ impl ScopeVisitor<'_> {
 
     /// Scope a single selector, potentially returning multiple selectors.
     fn scope_selector<'i>(&self, selector: &Selector<'i>) -> Vec<Selector<'i>> {
-        let compounds = self.split_into_compounds(selector);
-
-        // Merge pseudo-element "compounds" back into their preceding compound.
-        // Internally, `::before` is stored as [Combinator::PseudoElement, PseudoElement(Before)]
-        // which splits into a separate compound. We merge it back so scoping treats
-        // `h3::before` as one unit.
+        let compounds = split_into_compounds(selector);
         let merged = self.merge_pseudo_element_compounds(&compounds);
 
         // Selectors that only reference `&` from inside `:is()`/`:where()`/`:not()`/`:has()`
@@ -164,9 +374,9 @@ impl ScopeVisitor<'_> {
 
         for (i, (combinator, compound)) in merged.iter().enumerate() {
             if i > 0
-                && let Some(comb) = combinator
+                && let Some(combinator) = combinator
             {
-                result_components.push(Component::Combinator(*comb));
+                result_components.push(Component::Combinator(*combinator));
             }
 
             // Skip scope injection for compounds that follow the leading bare `&` via a
@@ -208,46 +418,14 @@ impl ScopeVisitor<'_> {
                 combinator,
                 Some(Combinator::PseudoElement | Combinator::Part | Combinator::SlotAssignment)
             ) {
-                // Merge into the previous compound
                 if let Some(last) = result.last_mut() {
                     last.1.extend(compound.iter().cloned());
                 } else {
-                    // No previous compound — just push as-is
                     result.push((*combinator, compound.clone()));
                 }
             } else {
                 result.push((*combinator, compound.clone()));
             }
-        }
-
-        result
-    }
-
-    /// Split a selector into (combinator, compound_components) pairs in parse order.
-    /// Components within each compound are in their original internal order
-    /// (which is the order SelectorBuilder stores them — parse order within compound).
-    fn split_into_compounds<'i>(
-        &self,
-        selector: &Selector<'i>,
-    ) -> Vec<(Option<Combinator>, Vec<Component<'i>>)> {
-        // Use the same split approach as the lightningcss serializer:
-        // split the match-order slice by combinators, then reverse the compound order.
-        let raw_slice = selector.iter_raw_match_order().as_slice();
-        let mut combinators = selector
-            .iter_raw_match_order()
-            .rev()
-            .filter_map(|x| x.as_combinator());
-
-        // Split by combinators gives us compound slices in match order.
-        // Reverse to get parse order (left-to-right).
-        let compound_slices: Vec<&[Component<'i>]> =
-            raw_slice.split(|x| x.is_combinator()).rev().collect();
-
-        let mut result = Vec::with_capacity(compound_slices.len());
-        for (i, compound) in compound_slices.iter().enumerate() {
-            let combinator = if i == 0 { None } else { combinators.next() };
-            let components: Vec<Component<'i>> = compound.to_vec();
-            result.push((combinator, components));
         }
 
         result
@@ -259,49 +437,37 @@ impl ScopeVisitor<'_> {
             return vec![];
         }
 
-        // Check for nesting selector `&`
         if self.has_nesting(compound) {
             return self.scope_nesting_compound(compound);
         }
 
-        // Check if the entire compound is or starts with :global()
         if self.is_global_compound(compound) {
             return self.process_global_compound(compound);
         }
 
-        // Check for :root — never scoped
+        // `:root` is never scoped
         if compound.len() == 1 && matches!(&compound[0], Component::Root) {
             return compound.to_vec();
         }
 
-        // Check for body/html type selectors — never scoped at the compound level
+        // `body`/`html` are never scoped at the compound level
         if self.is_body_or_html(compound) {
             return compound.to_vec();
         }
 
-        // Normal compound: inject scope
         self.inject_scope_into_compound(compound)
     }
 
-    /// Check if a compound contains a nesting selector `&`.
     fn has_nesting(&self, compound: &[Component<'_>]) -> bool {
         compound.iter().any(|c| matches!(c, Component::Nesting))
     }
 
-    /// Check if a compound selector contains :global().
     fn is_global_compound(&self, compound: &[Component<'_>]) -> bool {
-        compound.iter().any(|c| self.is_global_pseudo(c))
+        compound
+            .iter()
+            .any(|c| matches!(c, Component::NonTSPseudoClass(PseudoClass::Global { .. })))
     }
 
-    /// Check if a component is the :global() pseudo-class.
-    fn is_global_pseudo(&self, component: &Component<'_>) -> bool {
-        matches!(
-            component,
-            Component::NonTSPseudoClass(PseudoClass::Global { .. })
-        )
-    }
-
-    /// Check if the compound has body or html as the type selector.
     fn is_body_or_html(&self, compound: &[Component<'_>]) -> bool {
         compound.iter().any(|c| match c {
             Component::LocalName(local) => {
@@ -312,44 +478,39 @@ impl ScopeVisitor<'_> {
         })
     }
 
-    /// Extract components from a `PseudoClass::Global { selector }` in parse order.
+    /// Expand a `:global()` inner selector, preserving `*` when functional pseudos follow.
     ///
-    /// The internal `Vec` stores compounds right-to-left (match order) with
-    /// intra-compound components in parse order. We must reverse the *compound*
-    /// order while preserving each compound's internal order — the same approach
-    /// lightningcss's own `serialize_selector` uses.
-    ///
-    /// A naive `.rev()` would also reverse intra-compound order, placing
-    /// pseudo-classes before type selectors (`:not(.x)html` instead of
-    /// `html:not(.x)`).
-    fn extract_global_components<'i>(selector: &Selector<'i>) -> Vec<Component<'i>> {
-        let raw = selector.iter_raw_match_order().as_slice();
-
-        // Collect combinators in parse order (reversed from match order).
-        let combinators: Vec<Combinator> = selector
-            .iter_raw_match_order()
-            .rev()
-            .filter_map(|c| c.as_combinator())
-            .collect();
-
-        // Split the raw slice by combinator entries.  Each resulting slice is
-        // one compound, and the overall order of slices is match order
-        // (rightmost compound first).  Reversing gives parse order.
-        let compound_slices: Vec<&[Component<'i>]> =
-            raw.split(|c| c.is_combinator()).rev().collect();
-
-        let mut result = Vec::new();
-        for (i, compound) in compound_slices.iter().enumerate() {
-            if i > 0
-                && let Some(comb) = combinators.get(i - 1)
-            {
-                result.push(Component::Combinator(*comb));
-            }
-            // Clone each component in its original (parse) order within the compound.
-            result.extend(compound.iter().cloned());
+    /// `trailing_sibling_pseudos` covers the sibling form (`:global(*):nth-child(2n)`).
+    /// Pseudos inside the `:global()` argument are handled from `selector` directly
+    /// (`:global(*:nth-child(2n))`).
+    fn expand_global_inner<'i>(
+        selector: &Selector<'i>,
+        trailing_sibling_pseudos: &[Component<'i>],
+    ) -> Vec<Component<'i>> {
+        let flat = flatten_selector_parse_order(selector);
+        if matches!(flat.first(), Some(Component::ExplicitUniversalType))
+            && (flat.len() > 1 || !trailing_sibling_pseudos.is_empty())
+            && flat[1..]
+                .iter()
+                .all(|component| is_pseudo_class(component) || is_pseudo_element(component))
+        {
+            let mut result = vec![Self::printable_global_universal()];
+            result.extend(flat.into_iter().skip(1));
+            result.extend(trailing_sibling_pseudos.iter().cloned());
+            return result;
         }
 
+        let mut result = flat;
+        result.extend(trailing_sibling_pseudos.iter().cloned());
         result
+    }
+
+    /// Emits the marker as a pseudo-class — lightningcss keeps it before a functional pseudo,
+    /// whereas it would drop a bare `*`. Restored to `*` after printing.
+    fn printable_global_universal<'i>() -> Component<'i> {
+        Component::NonTSPseudoClass(PseudoClass::Custom {
+            name: GLOBAL_UNIVERSAL_MARKER_NAME.into(),
+        })
     }
 
     /// Process a compound that contains :global() — strip the wrapper and return
@@ -357,22 +518,36 @@ impl ScopeVisitor<'_> {
     fn process_global_compound<'i>(&self, compound: &[Component<'i>]) -> Vec<Component<'i>> {
         let mut result = Vec::new();
         let mut has_non_global = false;
+        let mut index = 0;
 
-        for component in compound {
+        while index < compound.len() {
+            let component = &compound[index];
             if let Component::NonTSPseudoClass(PseudoClass::Global { selector }) = component {
-                let inner_components = Self::extract_global_components(selector);
-                result.extend(inner_components);
+                let trailing_end = compound[index + 1..]
+                    .iter()
+                    .take_while(|component| {
+                        is_pseudo_class(component) || is_pseudo_element(component)
+                    })
+                    .count();
+                let trailing = &compound[index + 1..index + 1 + trailing_end];
+                result.extend(Self::expand_global_inner(selector, trailing));
+                index += 1 + trailing_end;
                 continue;
             }
-            // Pseudo-elements (e.g. `::after` in `:global(.fallback)::after`, or
+
+            // Pseudo-classes (e.g. `:nth-child(2n)` in `:global(*):nth-child(2n)`) and
+            // pseudo-elements (e.g. `::after` in `:global(.fallback)::after`, or
             // `::part(x)` / `::slotted(x)`) attach to the content extracted from
             // :global() and must NOT trigger scoping.
-            if is_pseudo_element(component) {
+            if is_pseudo_class(component) || is_pseudo_element(component) {
                 result.push(component.clone());
+                index += 1;
                 continue;
             }
+
             has_non_global = true;
             result.push(component.clone());
+            index += 1;
         }
 
         // After expanding :global(), check if the result contains body/html — if so, no scoping
@@ -402,7 +577,6 @@ impl ScopeVisitor<'_> {
         let mut result = Vec::new();
         let mut scoped = false;
 
-        // Check if compound consists entirely of pseudo-class/pseudo-element
         let only_pseudo = compound
             .iter()
             .all(|c| is_pseudo_class(c) || is_pseudo_element(c));
@@ -415,7 +589,6 @@ impl ScopeVisitor<'_> {
                     scoped = true;
                 }
                 Component::LocalName(_) => {
-                    // Type selector: emit it, then scope immediately after
                     result.push(component.clone());
                     if !scoped {
                         result.push(scope_component.clone());
@@ -445,17 +618,7 @@ impl ScopeVisitor<'_> {
                     }
                     result.push(component.clone());
                 }
-                Component::NonTSPseudoClass(pseudo) => {
-                    // Check for :global() — shouldn't normally reach here since
-                    // is_global_compound catches it earlier, but handle just in case.
-                    if let PseudoClass::Global { selector } = pseudo {
-                        let inner_components = Self::extract_global_components(selector);
-                        result.extend(inner_components);
-                        scoped = true;
-                        continue;
-                    }
-
-                    // Other pseudo-classes
+                Component::NonTSPseudoClass(_) => {
                     if only_pseudo && i == 0 && !scoped {
                         result.push(scope_component.clone());
                         scoped = true;
@@ -483,10 +646,6 @@ impl ScopeVisitor<'_> {
         result
     }
 }
-
-// ---------------------------------------------------------------------------
-// Helper functions
-// ---------------------------------------------------------------------------
 
 /// Walks recursively into `:is(...)`, `:where(...)`, `:not(...)`, and `:has(...)`.
 fn component_contains_nesting(component: &Component<'_>) -> bool {
@@ -537,10 +696,6 @@ fn is_pseudo_class(component: &Component<'_>) -> bool {
     )
 }
 
-// ---------------------------------------------------------------------------
-// Public helpers for the codegen pipeline
-// ---------------------------------------------------------------------------
-
 /// Elements that should never receive a scope class in the HTML.
 pub const NEVER_SCOPED_ELEMENTS: &[&str] = &[
     "Fragment", "base", "font", "frame", "frameset", "head", "link", "meta", "noframes",
@@ -570,8 +725,6 @@ mod tests {
         scope_css(source, "xxxxxx", ScopedStyleStrategy::Attribute)
     }
 
-    // === Basic selectors ===
-    //
     // Note: lightningcss pretty-prints CSS (spaces around combinators, newlines,
     // indentation, trailing newline). It also normalizes:
     // - `::before`/`::after` → `:before`/`:after`
@@ -1092,8 +1245,6 @@ mod tests {
         );
     }
 
-    // === Global with nested at-rules ===
-
     #[test]
     fn test_global_nested_media() {
         assert_eq!(
@@ -1194,12 +1345,319 @@ mod tests {
     }
 
     #[test]
+    fn test_global_immediate_child_universal() {
+        assert_eq!(
+            scope("article :global(> *){}"),
+            "article:where(.astro-xxxxxx) > * {\n}\n"
+        );
+        assert_eq!(
+            scope_attribute("article :global(> *){}"),
+            "article[data-astro-cid-xxxxxx] > * {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_immediate_child_with_not() {
+        assert_eq!(
+            scope(".panel :global(> .item:not(.hidden)){}"),
+            ".panel:where(.astro-xxxxxx) > .item:not(.hidden) {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_immediate_child_with_has() {
+        assert_eq!(
+            scope(".panel :global(> li:has(> a)){}"),
+            ".panel:where(.astro-xxxxxx) > li:has( > a) {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_immediate_child_with_nested_pseudos() {
+        assert_eq!(
+            scope(".panel :global(> .nav:not(.is-active):has(.icon)){}"),
+            ".panel:where(.astro-xxxxxx) > .nav:not(.is-active):has(.icon) {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_immediate_child_with_quoted_attribute() {
+        assert_eq!(
+            scope(".panel :global(> [data-state=\"(open)\"]){}"),
+            ".panel:where(.astro-xxxxxx) > [data-state=\"(open)\"] {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_immediate_sibling_combinators() {
+        assert_eq!(
+            scope(".a :global(+ .next){}"),
+            ".a:where(.astro-xxxxxx) + .next {\n}\n"
+        );
+        assert_eq!(
+            scope(".a :global(~ .later){}"),
+            ".a:where(.astro-xxxxxx) ~ .later {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_immediate_child_multiple_selectors_in_stylesheet() {
+        let output = scope(".one :global(> *){} .two :global(+ .x){} .three :global(~ .y){}");
+        assert!(
+            output.contains(".one:where(.astro-xxxxxx) > *"),
+            "missing child universal rule: {output}"
+        );
+        assert!(
+            output.contains(".two:where(.astro-xxxxxx) + .x"),
+            "missing adjacent sibling rule: {output}"
+        );
+        assert!(
+            output.contains(".three:where(.astro-xxxxxx) ~ .y"),
+            "missing general sibling rule: {output}"
+        );
+    }
+
+    #[test]
+    fn test_global_immediate_child_inside_media_query() {
+        assert_eq!(
+            scope("@media (min-width: 640px) { .panel :global(> *) {} }"),
+            "@media (width >= 640px) {\n  .panel:where(.astro-xxxxxx) > * {\n  }\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_immediate_child_does_not_rewrite_inner_descendant_combinator() {
+        // Combinator inside :global, not leading — must stay unchanged by rewrite
+        // and still scope the local prefix only.
+        assert_eq!(
+            scope(".class :global(.foo > .bar){}"),
+            ".class:where(.astro-xxxxxx) .foo > .bar {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_immediate_child_with_functional_pseudo() {
+        assert_eq!(
+            scope(".list :global(> li:nth-child(odd)){}"),
+            ".list:where(.astro-xxxxxx) > li:nth-child(odd) {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_immediate_child_with_is_and_where() {
+        assert_eq!(
+            scope(".panel :global(> .item:is(.a, .b)){}"),
+            ".panel:where(.astro-xxxxxx) > .item:is(.a, .b) {\n}\n"
+        );
+        assert_eq!(
+            scope(".panel :global(> .item:where(.a, .b)){}"),
+            ".panel:where(.astro-xxxxxx) > .item:where(.a, .b) {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_immediate_child_deeply_nested_pseudos() {
+        assert_eq!(
+            scope(".panel :global(> .item:not(:has(> a))){}"),
+            ".panel:where(.astro-xxxxxx) > .item:not(:has( > a)) {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_immediate_child_inner_adjacent_sibling() {
+        assert_eq!(
+            scope(".panel :global(> .a + .b){}"),
+            ".panel:where(.astro-xxxxxx) > .a + .b {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_immediate_child_single_quoted_attribute() {
+        assert_eq!(
+            scope(".panel :global(> [data-x='(open)']){}"),
+            ".panel:where(.astro-xxxxxx) > [data-x=\"(open)\"] {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_attribute_with_escaped_quote_round_trips() {
+        // The argument tokens are re-serialized and re-parsed; an embedded quote must be
+        // escaped back so the inner selector stays valid rather than being dropped.
+        assert_eq!(
+            scope(".panel :global(> [data-x=\"a\\\"b\"]){}"),
+            ".panel:where(.astro-xxxxxx) > [data-x=\"a\\\"b\"] {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_immediate_child_attribute_strategy_complex() {
+        assert_eq!(
+            scope_attribute(".panel :global(> .nav:not(.is-active):has(.icon)){}"),
+            ".panel[data-astro-cid-xxxxxx] > .nav:not(.is-active):has(.icon) {\n}\n"
+        );
+    }
+
+    #[test]
     fn test_keyframes_with_selectors() {
         assert_eq!(
             scope(
                 "@keyframes shuffle{0%{transform:rotate(0deg);color:blue}100%{transform:rotate(360deg)}} h1{} h2{}"
             ),
             "@keyframes shuffle {\n  0% {\n    transform: rotate(0);\n    color: #00f;\n  }\n\n  100% {\n    transform: rotate(360deg);\n  }\n}\n\nh1:where(.astro-xxxxxx) {\n}\n\nh2:where(.astro-xxxxxx) {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_starlight_issue() {
+        assert_eq!(
+            scope(
+                ".stagger > :global(*):nth-child(2n) { transform: translateY(var(--stagger-height)); }"
+            ),
+            ".stagger:where(.astro-xxxxxx) > *:nth-child(2n) {\n  transform: translateY(var(--stagger-height));\n}\n"
+        );
+        assert_eq!(
+            scope(":global(*):nth-child(2n){}"),
+            "*:nth-child(2n) {\n}\n"
+        );
+        assert_eq!(scope(":global(*):not(.skip){}"), "*:not(.skip) {\n}\n");
+        assert_eq!(
+            scope("@layer starlight.components { .stagger > :global(*):nth-child(2n) {} }"),
+            "@layer starlight.components {\n  .stagger:where(.astro-xxxxxx) > *:nth-child(2n) {\n  }\n}\n"
+        );
+        assert_eq!(
+            scope(".stagger > :global(*:nth-child(2n)) {}"),
+            ".stagger:where(.astro-xxxxxx) > *:nth-child(2n) {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_with_trailing_pseudo_stays_global() {
+        assert_eq!(
+            scope(":global(.host):has(> .child){}"),
+            ".host:has( > .child) {\n}\n"
+        );
+        assert_eq!(
+            scope_attribute(":global(.host):has(> .child){}"),
+            ".host:has( > .child) {\n}\n"
+        );
+        assert_eq!(
+            scope(":global(.host):has([type=\"search\"]){}"),
+            ".host:has([type=\"search\"]) {\n}\n"
+        );
+        assert_eq!(scope(":global(.foo):hover{}"), ".foo:hover {\n}\n");
+        assert_eq!(
+            scope(":global(.foo):is(.bar, .baz){}"),
+            ".foo:is(.bar, .baz) {\n}\n"
+        );
+
+        assert_eq!(scope(":global(main):has(.foo){}"), "main:has(.foo) {\n}\n");
+        assert_eq!(
+            scope(":global(a):not(.foo):not(.bar){}"),
+            "a:not(.foo):not(.bar) {\n}\n"
+        );
+        assert_eq!(
+            scope(":global(tr):nth-of-type(n + 2){}"),
+            "tr:nth-of-type(n+2) {\n}\n"
+        );
+        assert_eq!(
+            scope(":global(td):nth-of-type(1){}"),
+            "td:first-of-type {\n}\n"
+        );
+
+        assert_eq!(
+            scope(":global([class*=\"foo-\"]):not(.bar){}"),
+            "[class*=\"foo-\"]:not(.bar) {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_combinator_between_globals_stays_global() {
+        assert_eq!(
+            scope(":global(br) + :global(strong){}"),
+            "br + strong {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_does_not_overglobalize_local_parts() {
+        assert_eq!(
+            scope(":global(.foo).is-active{}"),
+            ".foo:where(.astro-xxxxxx).is-active {\n}\n"
+        );
+        assert_eq!(
+            scope_attribute(":global(.foo).is-active{}"),
+            ".foo[data-astro-cid-xxxxxx].is-active {\n}\n"
+        );
+        assert_eq!(
+            scope(":global(.foo):hover .child{}"),
+            ".foo:hover .child:where(.astro-xxxxxx) {\n}\n"
+        );
+        assert_eq!(
+            scope_attribute(":global(.foo):hover .child{}"),
+            ".foo:hover .child[data-astro-cid-xxxxxx] {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_nested_in_pseudo_class_stays_literal() {
+        // Like Go: `:global()` inside another pseudo-class stays literal; the subject is scoped.
+        assert_eq!(
+            scope(".a:not(:global(.foo)){}"),
+            ".a:where(.astro-xxxxxx):not(:global(.foo)) {\n}\n"
+        );
+        assert_eq!(
+            scope(".a:is(:global(.foo), .bar){}"),
+            ".a:where(.astro-xxxxxx):is(:global(.foo), .bar) {\n}\n"
+        );
+        assert_eq!(
+            scope(".a:has(:global(.child)){}"),
+            ".a:where(.astro-xxxxxx):has(:global(.child)) {\n}\n"
+        );
+        assert_eq!(
+            scope_attribute(".button:not(:global(.disabled)){}"),
+            ".button[data-astro-cid-xxxxxx]:not(:global(.disabled)) {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_preserves_author_is_universal() {
+        // The `*` workaround must not clobber an author-written `:is(*)`.
+        assert_eq!(scope(":global(.x):is(*):hover{}"), ".x:is(*):hover {\n}\n");
+        assert_eq!(
+            scope(".x:is(*):hover{}"),
+            ".x:where(.astro-xxxxxx):is(*):hover {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_with_comment_in_argument() {
+        assert_eq!(
+            scope(".panel :global(> /* hi */ .item){}"),
+            ".panel:where(.astro-xxxxxx) > .item {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_inside_has_stays_literal() {
+        // Even a leading combinator inside `:global()` here stays verbatim (not hoisted).
+        assert_eq!(
+            scope(".a:has(:global(> .child)){}"),
+            ".a:where(.astro-xxxxxx):has(:global(> .child)) {\n}\n"
+        );
+        assert_eq!(
+            scope(".a:has(> :global(.child)){}"),
+            ".a:where(.astro-xxxxxx):has( > :global(.child)) {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_nested_global_strips_both_wrappers() {
+        // The inner `:global()` survives the outer expansion and is stripped by the printer;
+        // the trailing local part still gets scoped, like the non-nested `:global(.x).foo`.
+        assert_eq!(scope(":global(:global(.x)){}"), ".x {\n}\n");
+        assert_eq!(
+            scope(":global(:global(.x)).foo{}"),
+            ".x.foo:where(.astro-xxxxxx) {\n}\n"
         );
     }
 }
