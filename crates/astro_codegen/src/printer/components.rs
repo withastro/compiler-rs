@@ -498,11 +498,7 @@ impl<'a> AstroCodegen<'a> {
             }
             first = false;
             // Map to whichever transition attribute comes first
-            if let Some((_, span)) = &transition_name {
-                self.add_source_mapping_for_span(*span);
-            } else if let Some((_, span)) = &transition_animate {
-                self.add_source_mapping_for_span(*span);
-            }
+            self.add_transition_source_mapping(&transition_name, &transition_animate);
             let name_val = transition_name
                 .as_ref()
                 .map_or_else(|| "\"\"".to_string(), |(v, _)| v.clone());

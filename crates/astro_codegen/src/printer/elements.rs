@@ -89,7 +89,18 @@ pub(super) fn is_head_element(name: &str) -> bool {
 }
 
 impl<'a> AstroCodegen<'a> {
-    /// Print an HTML (non-component) element.
+    pub(super) fn add_transition_source_mapping(
+        &mut self,
+        transition_name: &Option<(String, oxc_span::Span)>,
+        transition_animate: &Option<(String, oxc_span::Span)>,
+    ) {
+        if let Some((_, span)) = transition_name {
+            self.add_source_mapping_for_span(*span);
+        } else if let Some((_, span)) = transition_animate {
+            self.add_source_mapping_for_span(*span);
+        }
+    }
+
     pub(super) fn scope_id_for(&self, name: &str) -> Option<ScopeId> {
         if self.has_scoped_styles && css_scoping::should_scope_element(name) {
             let hash = &self.source_hash;
@@ -102,6 +113,7 @@ impl<'a> AstroCodegen<'a> {
         }
     }
 
+    /// Print an HTML (non-component) element.
     pub(super) fn print_html_element(&mut self, el: &JSXElement<'a>, name: &str) {
         self.add_source_mapping_for_span(el.opening_element.span);
         // Handle <slot> element specially — it's a slot placeholder, not an HTML element.
@@ -462,11 +474,7 @@ impl<'a> AstroCodegen<'a> {
         // Handle transition:name and transition:animate together
         if transition_name.is_some() || transition_animate.is_some() {
             // Map to whichever transition attribute comes first
-            if let Some((_, span)) = &transition_name {
-                self.add_source_mapping_for_span(*span);
-            } else if let Some((_, span)) = &transition_animate {
-                self.add_source_mapping_for_span(*span);
-            }
+            self.add_transition_source_mapping(&transition_name, &transition_animate);
             let name_val = transition_name.map_or_else(|| "\"\"".to_string(), |(v, _)| v);
             let animate_val = transition_animate.map_or_else(|| "\"\"".to_string(), |(v, _)| v);
             let hash = self.generate_transition_hash();
