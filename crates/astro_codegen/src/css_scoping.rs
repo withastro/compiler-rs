@@ -7,8 +7,9 @@
 //! while performing selector scoping via the visitor pattern.
 //!
 //! CSS modules mode is not used at parse time. `:global()` is parsed as a
-//! `CustomFunction`, normalized to `PseudoClass::Global { selector }` on the AST,
-//! and leading combinators inside `:global(> …)` are hoisted before scoping runs.
+//! `CustomFunction`, normalized to `PseudoClass::Global { selector }` by re-parsing its
+//! preserved argument tokens, and leading combinators inside `:global(> …)` are hoisted
+//! before scoping runs.
 
 use std::convert::Infallible;
 
@@ -16,7 +17,7 @@ use lightningcss::printer::PrinterOptions;
 use lightningcss::properties::custom::{Token, TokenList, TokenOrValue};
 use lightningcss::selector::{Combinator, Component, PseudoClass, Selector, SelectorList};
 use lightningcss::stylesheet::{ParserFlags, ParserOptions, StyleSheet};
-use lightningcss::traits::ParseWithOptions;
+use lightningcss::traits::{IntoOwned, ParseWithOptions};
 use lightningcss::values::ident::Ident;
 use lightningcss::values::string::CowArcStr;
 use lightningcss::visit_types;
@@ -36,11 +37,9 @@ fn parser_options<'a, 'i>() -> ParserOptions<'a, 'i> {
 }
 
 /// Normalize `:global()` custom functions and hoist leading combinators inside them.
-struct GlobalSelectorVisitor<'i> {
-    source: &'i str,
-}
+struct GlobalSelectorVisitor;
 
-impl<'i> Visitor<'i> for GlobalSelectorVisitor<'i> {
+impl<'i> Visitor<'i> for GlobalSelectorVisitor {
     type Error = Infallible;
 
     fn visit_types(&self) -> VisitTypes {
@@ -52,31 +51,30 @@ impl<'i> Visitor<'i> for GlobalSelectorVisitor<'i> {
     }
 
     fn visit_selector(&mut self, selector: &mut Selector<'i>) -> Result<(), Self::Error> {
-        normalize_global_pseudos(selector, self.source);
+        // Don't descend into `:not()`/`:is()`/`:has()` arguments: like the Go compiler, a
+        // nested `:global(...)` stays opaque and is emitted verbatim.
+        normalize_global_pseudos(selector);
         hoist_global_leading_combinators(selector);
         Ok(())
     }
 }
 
-fn normalize_global_pseudos<'i>(selector: &mut Selector<'i>, source: &'i str) {
+fn normalize_global_pseudos(selector: &mut Selector<'_>) {
     let flat = flatten_selector_parse_order(selector);
-    let normalized: Vec<Component<'i>> = flat
-        .into_iter()
-        .map(|component| normalize_component(component, source))
-        .collect();
+    let normalized: Vec<Component<'_>> = flat.into_iter().map(normalize_component).collect();
     *selector = normalized.into();
 }
 
-fn normalize_component<'i>(component: Component<'i>, source: &'i str) -> Component<'i> {
+fn normalize_component(component: Component<'_>) -> Component<'_> {
     match component {
         Component::NonTSPseudoClass(PseudoClass::CustomFunction { name, arguments })
             if name.eq_ignore_ascii_case("global") =>
         {
-            let mut inner = parse_global_argument(&arguments, source);
+            let mut inner = parse_global_argument(&arguments);
             if inner.len() == 0 {
                 Component::NonTSPseudoClass(PseudoClass::CustomFunction { name, arguments })
             } else {
-                normalize_global_pseudos(&mut inner, source);
+                normalize_global_pseudos(&mut inner);
                 Component::NonTSPseudoClass(PseudoClass::Global {
                     selector: Box::new(inner),
                 })
@@ -86,42 +84,29 @@ fn normalize_component<'i>(component: Component<'i>, source: &'i str) -> Compone
     }
 }
 
-fn parse_global_argument<'i>(tokens: &TokenList<'i>, source: &'i str) -> Selector<'i> {
-    let Some(argument_text) = argument_text_in_source(tokens, source) else {
+/// Parse a `:global(...)` argument into a `Selector` from its preserved `CustomFunction`
+/// tokens. `into_owned()` detaches the result from the temporary serialized string.
+fn parse_global_argument<'i>(tokens: &TokenList<'_>) -> Selector<'i> {
+    let serialized = token_list_to_css(tokens);
+    let argument_text = serialized.trim();
+    if argument_text.is_empty() {
         return Selector::from(Vec::<Component<'i>>::new());
-    };
+    }
     let options = parser_options();
 
     if let Some((combinator, rest)) = split_leading_combinator_str(argument_text) {
-        let Ok(rest_selector) = Selector::parse_string_with_options(rest.trim(), options.clone())
-        else {
+        let Ok(rest_selector) = Selector::parse_string_with_options(rest.trim(), options) else {
             return Selector::from(Vec::<Component<'i>>::new());
         };
         let mut flat = vec![Component::Combinator(combinator)];
         flat.extend(flatten_selector_parse_order(&rest_selector));
-        return flat.into();
+        return Selector::from(flat).into_owned();
     }
 
-    Selector::parse_string_with_options(argument_text.trim(), options)
-        .unwrap_or_else(|_| Selector::from(Vec::<Component<'i>>::new()))
-}
-
-/// Returns the `:global(...)` argument text as a slice of the parsed CSS source.
-fn argument_text_in_source<'i>(tokens: &TokenList<'i>, source: &'i str) -> Option<&'i str> {
-    let serialized = token_list_to_css(tokens);
-    let trimmed = serialized.trim();
-
-    for candidate in [
-        trimmed,
-        &serialized.replace('"', "'"),
-        &serialized.replace('\'', "\""),
-    ] {
-        if let Some(start) = source.find(candidate) {
-            return Some(&source[start..start + candidate.len()]);
-        }
+    match Selector::parse_string_with_options(argument_text, options) {
+        Ok(selector) => selector.into_owned(),
+        Err(_) => Selector::from(Vec::<Component<'i>>::new()),
     }
-
-    None
 }
 
 fn split_leading_combinator_str(input: &str) -> Option<(Combinator, &str)> {
@@ -281,10 +266,14 @@ fn split_into_compounds<'i>(
     result
 }
 
+/// Stands in for a `*` during printing. Kept implausible as author CSS so the string
+/// restore below can't collide with a real selector.
+const GLOBAL_UNIVERSAL_MARKER_NAME: &str = "--astro-scope-global-universal";
+
 /// lightningcss drops bare `*` before functional pseudos when printing (`*:nth-child` →
-/// `:nth-child`). We emit `:is(*)` as a workaround, then restore the canonical form.
+/// `:nth-child`). We emit the marker as a workaround, then restore the canonical `*`.
 fn restore_printable_global_universal(css: &str) -> String {
-    css.replace(":is(*)::", "*::").replace(":is(*):", "*:")
+    css.replace(&format!(":{GLOBAL_UNIVERSAL_MARKER_NAME}"), "*")
 }
 
 /// Scope CSS selectors.
@@ -294,15 +283,14 @@ fn restore_printable_global_universal(css: &str) -> String {
 ///
 /// If parsing fails, returns the original CSS unchanged.
 pub fn scope_css(css: &str, scope: &str, strategy: ScopedStyleStrategy) -> String {
-    let source = css.to_string();
     let options = parser_options();
 
-    let mut stylesheet = match StyleSheet::parse(&source, options) {
+    let mut stylesheet = match StyleSheet::parse(css, options) {
         Ok(stylesheet) => stylesheet,
         Err(_) => return css.to_string(),
     };
 
-    let mut global_visitor = GlobalSelectorVisitor { source: &source };
+    let mut global_visitor = GlobalSelectorVisitor;
     let _ = stylesheet.visit(&mut global_visitor);
 
     // Visit all selectors and inject scope identifiers
@@ -595,11 +583,12 @@ impl ScopeVisitor<'_> {
         result
     }
 
-    /// Wrap `*` so lightningcss keeps it when a functional pseudo follows in the same compound.
+    /// Emits the marker as a pseudo-class — lightningcss keeps it before a functional pseudo,
+    /// whereas it would drop a bare `*`. Restored to `*` after printing.
     fn printable_global_universal<'i>() -> Component<'i> {
-        Component::Is(Box::new([Selector::from(vec![
-            Component::ExplicitUniversalType,
-        ])]))
+        Component::NonTSPseudoClass(PseudoClass::Custom {
+            name: GLOBAL_UNIVERSAL_MARKER_NAME.into(),
+        })
     }
 
     /// Process a compound that contains :global() — strip the wrapper and return
@@ -1698,6 +1687,58 @@ mod tests {
         assert_eq!(
             scope_attribute(":global(.foo):hover .child{}"),
             ".foo:hover .child[data-astro-cid-xxxxxx] {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_nested_in_pseudo_class_stays_literal() {
+        // Like Go: `:global()` inside another pseudo-class stays literal; the subject is scoped.
+        assert_eq!(
+            scope(".a:not(:global(.foo)){}"),
+            ".a:where(.astro-xxxxxx):not(:global(.foo)) {\n}\n"
+        );
+        assert_eq!(
+            scope(".a:is(:global(.foo), .bar){}"),
+            ".a:where(.astro-xxxxxx):is(:global(.foo), .bar) {\n}\n"
+        );
+        assert_eq!(
+            scope(".a:has(:global(.child)){}"),
+            ".a:where(.astro-xxxxxx):has(:global(.child)) {\n}\n"
+        );
+        assert_eq!(
+            scope_attribute(".button:not(:global(.disabled)){}"),
+            ".button[data-astro-cid-xxxxxx]:not(:global(.disabled)) {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_preserves_author_is_universal() {
+        // The `*` workaround must not clobber an author-written `:is(*)`.
+        assert_eq!(scope(":global(.x):is(*):hover{}"), ".x:is(*):hover {\n}\n");
+        assert_eq!(
+            scope(".x:is(*):hover{}"),
+            ".x:where(.astro-xxxxxx):is(*):hover {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_with_comment_in_argument() {
+        assert_eq!(
+            scope(".panel :global(> /* hi */ .item){}"),
+            ".panel:where(.astro-xxxxxx) > .item {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_inside_has_stays_literal() {
+        // Even a leading combinator inside `:global()` here stays verbatim (not hoisted).
+        assert_eq!(
+            scope(".a:has(:global(> .child)){}"),
+            ".a:where(.astro-xxxxxx):has(:global(> .child)) {\n}\n"
+        );
+        assert_eq!(
+            scope(".a:has(> :global(.child)){}"),
+            ".a:where(.astro-xxxxxx):has( > :global(.child)) {\n}\n"
         );
     }
 }
