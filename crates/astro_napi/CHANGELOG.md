@@ -1,5 +1,12 @@
 # @astrojs/compiler-binding
 
+## 0.3.0
+
+### Patch Changes
+
+- 6bde0ca: Fixes backslashes being dropped from attribute values, such as `<input pattern="^example\.com$" />` rendering as `^example.com$`. Backslashes are now kept in element attributes, component props, and `set:html`.
+- 6bde0ca: Fixes unquoted attribute values containing a `/` failing to compile, such as URLs like `<a href=https://example.com/path>` or root-relative paths like `<img src=/logo.png>`. Values containing `=`, quotes, or backticks are also no longer cut short.
+
 ## 0.2.3
 
 ### Patch Changes

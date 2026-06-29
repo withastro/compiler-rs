@@ -5,7 +5,7 @@
   "type": "module",
   "bugs": "https://github.com/withastro/compiler-rs/issues",
   "homepage": "https://astro.build",
-  "version": "0.2.3",
+  "version": "0.3.0",
   "scripts": {
     "build": "tsdown && publint"
   },
