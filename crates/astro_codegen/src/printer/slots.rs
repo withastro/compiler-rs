@@ -691,22 +691,7 @@ impl<'a> AstroCodegen<'a> {
     /// Print a call expression where callback arguments may return slotted JSX.
     fn print_slot_aware_call_expression(&mut self, call: &oxc_ast::ast::CallExpression<'a>) {
         // Print callee (same as regular call expression printing)
-        match &call.callee {
-            Expression::StaticMemberExpression(member) => {
-                self.print_expression(&member.object);
-                self.print(if member.optional { "?." } else { "." });
-                self.print(member.property.name.as_str());
-            }
-            Expression::ComputedMemberExpression(member) => {
-                self.print_expression(&member.object);
-                self.print(if member.optional { "?.[" } else { "[" });
-                self.print_expression(&member.expression);
-                self.print("]");
-            }
-            other => {
-                self.print_expression(other);
-            }
-        }
+        self.print_callee(&call.callee);
         if call.optional {
             self.print("?.");
         }

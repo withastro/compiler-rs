@@ -350,21 +350,37 @@ impl<'a> AstroCodegen<'a> {
         }
     }
 
+    pub(super) fn print_static_member(&mut self, member: &StaticMemberExpression<'a>) {
+        self.print_expression(&member.object);
+        self.print(if member.optional { "?." } else { "." });
+        self.print(member.property.name.as_str());
+    }
+
+    pub(super) fn print_computed_member(&mut self, member: &ComputedMemberExpression<'a>) {
+        self.print_expression(&member.object);
+        self.print(if member.optional { "?.[" } else { "[" });
+        self.print_expression(&member.expression);
+        self.print("]");
+    }
+
+    pub(super) fn print_callee(&mut self, callee: &Expression<'a>) {
+        match callee {
+            Expression::StaticMemberExpression(member) => self.print_static_member(member),
+            Expression::ComputedMemberExpression(member) => self.print_computed_member(member),
+            other => self.print_expression(other),
+        }
+    }
+
     fn print_chain_expression(&mut self, chain: &oxc_ast::ast::ChainExpression<'a>) {
         match &chain.expression {
             oxc_ast::ast::ChainElement::CallExpression(call) => {
                 self.print_call_expression(call);
             }
             oxc_ast::ast::ChainElement::StaticMemberExpression(member) => {
-                self.print_expression(&member.object);
-                self.print(if member.optional { "?." } else { "." });
-                self.print(member.property.name.as_str());
+                self.print_static_member(member);
             }
             oxc_ast::ast::ChainElement::ComputedMemberExpression(member) => {
-                self.print_expression(&member.object);
-                self.print(if member.optional { "?.[" } else { "[" });
-                self.print_expression(&member.expression);
-                self.print("]");
+                self.print_computed_member(member);
             }
             _ => {
                 // TSNonNullExpression, PrivateFieldExpression — use source text fallback
@@ -374,23 +390,7 @@ impl<'a> AstroCodegen<'a> {
     }
 
     pub(super) fn print_call_expression(&mut self, call: &oxc_ast::ast::CallExpression<'a>) {
-        // Print callee
-        match &call.callee {
-            Expression::StaticMemberExpression(member) => {
-                self.print_expression(&member.object);
-                self.print(if member.optional { "?." } else { "." });
-                self.print(member.property.name.as_str());
-            }
-            Expression::ComputedMemberExpression(member) => {
-                self.print_expression(&member.object);
-                self.print(if member.optional { "?.[" } else { "[" });
-                self.print_expression(&member.expression);
-                self.print("]");
-            }
-            other => {
-                self.print_expression(other);
-            }
-        }
+        self.print_callee(&call.callee);
         // Print optional call syntax
         if call.optional {
             self.print("?.");
