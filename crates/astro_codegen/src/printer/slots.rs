@@ -591,15 +591,19 @@ impl<'a> AstroCodegen<'a> {
         self.print_conditional_slot_expr(&expr.expression);
     }
 
+    fn print_conditional_slot_ternary(&mut self, cond: &oxc_ast::ast::ConditionalExpression<'a>) {
+        self.add_source_mapping_for_span(cond.span);
+        self.print_expression(&cond.test);
+        self.print(" ? ");
+        self.print_conditional_slot_branch(&cond.consequent);
+        self.print(" : ");
+        self.print_conditional_slot_branch(&cond.alternate);
+    }
+
     fn print_conditional_slot_expr(&mut self, expr: &JSXExpression<'a>) {
         match expr {
             JSXExpression::ConditionalExpression(cond) => {
-                self.add_source_mapping_for_span(cond.span);
-                self.print_expression(&cond.test);
-                self.print(" ? ");
-                self.print_conditional_slot_branch(&cond.consequent);
-                self.print(" : ");
-                self.print_conditional_slot_branch(&cond.alternate);
+                self.print_conditional_slot_ternary(cond);
             }
             JSXExpression::ArrowFunctionExpression(arrow) => {
                 self.add_source_mapping_for_span(arrow.span);
@@ -626,12 +630,7 @@ impl<'a> AstroCodegen<'a> {
                 self.print_conditional_slot_branch_expr(&paren.expression);
             }
             Expression::ConditionalExpression(cond) => {
-                self.add_source_mapping_for_span(cond.span);
-                self.print_expression(&cond.test);
-                self.print(" ? ");
-                self.print_conditional_slot_branch(&cond.consequent);
-                self.print(" : ");
-                self.print_conditional_slot_branch(&cond.alternate);
+                self.print_conditional_slot_ternary(cond);
             }
             Expression::CallExpression(call) => {
                 self.print_slot_aware_call_expression(call);
@@ -918,12 +917,7 @@ impl<'a> AstroCodegen<'a> {
             }
             Expression::ConditionalExpression(cond) => {
                 // Nested ternary
-                self.add_source_mapping_for_span(cond.span);
-                self.print_expression(&cond.test);
-                self.print(" ? ");
-                self.print_conditional_slot_branch(&cond.consequent);
-                self.print(" : ");
-                self.print_conditional_slot_branch(&cond.alternate);
+                self.print_conditional_slot_ternary(cond);
             }
             Expression::LogicalExpression(logic) => {
                 self.print_logical_slot_branch(logic);
