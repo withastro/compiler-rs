@@ -588,41 +588,17 @@ impl ScopeVisitor<'_> {
                     result.push(scope_component.clone());
                     scoped = true;
                 }
-                Component::LocalName(_) => {
+                Component::LocalName(_) | Component::Class(_) | Component::ID(_) => {
                     result.push(component.clone());
-                    if !scoped {
-                        result.push(scope_component.clone());
-                        scoped = true;
-                    }
-                }
-                Component::Class(_) | Component::ID(_) => {
-                    result.push(component.clone());
-                    if !scoped {
-                        result.push(scope_component.clone());
-                        scoped = true;
-                    }
+                    push_scope_if_unscoped(&mut result, &mut scoped, &scope_component);
                 }
                 Component::AttributeInNoNamespaceExists { .. }
                 | Component::AttributeInNoNamespace { .. }
-                | Component::AttributeOther(_) => {
-                    if !scoped {
-                        result.push(scope_component.clone());
-                        scoped = true;
-                    }
-                    result.push(component.clone());
-                }
-                Component::PseudoElement(_) | Component::Part(_) | Component::Slotted(_) => {
-                    if !scoped {
-                        result.push(scope_component.clone());
-                        scoped = true;
-                    }
-                    result.push(component.clone());
-                }
-                Component::NonTSPseudoClass(_) => {
-                    if only_pseudo && i == 0 && !scoped {
-                        result.push(scope_component.clone());
-                        scoped = true;
-                    }
+                | Component::AttributeOther(_)
+                | Component::PseudoElement(_)
+                | Component::Part(_)
+                | Component::Slotted(_) => {
+                    push_scope_if_unscoped(&mut result, &mut scoped, &scope_component);
                     result.push(component.clone());
                 }
                 Component::Root => {
@@ -630,9 +606,8 @@ impl ScopeVisitor<'_> {
                     scoped = true;
                 }
                 _ => {
-                    if only_pseudo && i == 0 && !scoped {
-                        result.push(scope_component.clone());
-                        scoped = true;
+                    if only_pseudo && i == 0 {
+                        push_scope_if_unscoped(&mut result, &mut scoped, &scope_component);
                     }
                     result.push(component.clone());
                 }
@@ -644,6 +619,17 @@ impl ScopeVisitor<'_> {
         }
 
         result
+    }
+}
+
+fn push_scope_if_unscoped<'i>(
+    result: &mut Vec<Component<'i>>,
+    scoped: &mut bool,
+    scope_component: &Component<'i>,
+) {
+    if !*scoped {
+        result.push(scope_component.clone());
+        *scoped = true;
     }
 }
 
