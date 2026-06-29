@@ -790,12 +790,7 @@ impl<'a> AstroCodegen<'a> {
                 self.print("}");
                 if let Some(handler) = &try_stmt.handler {
                     self.print(" catch");
-                    if let Some(param) = &handler.param {
-                        self.print("(");
-                        let code = gen_to_string(&param.pattern);
-                        self.print(&code);
-                        self.print(")");
-                    }
+                    self.print_catch_param(handler);
                     self.print(" {\n");
                     for s in &handler.body.body {
                         self.print_slot_aware_statement(s);

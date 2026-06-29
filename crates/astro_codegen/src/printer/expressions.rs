@@ -350,6 +350,15 @@ impl<'a> AstroCodegen<'a> {
         }
     }
 
+    pub(super) fn print_catch_param(&mut self, handler: &oxc_ast::ast::CatchClause<'a>) {
+        if let Some(param) = &handler.param {
+            self.print("(");
+            let code = gen_to_string(&param.pattern);
+            self.print(&code);
+            self.print(")");
+        }
+    }
+
     pub(super) fn print_static_member(&mut self, member: &StaticMemberExpression<'a>) {
         self.print_expression(&member.object);
         self.print(if member.optional { "?." } else { "." });
@@ -548,12 +557,7 @@ impl<'a> AstroCodegen<'a> {
                 self.print("}");
                 if let Some(handler) = &try_stmt.handler {
                     self.print(" catch");
-                    if let Some(param) = &handler.param {
-                        self.print("(");
-                        let code = gen_to_string(&param.pattern);
-                        self.print(&code);
-                        self.print(")");
-                    }
+                    self.print_catch_param(handler);
                     self.print(" {\n");
                     for s in &handler.body.body {
                         self.print_jsx_aware_statement(s);
