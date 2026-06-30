@@ -1790,6 +1790,50 @@ import Component from "test";
 }
 
 #[test]
+fn test_slot_toplevel_logical_with_conditional_wraps_branches() {
+    // `guard && (cond ? <x slot/> : <y slot/>)` has two slots, so it merges. The
+    // branches must be wrapped in slot objects (not rendered as raw HTML into
+    // $$mergeSlots), and the parens must be kept so it does not re-bind as
+    // `(guard && cond) ? ...`.
+    let source = r#"---
+import Component from "test";
+---
+<Component>{a && (b ? <x slot="s">X</x> : <y slot="s">Y</y>)}</Component>"#;
+    let output = compile_astro(source);
+
+    assert!(
+        output.contains("a && (b ?"),
+        "Parens around the conditional right operand must be preserved: {output}"
+    );
+    assert!(
+        output.matches("\"s\": () =>").count() == 2,
+        "Both branches should be wrapped as slot objects: {output}"
+    );
+}
+
+#[test]
+fn test_slot_bare_fragment_children_are_not_parent_slots() {
+    // A bare `<>` is opaque: its `slot=` children belong to the fragment, not the
+    // parent. So `{cond && <>…</>}` becomes the parent's default content (rendered
+    // as a Fragment), it does NOT route x/y onto the parent or use $$mergeSlots.
+    // Matches the Go compiler.
+    let source = r#"---
+import Component from "test";
+---
+<Component>{cond && <><a slot="x">A</a><b slot="y">B</b></>}</Component>"#;
+    let output = compile_astro(source);
+
+    assert!(
+        !output.contains("$$mergeSlots"),
+        "Bare fragment must not route children onto the parent via $$mergeSlots: {output}"
+    );
+    assert!(
+        output.contains("\"default\":") && output.contains("Fragment"),
+        "Bare fragment should be the parent's default content, rendered as a Fragment: {output}"
+    );
+}
+
+#[test]
 fn test_slot_single_logical_and_stays_static_key() {
     // A single slotted element under `&&` keeps a static key, so has() stays true.
     let source = r#"---

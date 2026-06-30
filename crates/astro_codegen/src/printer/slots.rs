@@ -134,11 +134,10 @@ fn collect_slots_from_expression<'a>(
                 None => {}
             }
         }
-        JSXExpression::JSXFragment(frag) => {
-            for child in &frag.children {
-                collect_slots_from_child(child, slots);
-            }
-        }
+        // A bare `<>` is opaque: its `slot=` children belong to the fragment, not
+        // the parent (the parent receives the whole fragment as default content).
+        // Matches the Go compiler.
+        JSXExpression::JSXFragment(_) => {}
         JSXExpression::ConditionalExpression(cond) => {
             collect_slots_from_inner_expression(&cond.consequent, slots);
             collect_slots_from_inner_expression(&cond.alternate, slots);
@@ -196,11 +195,8 @@ fn collect_slots_from_inner_expression<'a>(
                 None => {}
             }
         }
-        Expression::JSXFragment(frag) => {
-            for child in &frag.children {
-                collect_slots_from_child(child, slots);
-            }
-        }
+        // Bare `<>` is opaque — see `collect_slots_from_expression`.
+        Expression::JSXFragment(_) => {}
         Expression::ConditionalExpression(cond) => {
             collect_slots_from_inner_expression(&cond.consequent, slots);
             collect_slots_from_inner_expression(&cond.alternate, slots);
@@ -345,32 +341,6 @@ fn collect_slots_from_statement<'a>(
         }
         Statement::LabeledStatement(labeled) => {
             collect_slots_from_statement(&labeled.body, slots);
-        }
-        _ => {}
-    }
-}
-
-/// Collect slot entries from a JSX child.
-fn collect_slots_from_child<'a>(child: &'a JSXChild<'a>, slots: &mut Vec<CollectedSlot<'a>>) {
-    match child {
-        JSXChild::Element(el) => match get_slot_attribute_value(&el.opening_element.attributes) {
-            Some(SlotValue::Static(_)) => {
-                if let Some(name_ref) = get_slot_attribute(&el.opening_element.attributes) {
-                    slots.push(CollectedSlot::Static(name_ref));
-                }
-            }
-            Some(SlotValue::Dynamic(expr_str, span)) => {
-                slots.push(CollectedSlot::Dynamic(expr_str, span));
-            }
-            None => {}
-        },
-        JSXChild::Fragment(frag) => {
-            for child in &frag.children {
-                collect_slots_from_child(child, slots);
-            }
-        }
-        JSXChild::ExpressionContainer(expr) => {
-            collect_slots_from_expression(&expr.expression, slots);
         }
         _ => {}
     }
@@ -693,9 +663,33 @@ impl<'a> AstroCodegen<'a> {
                     self.print_expression(expr);
                 }
             }
+            Expression::LogicalExpression(logic) => {
+                self.print_logical_slot_branch(logic);
+            }
             _ => {
                 self.print_expression(expr);
             }
+        }
+    }
+
+    /// Print `left && right` / `left || right` where the right operand carries the
+    /// slotted elements (e.g. `guard && (cond ? <x slot/> : <y slot/>)`). The right
+    /// is recursed so its elements get wrapped in slot objects; parentheses are
+    /// preserved so `a && (b ? X : Y)` does not re-bind as `(a && b) ? X : Y`.
+    fn print_logical_slot_branch(&mut self, logic: &oxc_ast::ast::LogicalExpression<'a>) {
+        self.add_source_mapping_for_span(logic.span);
+        self.print_expression(&logic.left);
+        self.print(match logic.operator {
+            oxc_ast::ast::LogicalOperator::And => " && ",
+            oxc_ast::ast::LogicalOperator::Or => " || ",
+            oxc_ast::ast::LogicalOperator::Coalesce => " ?? ",
+        });
+        if let Expression::ParenthesizedExpression(paren) = &logic.right {
+            self.print("(");
+            self.print_conditional_slot_branch(&paren.expression);
+            self.print(")");
+        } else {
+            self.print_conditional_slot_branch(&logic.right);
         }
     }
 
@@ -998,15 +992,7 @@ impl<'a> AstroCodegen<'a> {
                 self.print_conditional_slot_branch(&cond.alternate);
             }
             Expression::LogicalExpression(logic) => {
-                // Wrap the right side so a `cond && <el slot/>` slot stays runtime-conditional.
-                self.add_source_mapping_for_span(logic.span);
-                self.print_expression(&logic.left);
-                self.print(match logic.operator {
-                    oxc_ast::ast::LogicalOperator::And => " && ",
-                    oxc_ast::ast::LogicalOperator::Or => " || ",
-                    oxc_ast::ast::LogicalOperator::Coalesce => " ?? ",
-                });
-                self.print_conditional_slot_branch(&logic.right);
+                self.print_logical_slot_branch(logic);
             }
             Expression::CallExpression(_)
             | Expression::ChainExpression(_)
