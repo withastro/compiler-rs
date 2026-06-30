@@ -83,20 +83,10 @@ pub(super) enum ExpressionSlotInfo<'a> {
 }
 
 /// A collected slot entry — either a static name or a dynamic expression.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 enum CollectedSlot<'a> {
     Static(&'a str),
     Dynamic(String, oxc_span::Span),
-}
-
-impl<'a> CollectedSlot<'a> {
-    fn is_same_as(&self, other: &CollectedSlot<'_>) -> bool {
-        match (self, other) {
-            (CollectedSlot::Static(a), CollectedSlot::Static(b)) => a == b,
-            (CollectedSlot::Dynamic(a, _), CollectedSlot::Dynamic(b, _)) => a == b,
-            _ => false,
-        }
-    }
 }
 
 /// Extract slot information from a JSX expression.
@@ -116,20 +106,10 @@ pub(super) fn extract_slots_from_expression<'a>(
                 ExpressionSlotInfo::SingleDynamic(expr_str, span)
             }
         },
-        _ => {
-            // Check if all slots are the same
-            let first = slots[0].clone();
-            if slots.iter().all(|s| s.is_same_as(&first)) {
-                match first {
-                    CollectedSlot::Static(name) => ExpressionSlotInfo::Single(name),
-                    CollectedSlot::Dynamic(expr_str, span) => {
-                        ExpressionSlotInfo::SingleDynamic(expr_str, span)
-                    }
-                }
-            } else {
-                ExpressionSlotInfo::Multiple
-            }
-        }
+        // More than one slotted element must route through `$$mergeSlots` so the
+        // runtime conditional decides slot presence (`Astro.slots.has`). Like the Go
+        // compiler, this keys off the count of slotted elements, not their names.
+        _ => ExpressionSlotInfo::Multiple,
     }
 }
 
@@ -466,7 +446,7 @@ impl<'a> AstroCodegen<'a> {
         // 4. conditional_slots — expressions with multiple different slots (need $$mergeSlots)
         let mut default_children: Vec<&JSXChild<'a>> = Vec::new();
         let mut named_slots: Vec<(String, Vec<&JSXChild<'a>>)> = Vec::new();
-        let mut expression_slots: Vec<(&str, &JSXChild<'a>)> = Vec::new();
+        let mut expression_slots: Vec<(&str, Vec<&JSXChild<'a>>)> = Vec::new();
         let mut conditional_slots: Vec<&JSXExpressionContainer<'a>> = Vec::new();
 
         // Direct elements with slot={expr} (e.g. <Comp slot={name} />)
@@ -511,7 +491,17 @@ impl<'a> AstroCodegen<'a> {
                             default_children.push(child);
                         }
                         ExpressionSlotInfo::Single(slot_name) => {
-                            expression_slots.push((slot_name, child));
+                            // Group same-named expression slots into one entry, as
+                            // direct element slots already are, so two `{a && <el
+                            // slot="x"/>}` siblings render under a single slot key
+                            // instead of emitting a duplicate (last-wins) key.
+                            if let Some((_, slot_children)) =
+                                expression_slots.iter_mut().find(|(name, _)| *name == slot_name)
+                            {
+                                slot_children.push(child);
+                            } else {
+                                expression_slots.push((slot_name, vec![child]));
+                            }
                         }
                         ExpressionSlotInfo::SingleDynamic(expr_str, span) => {
                             // Expression containing a single element with a dynamic slot={expr}
@@ -587,15 +577,17 @@ impl<'a> AstroCodegen<'a> {
             self.print("`,");
         }
 
-        // Print expression slots (expressions with single slot)
-        for (name, child) in &expression_slots {
+        // Print expression slots (expressions containing a single slotted element)
+        for (name, slot_children) in &expression_slots {
             self.print("\"");
             self.print(&escape_double_quotes(name));
             self.print("\": ");
-            self.print_slot_fn_open(AwaitDetector::found_in_child(child));
+            self.print_slot_fn_open(AwaitDetector::found_in_refs(slot_children));
             let prev = self.skip_slot_attribute;
             self.skip_slot_attribute = true;
-            self.print_jsx_child(child);
+            for child in slot_children {
+                self.print_jsx_child(child);
+            }
             self.skip_slot_attribute = prev;
             self.print("`,");
         }
@@ -1004,6 +996,17 @@ impl<'a> AstroCodegen<'a> {
                 self.print_conditional_slot_branch(&cond.consequent);
                 self.print(" : ");
                 self.print_conditional_slot_branch(&cond.alternate);
+            }
+            Expression::LogicalExpression(logic) => {
+                // Wrap the right side so a `cond && <el slot/>` slot stays runtime-conditional.
+                self.add_source_mapping_for_span(logic.span);
+                self.print_expression(&logic.left);
+                self.print(match logic.operator {
+                    oxc_ast::ast::LogicalOperator::And => " && ",
+                    oxc_ast::ast::LogicalOperator::Or => " || ",
+                    oxc_ast::ast::LogicalOperator::Coalesce => " ?? ",
+                });
+                self.print_conditional_slot_branch(&logic.right);
             }
             Expression::CallExpression(_)
             | Expression::ChainExpression(_)
