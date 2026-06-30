@@ -1730,8 +1730,8 @@ import Component from "test";
 
 #[test]
 fn test_slot_ternary_same_slot_name() {
-    // Ternary where both branches have the SAME slot name
-    // should not need $$mergeSlots — it's a single slot.
+    // Two slotted elements merge via $$mergeSlots even with the same slot name,
+    // so the runtime conditional decides presence. Matches the Go compiler.
     let source = r#"---
 import Component from "test";
 ---
@@ -1739,8 +1739,112 @@ import Component from "test";
     let output = compile_astro(source);
 
     assert!(
-        output.contains("\"x\":"),
-        "Both branches with same slot name should produce slot 'x': {output}"
+        output.contains("$$mergeSlots"),
+        "Ternary with two same-named slots should use $$mergeSlots: {output}"
+    );
+    assert!(
+        output.matches("\"x\": () =>").count() == 2,
+        "Each branch should be wrapped in its own slot object: {output}"
+    );
+}
+
+#[test]
+fn test_slot_all_falsy_nested_ternary_is_runtime_conditional() {
+    // An all-falsy nested ternary of slot="aside" elements must route through
+    // $$mergeSlots (leaving the slot absent) rather than emit a static key.
+    let source = r#"---
+import Probe from "test";
+---
+<Probe>{false ? <span slot="aside">x</span> : false ? <span slot="aside">y</span> : (false && <span slot="aside">z</span>)}</Probe>"#;
+    let output = compile_astro(source);
+
+    assert!(
+        output.contains("$$mergeSlots"),
+        "All-falsy nested ternary should use $$mergeSlots: {output}"
+    );
+    assert!(
+        output.contains("false && { \"aside\":"),
+        "The `&&` branch should wrap its slot element so it stays runtime-conditional: {output}"
+    );
+}
+
+#[test]
+fn test_slot_same_named_expression_slots_group_into_one_key() {
+    // Two sibling expression slots with the same name render under a single slot
+    // key (bodies concatenated), not a duplicate object key where JS drops all but
+    // the last. Matches how direct element slots already group, and the Go compiler.
+    let source = r#"---
+import Component from "test";
+---
+<Component>{a && <div slot="x">A</div>}{b && <div slot="x">B</div>}</Component>"#;
+    let output = compile_astro(source);
+
+    assert!(
+        output.matches("\"x\":").count() == 1,
+        "Same-named expression slots should produce one slot key, not duplicates: {output}"
+    );
+    assert!(
+        output.contains("a &&") && output.contains("b &&"),
+        "Both branch bodies should survive in the merged slot: {output}"
+    );
+}
+
+#[test]
+fn test_slot_toplevel_logical_with_conditional_wraps_branches() {
+    // Branches wrap into slot objects, and parens are kept so `a && (b ? X : Y)`
+    // does not re-bind as `(a && b) ? X : Y`.
+    let source = r#"---
+import Component from "test";
+---
+<Component>{a && (b ? <x slot="s">X</x> : <y slot="s">Y</y>)}</Component>"#;
+    let output = compile_astro(source);
+
+    assert!(
+        output.contains("a && (b ?"),
+        "Parens around the conditional right operand must be preserved: {output}"
+    );
+    assert!(
+        output.matches("\"s\": () =>").count() == 2,
+        "Both branches should be wrapped as slot objects: {output}"
+    );
+}
+
+#[test]
+fn test_slot_bare_fragment_children_are_not_parent_slots() {
+    // A bare `<>` is opaque: its `slot=` children belong to the fragment, so the
+    // expression becomes the parent's default content, not parent slots. Matches Go.
+    let source = r#"---
+import Component from "test";
+---
+<Component>{cond && <><a slot="x">A</a><b slot="y">B</b></>}</Component>"#;
+    let output = compile_astro(source);
+
+    assert!(
+        !output.contains("$$mergeSlots"),
+        "Bare fragment must not route children onto the parent via $$mergeSlots: {output}"
+    );
+    assert!(
+        output.contains("\"default\":") && output.contains("Fragment"),
+        "Bare fragment should be the parent's default content, rendered as a Fragment: {output}"
+    );
+}
+
+#[test]
+fn test_slot_single_logical_and_stays_static_key() {
+    // A single slotted element under `&&` keeps a static key, so has() stays true.
+    let source = r#"---
+import Probe from "test";
+---
+<Probe>{false && <span slot="aside">z</span>}</Probe>"#;
+    let output = compile_astro(source);
+
+    assert!(
+        !output.contains("$$mergeSlots"),
+        "Single slotted element should not need $$mergeSlots: {output}"
+    );
+    assert!(
+        output.contains("\"aside\":"),
+        "Single slotted element should keep a static slot key: {output}"
     );
 }
 

@@ -1,0 +1,16 @@
+---
+source: crates/astro_codegen/tests/snapshots.rs
+input_file: crates/astro_codegen/tests/fixtures/slots__same_named_expression_slots_.astro
+---
+import { render as $$render, createComponent as $$createComponent, renderComponent as $$renderComponent, maybeRenderHead as $$maybeRenderHead, createMetadata as $$createMetadata } from "http://localhost:3000/";
+export const $$metadata = $$createMetadata(import.meta.url, {
+	modules: [],
+	hydratedComponents: [],
+	clientOnlyComponents: [],
+	hydrationDirectives: new Set([]),
+	hoisted: []
+});
+const $$Component = $$createComponent(($$result, $$props, $$slots) => {
+	return $$render`${$$renderComponent($$result, "Component", Component, {}, { "x": () => $$render`${a && $$render`${$$maybeRenderHead($$result)}<div>A</div>`}${b && $$render`<div>B</div>`}` })}`;
+}, undefined, undefined);
+export default $$Component;
