@@ -37,6 +37,11 @@ pub struct ScanResult {
     /// Set of component names (or namespace roots) that use `client:only`.
     /// Used by the printer to detect client:only imports during frontmatter processing.
     pub client_only_component_names: FxHashSet<String>,
+    /// Roots of import bindings referenced anywhere the reference survives to the
+    /// output: non-`client:only` component instances, frontmatter code, and
+    /// template/attribute expressions. A `client:only` import is only safe to strip
+    /// if its binding root is absent here.
+    pub referenced_bindings: FxHashSet<String>,
     /// Collected hydrated components for metadata
     pub hydrated_components: Vec<HydratedComponent>,
     /// Collected client-only components with full names (including dot-notation)
@@ -70,6 +75,8 @@ pub struct AstroScanner<'a> {
     has_await: bool,
     /// Set of component names that use `client:only`
     client_only_component_names: FxHashSet<String>,
+    /// Roots of import bindings referenced anywhere that survives to output
+    referenced_bindings: FxHashSet<String>,
     /// Collected hydrated components
     hydrated_components: Vec<HydratedComponent>,
     /// Collected client-only components (full names including dot-notation)
@@ -93,6 +100,7 @@ impl<'a> AstroScanner<'a> {
             has_template_element: false,
             has_await: false,
             client_only_component_names: FxHashSet::default(),
+            referenced_bindings: FxHashSet::default(),
             hydrated_components: Vec::new(),
             client_only_components: Vec::new(),
             server_deferred_components: Vec::new(),
@@ -110,6 +118,7 @@ impl<'a> AstroScanner<'a> {
             uses_transitions: self.uses_transitions,
             has_await: self.has_await,
             client_only_component_names: self.client_only_component_names,
+            referenced_bindings: self.referenced_bindings,
             hydrated_components: self.hydrated_components,
             client_only_components: self.client_only_components,
             server_deferred_components: self.server_deferred_components,
@@ -124,6 +133,8 @@ impl<'a> AstroScanner<'a> {
         let name = get_jsx_element_name(&el.name);
         let is_component = is_component_name(&name);
         let is_custom = is_custom_element(&name);
+        let component_root = name.split('.').next().unwrap_or(&name).to_string();
+        let mut node_is_client_only = false;
 
         for attr in &el.attributes {
             if let JSXAttributeItem::Attribute(attr) = attr {
@@ -154,6 +165,7 @@ impl<'a> AstroScanner<'a> {
                 // Detect client:* directives
                 if let Some(directive) = attr_name.strip_prefix("client:") {
                     if directive == "only" {
+                        node_is_client_only = true;
                         // Store the namespace root (or simple name) for import-level checks
                         if name.contains('.') {
                             if let Some(namespace) = name.split('.').next() {
@@ -191,6 +203,11 @@ impl<'a> AstroScanner<'a> {
                     break; // Only process first client:* directive
                 }
             }
+        }
+
+        // A non-client:only instance needs its import for SSR, even when the binding is also used with client:only.
+        if (is_component || is_custom) && !node_is_client_only {
+            self.referenced_bindings.insert(component_root);
         }
     }
 
@@ -311,7 +328,22 @@ impl<'a> Visit<'a> for AstroScanner<'a> {
         if ident.name == "Astro" {
             self.uses_astro_global = true;
         }
+        // Every surviving reference (frontmatter, expressions, attribute values, and
+        // non-client:only tag names) keeps its binding's import alive.
+        self.referenced_bindings.insert(ident.name.to_string());
     }
+
+    fn visit_jsx_opening_element(&mut self, el: &JSXOpeningElement<'a>) {
+        // A client:only tag emits `null`, not the binding, so its name isn't a
+        // reference; attributes still are (their expressions can reference bindings).
+        if !opening_element_has_client_only(el) {
+            self.visit_jsx_element_name(&el.name);
+        }
+        self.visit_jsx_attribute_items(&el.attributes);
+    }
+
+    // Closing tag names never emit a standalone reference.
+    fn visit_jsx_closing_element(&mut self, _el: &JSXClosingElement<'a>) {}
 
     /// Process JSX elements for directives and script hoisting.
     fn visit_jsx_element(&mut self, el: &JSXElement<'a>) {
@@ -414,6 +446,12 @@ pub fn is_component_name(name: &str) -> bool {
 
 pub fn is_custom_element(name: &str) -> bool {
     name.contains('-')
+}
+
+fn opening_element_has_client_only(el: &JSXOpeningElement<'_>) -> bool {
+    el.attributes.iter().any(|attr| {
+        matches!(attr, JSXAttributeItem::Attribute(a) if get_jsx_attribute_name(&a.name) == "client:only")
+    })
 }
 
 /// Returns `true` if a `<script>` element should be hoisted (bundled via

@@ -2644,6 +2644,104 @@ import { CompA, CompB } from 'test';
     );
 }
 
+#[test]
+fn test_client_only_import_kept_when_also_used_plainly() {
+    let source = r"---
+import MyComp from 'test';
+---
+<MyComp client:only='react' />
+<MyComp />";
+    let output = compile_astro(source);
+    assert!(
+        output.contains("import MyComp from \"test\""),
+        "import needed for plain usage must NOT be suppressed: {output}"
+    );
+}
+
+#[test]
+fn test_client_only_import_kept_when_also_used_with_client_load() {
+    let source = r"---
+import MyComp from 'test';
+---
+<MyComp client:only='react' />
+<MyComp client:load />";
+    let output = compile_astro(source);
+    assert!(
+        output.contains("import MyComp from \"test\""),
+        "import needed for client:load usage must NOT be suppressed: {output}"
+    );
+}
+
+#[test]
+fn test_client_only_namespace_import_kept_when_member_used_plainly() {
+    let source = r"---
+import * as Scope from 'test';
+---
+<Scope.Foo client:only='react' />
+<Scope.Bar />";
+    let output = compile_astro(source);
+    assert!(
+        output.contains("import * as Scope from \"test\""),
+        "namespace import needed for Scope.Bar must NOT be suppressed: {output}"
+    );
+}
+
+#[test]
+fn test_client_only_namespace_import_suppressed_when_member_exclusive() {
+    let source = r"---
+import * as Scope from 'test';
+---
+<Scope.Foo client:only='react' />";
+    let output = compile_astro(source);
+    assert!(
+        !output.contains("import * as Scope from \"test\""),
+        "exclusively-client:only namespace import must be suppressed: {output}"
+    );
+}
+
+#[test]
+fn test_client_only_import_kept_when_referenced_in_frontmatter() {
+    let source = r"---
+import MyComp from 'test';
+const also = MyComp;
+---
+<MyComp client:only='react' />";
+    let output = compile_astro(source);
+    assert!(
+        output.contains("import MyComp from \"test\""),
+        "import referenced in frontmatter must NOT be suppressed: {output}"
+    );
+}
+
+#[test]
+fn test_client_only_import_kept_when_referenced_in_attribute_expression() {
+    // The binding is referenced in the client:only element's own props, which are
+    // built server-side, so the import must survive.
+    let source = r"---
+import MyComp from 'test';
+---
+<MyComp client:only='react' label={MyComp.label} />";
+    let output = compile_astro(source);
+    assert!(
+        output.contains("import MyComp from \"test\""),
+        "import referenced in an attribute expression must NOT be suppressed: {output}"
+    );
+}
+
+#[test]
+fn test_client_only_import_kept_when_referenced_in_template_expression() {
+    let source = r"---
+import MyComp from 'test';
+---
+<MyComp client:only='react' />
+{MyComp.displayName}";
+    let output = compile_astro(source);
+    assert!(
+        output.contains("import MyComp from \"test\""),
+        "import referenced in a template expression must NOT be suppressed: {output}"
+    );
+}
+
 // -------------------------------------------------------------------------
 // transition:persist tests
 // -------------------------------------------------------------------------

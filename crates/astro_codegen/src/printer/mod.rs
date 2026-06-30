@@ -979,16 +979,13 @@ impl<'a> AstroCodegen<'a> {
                                             s.local.name.as_str()
                                         }
                                     };
-                                    // Must be in client_only_component_names AND NOT in
-                                    // hydrated_components (which tracks non-client:only usage)
                                     self.scan_result
                                         .client_only_component_names
                                         .contains(local_name)
                                         && !self
                                             .scan_result
-                                            .hydrated_components
-                                            .iter()
-                                            .any(|c| c.name == local_name)
+                                            .referenced_bindings
+                                            .contains(local_name)
                                 })
                         } else {
                             false
