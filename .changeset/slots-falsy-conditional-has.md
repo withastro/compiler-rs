@@ -2,4 +2,4 @@
 "@astrojs/compiler-rs": patch
 ---
 
-Fix `Astro.slots.has()` reporting a named slot as present for an all-falsy conditional (e.g. a nested ternary whose branches all carry `slot="x"`). Multiple slotted elements in one expression now route through `$$mergeSlots` so the runtime conditional decides presence, matching the previous compiler.
+Fixes `Astro.slots.has()` reporting a slot as filled when its only `slot="..."` element sits inside a conditional that doesn't render it, such as `{cond ? <span slot="aside" /> : ...}` where every branch is currently false. Components that switch their layout based on `Astro.slots.has()` no longer render a spurious empty wrapper.

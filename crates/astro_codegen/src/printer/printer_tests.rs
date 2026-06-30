@@ -1791,10 +1791,8 @@ import Component from "test";
 
 #[test]
 fn test_slot_toplevel_logical_with_conditional_wraps_branches() {
-    // `guard && (cond ? <x slot/> : <y slot/>)` has two slots, so it merges. The
-    // branches must be wrapped in slot objects (not rendered as raw HTML into
-    // $$mergeSlots), and the parens must be kept so it does not re-bind as
-    // `(guard && cond) ? ...`.
+    // Branches wrap into slot objects, and parens are kept so `a && (b ? X : Y)`
+    // does not re-bind as `(a && b) ? X : Y`.
     let source = r#"---
 import Component from "test";
 ---
@@ -1813,10 +1811,8 @@ import Component from "test";
 
 #[test]
 fn test_slot_bare_fragment_children_are_not_parent_slots() {
-    // A bare `<>` is opaque: its `slot=` children belong to the fragment, not the
-    // parent. So `{cond && <>…</>}` becomes the parent's default content (rendered
-    // as a Fragment), it does NOT route x/y onto the parent or use $$mergeSlots.
-    // Matches the Go compiler.
+    // A bare `<>` is opaque: its `slot=` children belong to the fragment, so the
+    // expression becomes the parent's default content, not parent slots. Matches Go.
     let source = r#"---
 import Component from "test";
 ---

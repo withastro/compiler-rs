@@ -106,9 +106,8 @@ pub(super) fn extract_slots_from_expression<'a>(
                 ExpressionSlotInfo::SingleDynamic(expr_str, span)
             }
         },
-        // More than one slotted element must route through `$$mergeSlots` so the
-        // runtime conditional decides slot presence (`Astro.slots.has`). Like the Go
-        // compiler, this keys off the count of slotted elements, not their names.
+        // ≥2 slotted elements route through `$$mergeSlots` so the runtime conditional
+        // decides presence (`Astro.slots.has`) — keyed off count, not names, like Go.
         _ => ExpressionSlotInfo::Multiple,
     }
 }
@@ -134,9 +133,8 @@ fn collect_slots_from_expression<'a>(
                 None => {}
             }
         }
-        // A bare `<>` is opaque: its `slot=` children belong to the fragment, not
-        // the parent (the parent receives the whole fragment as default content).
-        // Matches the Go compiler.
+        // A bare `<>` is opaque: its `slot=` children belong to the fragment, not the
+        // parent, which receives the whole fragment as default content. Matches Go.
         JSXExpression::JSXFragment(_) => {}
         JSXExpression::ConditionalExpression(cond) => {
             collect_slots_from_inner_expression(&cond.consequent, slots);
@@ -461,10 +459,8 @@ impl<'a> AstroCodegen<'a> {
                             default_children.push(child);
                         }
                         ExpressionSlotInfo::Single(slot_name) => {
-                            // Group same-named expression slots into one entry, as
-                            // direct element slots already are, so two `{a && <el
-                            // slot="x"/>}` siblings render under a single slot key
-                            // instead of emitting a duplicate (last-wins) key.
+                            // Group same-named expression slots so siblings don't emit
+                            // a duplicate (last-wins) object key.
                             if let Some((_, slot_children)) = expression_slots
                                 .iter_mut()
                                 .find(|(name, _)| *name == slot_name)
@@ -673,10 +669,8 @@ impl<'a> AstroCodegen<'a> {
         }
     }
 
-    /// Print `left && right` / `left || right` where the right operand carries the
-    /// slotted elements (e.g. `guard && (cond ? <x slot/> : <y slot/>)`). The right
-    /// is recursed so its elements get wrapped in slot objects; parentheses are
-    /// preserved so `a && (b ? X : Y)` does not re-bind as `(a && b) ? X : Y`.
+    /// Recurse into the right operand so its slotted elements get wrapped in slot
+    /// objects, preserving parens so `a && (b ? X : Y)` does not re-bind as `(a && b) ? X : Y`.
     fn print_logical_slot_branch(&mut self, logic: &oxc_ast::ast::LogicalExpression<'a>) {
         self.add_source_mapping_for_span(logic.span);
         self.print_expression(&logic.left);
