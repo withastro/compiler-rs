@@ -465,8 +465,9 @@ impl<'a> AstroCodegen<'a> {
                             // direct element slots already are, so two `{a && <el
                             // slot="x"/>}` siblings render under a single slot key
                             // instead of emitting a duplicate (last-wins) key.
-                            if let Some((_, slot_children)) =
-                                expression_slots.iter_mut().find(|(name, _)| *name == slot_name)
+                            if let Some((_, slot_children)) = expression_slots
+                                .iter_mut()
+                                .find(|(name, _)| *name == slot_name)
                             {
                                 slot_children.push(child);
                             } else {
