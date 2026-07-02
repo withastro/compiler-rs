@@ -412,6 +412,11 @@ impl<'a> AstroCodegen<'a> {
         self.code.print_char('\n');
     }
 
+    /// Prints `parts` concatenated, no allocation (unlike `format!`).
+    fn print_parts<const N: usize>(&mut self, parts: [&str; N]) {
+        self.code.print_strs_array(parts);
+    }
+
     /// Print the arrow function header: async prefix, params, ` => `.
     /// The caller prints the body.
     fn print_arrow_params(&mut self, arrow: &ArrowFunctionExpression<'a>) {
@@ -1115,11 +1120,7 @@ impl<'a> AstroCodegen<'a> {
         self.print("`");
 
         if self.needs_maybe_render_head_at_start(body) {
-            self.print(&format!(
-                "${{{}({})}}",
-                runtime::MAYBE_RENDER_HEAD,
-                runtime::RESULT
-            ));
+            self.print_parts(["${", runtime::MAYBE_RENDER_HEAD, "(", runtime::RESULT, ")}"]);
             self.render_head_inserted = true;
         }
 
@@ -1257,11 +1258,7 @@ impl<'a> AstroCodegen<'a> {
     /// Insert `$$maybeRenderHead` if needed before an HTML element.
     fn maybe_insert_render_head(&mut self, name: &str) {
         if self.needs_render_head(name) {
-            self.print(&format!(
-                "${{{}({})}}",
-                runtime::MAYBE_RENDER_HEAD,
-                runtime::RESULT
-            ));
+            self.print_parts(["${", runtime::MAYBE_RENDER_HEAD, "(", runtime::RESULT, ")}"]);
             self.render_head_inserted = true;
         }
     }

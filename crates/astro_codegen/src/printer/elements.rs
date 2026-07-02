@@ -177,11 +177,7 @@ impl<'a> AstroCodegen<'a> {
 
         // Emit template depth tracking for HTML <template> elements
         if is_template {
-            self.print(&format!(
-                "${{{}({})}}",
-                runtime::TEMPLATE_ENTER,
-                runtime::RESULT
-            ));
+            self.print_parts(["${", runtime::TEMPLATE_ENTER, "(", runtime::RESULT, ")}"]);
         }
 
         // Handle special head insertion
@@ -189,11 +185,7 @@ impl<'a> AstroCodegen<'a> {
             // Children (use compact-aware printing)
             self.print_jsx_children_compact(&el.children);
             // Insert renderHead before closing head tag
-            self.print(&format!(
-                "${{{}({})}}",
-                runtime::RENDER_HEAD,
-                runtime::RESULT
-            ));
+            self.print_parts(["${", runtime::RENDER_HEAD, "(", runtime::RESULT, ")}"]);
             // Mark that head rendering is done — prevents $$maybeRenderHead from being inserted later.
             self.render_head_inserted = true;
         } else if let Some((directive_type, value, needs_unescape, is_raw_text, set_span)) =
@@ -206,10 +198,10 @@ impl<'a> AstroCodegen<'a> {
                 self.print(&value);
             } else if directive_type == "html" && needs_unescape {
                 // Only use $$unescapeHTML for non-literal expressions
-                self.print(&format!("${{{}({})}}", runtime::UNESCAPE_HTML, value));
+                self.print_parts(["${", runtime::UNESCAPE_HTML, "(", &value, ")}"]);
             } else {
                 // For literals (string/template) or set:text expression, just interpolate
-                self.print(&format!("${{{value}}}"));
+                self.print_parts(["${", &value, "}"]);
             }
         } else if name == "script"
             && el
@@ -241,11 +233,7 @@ impl<'a> AstroCodegen<'a> {
         }
 
         if is_template {
-            self.print(&format!(
-                "${{{}({})}}",
-                runtime::TEMPLATE_EXIT,
-                runtime::RESULT
-            ));
+            self.print_parts(["${", runtime::TEMPLATE_EXIT, "(", runtime::RESULT, ")}"]);
         }
 
         // Closing tag (skip for void elements like <meta>, <input>, <br>, etc.)
@@ -453,21 +441,23 @@ impl<'a> AstroCodegen<'a> {
             let clean_persist = persist_val.trim_matches('"');
             if !clean_persist.is_empty() {
                 // Explicit string value on transition:persist — use it directly.
-                self.print(&format!(
-                    " data-astro-transition-persist=\"{clean_persist}\""
-                ));
+                self.print_parts([" data-astro-transition-persist=\"", clean_persist, "\""]);
             } else if let Some((ref name_val, _)) = transition_name {
                 let clean_val = name_val.trim_matches('"');
-                self.print(&format!(" data-astro-transition-persist=\"{clean_val}\""));
+                self.print_parts([" data-astro-transition-persist=\"", clean_val, "\""]);
             } else {
                 let hash = self.generate_transition_hash();
-                self.print(&format!(
-                    "${{{}({}({}, \"{}\"), \"data-astro-transition-persist\")}}",
+                self.print_parts([
+                    "${",
                     runtime::ADD_ATTRIBUTE,
+                    "(",
                     runtime::CREATE_TRANSITION_SCOPE,
+                    "(",
                     runtime::RESULT,
-                    hash
-                ));
+                    ", \"",
+                    &hash,
+                    "\"), \"data-astro-transition-persist\")}",
+                ]);
             }
         }
 
@@ -478,15 +468,21 @@ impl<'a> AstroCodegen<'a> {
             let name_val = transition_name.map_or_else(|| "\"\"".to_string(), |(v, _)| v);
             let animate_val = transition_animate.map_or_else(|| "\"\"".to_string(), |(v, _)| v);
             let hash = self.generate_transition_hash();
-            self.print(&format!(
-                "${{{}({}({}, \"{}\", {}, {}), \"data-astro-transition-scope\")}}",
+            self.print_parts([
+                "${",
                 runtime::ADD_ATTRIBUTE,
+                "(",
                 runtime::RENDER_TRANSITION,
+                "(",
                 runtime::RESULT,
-                hash,
-                animate_val,
-                name_val
-            ));
+                ", \"",
+                &hash,
+                "\", ",
+                &animate_val,
+                ", ",
+                &name_val,
+                "), \"data-astro-transition-scope\")}",
+            ]);
         }
 
         // Track whether the scope class was already injected into an existing class/class:list
@@ -550,25 +546,22 @@ impl<'a> AstroCodegen<'a> {
                     if has_merged_class && name == "class:list" {
                         if let (Some(static_val), Some(expr)) = (static_class, class_list_expr) {
                             self.add_source_mapping_for_span(attr.span);
-                            self.print(&format!("${{{}([", runtime::ADD_ATTRIBUTE));
+                            self.print_parts(["${", runtime::ADD_ATTRIBUTE, "(["]);
                             // Inject scope class into static_val if needed
                             if let Some(sid) = scope_id {
                                 if sid.is_attribute_strategy() {
                                     // For attribute strategy, don't merge into class
-                                    self.print(&format!(
-                                        "\"{}\"",
-                                        escape_double_quotes(static_val)
-                                    ));
+                                    let escaped = escape_double_quotes(static_val);
+                                    self.print_parts(["\"", &escaped, "\""]);
                                 } else {
-                                    self.print(&format!(
-                                        "\"{} {}\"",
-                                        escape_double_quotes(static_val),
-                                        sid.class_value()
-                                    ));
+                                    let escaped = escape_double_quotes(static_val);
+                                    let class_val = sid.class_value();
+                                    self.print_parts(["\"", &escaped, " ", &class_val, "\""]);
                                     scope_injected = true;
                                 }
                             } else {
-                                self.print(&format!("\"{}\"", escape_double_quotes(static_val)));
+                                let escaped = escape_double_quotes(static_val);
+                                self.print_parts(["\"", &escaped, "\""]);
                             }
                             self.print(", ");
                             self.print_jsx_expression(&expr.expression);
@@ -613,7 +606,7 @@ impl<'a> AstroCodegen<'a> {
                         && !has_class_attr
                         && !scope_injected
                     {
-                        self.print(&format!("${{{}(", runtime::SPREAD_ATTRIBUTES));
+                        self.print_parts(["${", runtime::SPREAD_ATTRIBUTES, "("]);
                         self.print_expression(&spread.argument);
                         // Always pass the class through $$spreadAttributes for runtime
                         // merging, regardless of scoped style strategy. The runtime's
@@ -622,7 +615,7 @@ impl<'a> AstroCodegen<'a> {
                         // For attribute strategy, the data-astro-cid-* attribute is
                         // added directly on the element by the fallback below.
                         let sc = sid.class_value();
-                        self.print(&format!(",undefined,{{\"class\":\"{sc}\"}})}}"));
+                        self.print_parts([",undefined,{\"class\":\"", &sc, "\"})}"]);
                         // Note: do NOT set scope_injected here for attribute strategy,
                         // so the data-astro-cid-* attribute is still added directly
                         // on the element by the fallback at the end of this function.
@@ -631,7 +624,7 @@ impl<'a> AstroCodegen<'a> {
                         }
                         continue;
                     }
-                    self.print(&format!("${{{}(", runtime::SPREAD_ATTRIBUTES));
+                    self.print_parts(["${", runtime::SPREAD_ATTRIBUTES, "("]);
                     self.print_expression(&spread.argument);
                     self.print(")}");
                 }
@@ -640,10 +633,7 @@ impl<'a> AstroCodegen<'a> {
 
         // If define:vars injection is needed but no `style` attribute existed, add one
         if inject_define_vars && !define_vars_style_injected {
-            self.print(&format!(
-                "${{{}($$definedVars, \"style\")}}",
-                runtime::ADD_ATTRIBUTE
-            ));
+            self.print_parts(["${", runtime::ADD_ATTRIBUTE, "($$definedVars, \"style\")}"]);
             self.define_vars_injected = true;
         }
 
@@ -652,9 +642,11 @@ impl<'a> AstroCodegen<'a> {
             && !scope_injected
         {
             if sid.is_attribute_strategy() {
-                self.print(&format!(" {}", sid.data_attr_name()));
+                let attr_name = sid.data_attr_name();
+                self.print_parts([" ", &attr_name]);
             } else {
-                self.print(&format!(" class=\"{}\"", sid.class_value()));
+                let class_val = sid.class_value();
+                self.print_parts([" class=\"", &class_val, "\""]);
             }
         }
     }
@@ -722,19 +714,19 @@ impl<'a> AstroCodegen<'a> {
         match &attr.value {
             None => {
                 // Empty/boolean style → $$definedVars
-                self.print(&format!(
-                    "${{{}($$definedVars, \"style\")}}",
-                    runtime::ADD_ATTRIBUTE
-                ));
+                self.print_parts(["${", runtime::ADD_ATTRIBUTE, "($$definedVars, \"style\")}"]);
             }
             Some(JSXAttributeValue::StringLiteral(lit)) => {
                 // Quoted style="val" → `${"val"}; ${$$definedVars}`
                 let val = lit.value.as_str();
-                self.print(&format!(
-                    "${{{}(`${{\"{}\"}}; ${{$$definedVars}}`, \"style\")}}",
+                let escaped = escape_double_quotes(val);
+                self.print_parts([
+                    "${",
                     runtime::ADD_ATTRIBUTE,
-                    escape_double_quotes(val)
-                ));
+                    "(`${\"",
+                    &escaped,
+                    "\"}; ${$$definedVars}`, \"style\")}",
+                ]);
             }
             Some(JSXAttributeValue::ExpressionContainer(expr)) => {
                 if let Some(e) = expr.expression.as_expression() {
@@ -752,33 +744,31 @@ impl<'a> AstroCodegen<'a> {
                             .strip_prefix('(')
                             .and_then(|s| s.strip_suffix(')'))
                             .unwrap_or(expr_str.trim());
-                        self.print(&format!(
-                            "${{{}([{},$$definedVars], \"style\")}}",
+                        self.print_parts([
+                            "${",
                             runtime::ADD_ATTRIBUTE,
-                            obj_str
-                        ));
+                            "([",
+                            obj_str,
+                            ",$$definedVars], \"style\")}",
+                        ]);
                     } else {
                         // Other expression: `${expr}; ${$$definedVars}`
-                        self.print(&format!(
-                            "${{{}(`${{{}}}; ${{$$definedVars}}`, \"style\")}}",
+                        self.print_parts([
+                            "${",
                             runtime::ADD_ATTRIBUTE,
-                            expr_str
-                        ));
+                            "(`${",
+                            &expr_str,
+                            "}; ${$$definedVars}`, \"style\")}",
+                        ]);
                     }
                 } else {
                     // Fallback: just $$definedVars
-                    self.print(&format!(
-                        "${{{}($$definedVars, \"style\")}}",
-                        runtime::ADD_ATTRIBUTE
-                    ));
+                    self.print_parts(["${", runtime::ADD_ATTRIBUTE, "($$definedVars, \"style\")}"]);
                 }
             }
             _ => {
                 // Fallback: just $$definedVars
-                self.print(&format!(
-                    "${{{}($$definedVars, \"style\")}}",
-                    runtime::ADD_ATTRIBUTE
-                ));
+                self.print_parts(["${", runtime::ADD_ATTRIBUTE, "($$definedVars, \"style\")}"]);
             }
         }
     }
@@ -789,30 +779,28 @@ impl<'a> AstroCodegen<'a> {
         match &attr.value {
             None => {
                 // Empty class attribute → just the scope class
-                self.print(&format!(" class=\"{scope_class}\""));
+                self.print_parts([" class=\"", scope_class, "\""]);
             }
             Some(JSXAttributeValue::StringLiteral(lit)) => {
                 // Static class: append scope class
                 let val = lit.value.as_str();
                 if val.is_empty() {
-                    self.print(&format!(" class=\"{scope_class}\""));
+                    self.print_parts([" class=\"", scope_class, "\""]);
                 } else {
-                    self.print(&format!(
-                        " class=\"{} {scope_class}\"",
-                        escape_html_attribute(val)
-                    ));
+                    let escaped = escape_html_attribute(val);
+                    self.print_parts([" class=\"", &escaped, " ", scope_class, "\""]);
                 }
             }
             Some(JSXAttributeValue::ExpressionContainer(expr)) => {
                 // Dynamic class: expression + scope class
                 // Output: ${$$addAttribute((expr ?? "") + " astro-XXXX", "class")}
-                self.print(&format!("${{{}((", runtime::ADD_ATTRIBUTE));
+                self.print_parts(["${", runtime::ADD_ATTRIBUTE, "(("]);
                 self.print_jsx_expression(&expr.expression);
-                self.print(&format!(" ?? \"\") + \" {scope_class}\", \"class\")}}"));
+                self.print_parts([" ?? \"\") + \" ", scope_class, "\", \"class\")}"]);
             }
             _ => {
                 // Fallback: just output scope class
-                self.print(&format!(" class=\"{scope_class}\""));
+                self.print_parts([" class=\"", scope_class, "\""]);
             }
         }
     }
@@ -823,13 +811,13 @@ impl<'a> AstroCodegen<'a> {
         match &attr.value {
             Some(JSXAttributeValue::ExpressionContainer(expr)) => {
                 // class:list={expr} → ${$$addAttribute([expr, "astro-XXXX"], "class:list")}
-                self.print(&format!("${{{}([(", runtime::ADD_ATTRIBUTE));
+                self.print_parts(["${", runtime::ADD_ATTRIBUTE, "([("]);
                 self.print_jsx_expression(&expr.expression);
-                self.print(&format!("), \"{scope_class}\"], \"class:list\")}}"));
+                self.print_parts([")", ", \"", scope_class, "\"], \"class:list\")}"]);
             }
             _ => {
                 // Fallback: just output scope class
-                self.print(&format!(" class=\"{scope_class}\""));
+                self.print_parts([" class=\"", scope_class, "\""]);
             }
         }
     }
@@ -859,7 +847,7 @@ impl<'a> AstroCodegen<'a> {
                 }
                 JSXAttributeValue::ExpressionContainer(expr) => {
                     // Dynamic attribute
-                    self.print(&format!("${{{}(", runtime::ADD_ATTRIBUTE));
+                    self.print_parts(["${", runtime::ADD_ATTRIBUTE, "("]);
                     self.print_jsx_expression(&expr.expression);
                     self.print(", \"");
                     // Shorthand names can be arbitrary expression text, so escape as a JS string key.
