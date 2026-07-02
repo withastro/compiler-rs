@@ -24,7 +24,7 @@ impl<'a> AstroCodegen<'a> {
         self.print(runtime::RESULT);
         self.print(",\"Fragment\",");
         self.print(runtime::FRAGMENT);
-        self.print(&format!(",{{}},{{\"default\": {async_prefix}{slot_params}"));
+        self.print_parts([",{},{\"default\": ", async_prefix, slot_params]);
         self.print(runtime::RENDER);
         self.print("`");
         self.print_jsx_children_compact(&frag.children);
@@ -119,9 +119,11 @@ impl<'a> AstroCodegen<'a> {
                     self.print(runtime::RENDER);
                     self.print("`${");
                     self.print(runtime::RENDER_COMPONENT);
-                    self.print(&format!(
-                        "($$result,\"Fragment\",Fragment,{{}},{{\"default\":{async_prefix}{slot_params}"
-                    ));
+                    self.print_parts([
+                        "($$result,\"Fragment\",Fragment,{},{\"default\":",
+                        async_prefix,
+                        slot_params,
+                    ]);
                     self.print(runtime::RENDER);
                     self.print("`");
                     self.print_jsx_children_compact(&frag.children);
@@ -236,7 +238,7 @@ impl<'a> AstroCodegen<'a> {
                 self.add_source_mapping_for_span(expr.span());
                 let left_code = gen_to_string(&assign.left);
                 self.print(&left_code);
-                self.print(&format!(" {} ", assign.operator.as_str()));
+                self.print_parts([" ", assign.operator.as_str(), " "]);
                 self.print_expression(&assign.right);
             }
             Expression::StaticMemberExpression(member) => {

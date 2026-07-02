@@ -34,19 +34,25 @@ pub fn escape_template_literal(s: &str) -> String {
 /// double-escaped. A `\` is doubled so it survives the Phase-2 codegen
 /// round-trip (else `pattern="^x\.y$"` collapses to `^x.y$`). Diverges from Go's
 /// `escapeDoubleQuote`, which escapes neither backslashes nor newlines.
-pub fn escape_double_quotes(s: &str) -> String {
+pub fn escape_double_quotes(s: &str) -> std::borrow::Cow<'_, str> {
+    if !s.contains(['\\', '"', '\n', '\r']) {
+        return std::borrow::Cow::Borrowed(s);
+    }
     let s = s.cow_replace('\\', "\\\\");
     let s = s.cow_replace('"', "\\\"");
     let s = s.cow_replace('\n', "\\n");
-    s.cow_replace('\r', "\\r").into_owned()
+    std::borrow::Cow::Owned(s.cow_replace('\r', "\\r").into_owned())
 }
 
 /// Escape single quotes for embedding inside a `'...'` string.
 ///
 /// Only escapes `'` — see [`escape_double_quotes`] for rationale on
 /// why backslashes are not escaped.
-pub fn escape_single_quote(s: &str) -> String {
-    s.cow_replace('\'', "\\'").into_owned()
+pub fn escape_single_quote(s: &str) -> std::borrow::Cow<'_, str> {
+    if !s.contains('\'') {
+        return std::borrow::Cow::Borrowed(s);
+    }
+    std::borrow::Cow::Owned(s.cow_replace('\'', "\\'").into_owned())
 }
 
 /// Escape a string for use as an HTML attribute value inside a template literal.
@@ -54,7 +60,10 @@ pub fn escape_single_quote(s: &str) -> String {
 /// Escapes backslashes, template literal syntax (`` ` `` and `${`), HTML special
 /// characters (`"`, `<`, `>`), and ampersands that are not part of valid HTML
 /// entities.
-pub fn escape_html_attribute(s: &str) -> String {
+pub fn escape_html_attribute(s: &str) -> std::borrow::Cow<'_, str> {
+    if !s.contains(['\\', '`', '$', '&', '"', '<', '>']) {
+        return std::borrow::Cow::Borrowed(s);
+    }
     // Double backslashes so the `$$render` template's cooked value keeps them
     // (else `^x\.y$` → `^x.y$`); before the `` \` ``/`\${` escapes so those aren't doubled.
     let s = s.cow_replace('\\', "\\\\");
@@ -65,7 +74,7 @@ pub fn escape_html_attribute(s: &str) -> String {
     let s = escape_ampersands(&s);
     let s = s.cow_replace('"', "&quot;");
     let s = s.cow_replace('<', "&lt;");
-    s.cow_replace('>', "&gt;").into_owned()
+    std::borrow::Cow::Owned(s.cow_replace('>', "&gt;").into_owned())
 }
 
 /// Escape ampersands, but preserve valid HTML entities like `&#x22;` or `&quot;`.

@@ -231,7 +231,7 @@ impl<'a> AstroCodegen<'a> {
             self.add_source_mapping_for_span(set_span);
             let async_prefix = self.get_async_prefix();
             let slot_params = self.get_slot_params();
-            self.print(&format!(",{{\"default\": {async_prefix}{slot_params}"));
+            self.print_parts([",{\"default\": ", async_prefix, slot_params]);
             self.print(runtime::RENDER);
             self.print("`");
             if is_raw_text {
@@ -426,23 +426,24 @@ impl<'a> AstroCodegen<'a> {
                         match &attr.value {
                             None => {
                                 // Boolean class attribute → just the scope class
-                                self.print(&format!("\"{sc}\""));
+                                self.print_parts(["\"", sc, "\""]);
                             }
                             Some(JSXAttributeValue::StringLiteral(lit)) => {
                                 let val = lit.value.as_str();
                                 if val.is_empty() {
-                                    self.print(&format!("\"{sc}\""));
+                                    self.print_parts(["\"", sc, "\""]);
                                 } else {
-                                    self.print(&format!("\"{} {sc}\"", escape_double_quotes(val)));
+                                    let escaped = escape_double_quotes(val);
+                                    self.print_parts(["\"", &escaped, " ", sc, "\""]);
                                 }
                             }
                             Some(JSXAttributeValue::ExpressionContainer(expr)) => {
                                 self.print("(((");
                                 self.print_jsx_expression(&expr.expression);
-                                self.print(&format!(") ?? \"\") + \" {sc}\")"));
+                                self.print_parts([") ?? \"\") + \" ", sc, "\")"]);
                             }
                             _ => {
-                                self.print(&format!("\"{sc}\""));
+                                self.print_parts(["\"", sc, "\""]);
                             }
                         }
                         scope_injected = true;
@@ -504,14 +505,19 @@ impl<'a> AstroCodegen<'a> {
                 .map_or_else(|| "\"\"".to_string(), |(v, _)| v.clone());
             let animate_val = transition_animate.map_or_else(|| "\"\"".to_string(), |(v, _)| v);
             let hash = self.generate_transition_hash();
-            self.print(&format!(
-                "\"data-astro-transition-scope\":({}({}, \"{}\", {}, {}))",
+            self.print_parts([
+                "\"data-astro-transition-scope\":(",
                 runtime::RENDER_TRANSITION,
+                "(",
                 runtime::RESULT,
-                hash,
-                animate_val,
-                name_val
-            ));
+                ", \"",
+                &hash,
+                "\", ",
+                &animate_val,
+                ", ",
+                &name_val,
+                "))",
+            ]);
         }
 
         // Print transition:persist-props as a data attribute if present
@@ -521,9 +527,7 @@ impl<'a> AstroCodegen<'a> {
             }
             first = false;
             self.add_source_mapping_for_span(*persist_props_span);
-            self.print(&format!(
-                "\"data-astro-transition-persist-props\":{props_val}"
-            ));
+            self.print_parts(["\"data-astro-transition-persist-props\":", props_val]);
         }
 
         if let Some((ref persist_val, persist_span)) = transition_persist {
@@ -538,22 +542,21 @@ impl<'a> AstroCodegen<'a> {
             // 3. Generated hash via $$createTransitionScope
             let clean_persist = persist_val.trim_matches('"');
             if !clean_persist.is_empty() {
-                self.print(&format!(
-                    "\"data-astro-transition-persist\":\"{clean_persist}\""
-                ));
+                self.print_parts(["\"data-astro-transition-persist\":\"", clean_persist, "\""]);
             } else if let Some((ref name_val, _)) = transition_name {
                 let clean_val = name_val.trim_matches('"');
-                self.print(&format!(
-                    "\"data-astro-transition-persist\":\"{clean_val}\""
-                ));
+                self.print_parts(["\"data-astro-transition-persist\":\"", clean_val, "\""]);
             } else {
                 let hash = self.generate_transition_hash();
-                self.print(&format!(
-                    "\"data-astro-transition-persist\":({}({}, \"{}\"))",
+                self.print_parts([
+                    "\"data-astro-transition-persist\":(",
                     runtime::CREATE_TRANSITION_SCOPE,
+                    "(",
                     runtime::RESULT,
-                    hash
-                ));
+                    ", \"",
+                    &hash,
+                    "\"))",
+                ]);
             }
         }
 
@@ -567,14 +570,14 @@ impl<'a> AstroCodegen<'a> {
                 }
                 first = false;
                 let attr_name = sid.data_attr_name();
-                self.print(&format!("\"{attr_name}\":true"));
+                self.print_parts(["\"", &attr_name, "\":true"]);
             } else if !scope_injected {
                 if !first {
                     self.print(",");
                 }
                 first = false;
                 let sc = sid.class_value();
-                self.print(&format!("\"class\":\"{sc}\""));
+                self.print_parts(["\"class\":\"", &sc, "\""]);
             }
         }
 
@@ -583,26 +586,29 @@ impl<'a> AstroCodegen<'a> {
             if !first {
                 self.print(",");
             }
-            self.print(&format!(
-                "\"client:component-hydration\":\"{}\"",
-                hydration.directive.name()
-            ));
+            self.print_parts([
+                "\"client:component-hydration\":\"",
+                hydration.directive.name(),
+                "\"",
+            ]);
 
             if let Some(path) = &hydration.component_path {
                 if hydration.directive.is_client_only() && !self.options.has_resolve_path() {
-                    self.print(&format!(
-                        ",\"client:component-path\":($$metadata.resolvePath(\"{path}\"))"
-                    ));
+                    self.print_parts([
+                        ",\"client:component-path\":($$metadata.resolvePath(\"",
+                        path,
+                        "\"))",
+                    ]);
                 } else {
-                    self.print(&format!(",\"client:component-path\":(\"{path}\")"));
+                    self.print_parts([",\"client:component-path\":(\"", path, "\")"]);
                 }
             }
 
             if let Some(export) = &hydration.component_export {
                 if hydration.directive.is_client_only() {
-                    self.print(&format!(",\"client:component-export\":\"{export}\""));
+                    self.print_parts([",\"client:component-export\":\"", export, "\""]);
                 } else {
-                    self.print(&format!(",\"client:component-export\":(\"{export}\")"));
+                    self.print_parts([",\"client:component-export\":(\"", export, "\")"]);
                 }
             }
         }
@@ -617,11 +623,11 @@ impl<'a> AstroCodegen<'a> {
             self.print("\"server:component-directive\":\"defer\"");
 
             if let Some(path) = &server_defer.component_path {
-                self.print(&format!(",\"server:component-path\":(\"{path}\")"));
+                self.print_parts([",\"server:component-path\":(\"", path, "\")"]);
             }
 
             if let Some(export) = &server_defer.component_export {
-                self.print(&format!(",\"server:component-export\":(\"{export}\")"));
+                self.print_parts([",\"server:component-export\":(\"", export, "\")"]);
             }
         }
     }
