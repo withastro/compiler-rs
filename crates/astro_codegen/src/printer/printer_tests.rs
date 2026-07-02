@@ -192,6 +192,46 @@ import Component from "test";
 }
 
 #[test]
+fn test_slot_same_named_direct_and_expression_group_into_one_key() {
+    // A direct element and an expression slot with the same name render under a
+    // single slot key (bodies concatenated), not a duplicate object key where JS
+    // drops all but the last. Matches how same-named expression slots already
+    // group, and the Go compiler.
+    let source = r#"---
+import Component from "test";
+---
+<Component><div slot="x">A</div>{b && <div slot="x">B</div>}</Component>"#;
+    let output = compile_astro(source);
+
+    assert!(
+        output.matches("\"x\":").count() == 1,
+        "Mixed direct and expression slots should produce one slot key, not duplicates: {output}"
+    );
+    assert!(
+        output.contains("<div>A</div>") && output.contains("b &&"),
+        "Both the direct element and the branch body should survive in the merged slot: {output}"
+    );
+}
+
+#[test]
+fn test_slot_same_named_mixed_keeps_source_order() {
+    // The merged slot body concatenates siblings in source order, so an expression
+    // slot authored before a direct element renders before it.
+    let source = r#"---
+import Component from "test";
+---
+<Component>{b && <div slot="x">B</div>}<div slot="x">A</div></Component>"#;
+    let output = compile_astro(source);
+
+    let expr_pos = output.find("b &&").expect("expression slot missing");
+    let direct_pos = output.find("<div>A</div>").expect("direct element missing");
+    assert!(
+        expr_pos < direct_pos,
+        "Merged slot body should keep source order (expression before direct element): {output}"
+    );
+}
+
+#[test]
 fn test_client_load_directive() {
     let source = r"---
 import Component from 'test';

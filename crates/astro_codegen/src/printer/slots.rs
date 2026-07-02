@@ -409,12 +409,14 @@ impl<'a> AstroCodegen<'a> {
     pub(super) fn print_component_slots(&mut self, children: &[JSXChild<'a>]) {
         // Categorize children into:
         // 1. default_children — children without slot attribute
-        // 2. named_slots — direct elements with slot="name"
-        // 3. expression_slots — expressions containing single slotted element
-        // 4. conditional_slots — expressions with multiple different slots (need $$mergeSlots)
+        // 2. named_slots — single static slot="name", whether a direct element or
+        //    expression-wrapped (`{cond && <div slot="name">}`)
+        // 3. conditional_slots — expressions with multiple different slots (need $$mergeSlots)
         let mut default_children: Vec<&JSXChild<'a>> = Vec::new();
+        // Direct and expression-wrapped elements share this bucket, keyed by name, so a
+        // plain `slot="x"` and a `{cond && <_ slot="x">}` sibling don't emit a duplicate
+        // (last-wins) object key. Matches the Go compiler.
         let mut named_slots: Vec<(String, Vec<&JSXChild<'a>>)> = Vec::new();
-        let mut expression_slots: Vec<(&str, Vec<&JSXChild<'a>>)> = Vec::new();
         let mut conditional_slots: Vec<&JSXExpressionContainer<'a>> = Vec::new();
 
         // Direct elements with slot={expr} (e.g. <Comp slot={name} />)
@@ -459,15 +461,14 @@ impl<'a> AstroCodegen<'a> {
                             default_children.push(child);
                         }
                         ExpressionSlotInfo::Single(slot_name) => {
-                            // Group same-named expression slots so siblings don't emit
-                            // a duplicate (last-wins) object key.
-                            if let Some((_, slot_children)) = expression_slots
-                                .iter_mut()
-                                .find(|(name, _)| *name == slot_name)
+                            // Group with direct-element slots of the same name so siblings
+                            // don't emit a duplicate (last-wins) object key.
+                            if let Some((_, slot_children)) =
+                                named_slots.iter_mut().find(|(name, _)| name == slot_name)
                             {
                                 slot_children.push(child);
                             } else {
-                                expression_slots.push((slot_name, vec![child]));
+                                named_slots.push((slot_name.to_string(), vec![child]));
                             }
                         }
                         ExpressionSlotInfo::SingleDynamic(expr_str, span) => {
@@ -530,7 +531,8 @@ impl<'a> AstroCodegen<'a> {
             self.print("`,");
         }
 
-        // Print named slots (direct elements with slot attribute)
+        // Print named slots — direct and expression-wrapped elements sharing a name
+        // render under one key, bodies concatenated, like the default slot's children.
         for (name, slot_children) in &named_slots {
             self.print("\"");
             self.print(&escape_double_quotes(name));
@@ -540,21 +542,6 @@ impl<'a> AstroCodegen<'a> {
             let prev = self.skip_slot_attribute;
             self.skip_slot_attribute = true;
             self.print_slot_children(slot_children);
-            self.skip_slot_attribute = prev;
-            self.print("`,");
-        }
-
-        // Print expression slots (expressions containing a single slotted element)
-        for (name, slot_children) in &expression_slots {
-            self.print("\"");
-            self.print(&escape_double_quotes(name));
-            self.print("\": ");
-            self.print_slot_fn_open(AwaitDetector::found_in_refs(slot_children));
-            let prev = self.skip_slot_attribute;
-            self.skip_slot_attribute = true;
-            for child in slot_children {
-                self.print_jsx_child(child);
-            }
             self.skip_slot_attribute = prev;
             self.print("`,");
         }
