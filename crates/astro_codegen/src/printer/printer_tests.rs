@@ -2489,6 +2489,43 @@ fn test_script_src_with_data_attr_not_hoisted() {
     );
 }
 
+#[test]
+fn test_empty_script_gets_hoisted_slot() {
+    // Empty script still emits renderScript index=0, so it must occupy metadata slot 0.
+    let output = compile_astro("<script></script>");
+
+    assert!(
+        output.contains("index=0"),
+        "empty script must still emit renderScript at index 0: {output}"
+    );
+    assert!(
+        output.contains("type: \"inline\""),
+        "empty script must occupy a hoisted metadata slot: {output}"
+    );
+}
+
+#[test]
+fn test_empty_then_real_script_indices_stay_aligned() {
+    // Regression: a leading empty script must not shift the real script off index 1.
+    let output = compile_astro("<script></script>\n<script>console.log(2)</script>");
+
+    assert!(
+        output.contains("index=0") && output.contains("index=1"),
+        "both scripts must emit renderScript calls: {output}"
+    );
+    let hoisted_start = output.find("hoisted:").expect("hoisted array present");
+    let hoisted = &output[hoisted_start..];
+    let inline_count = hoisted.matches("type: \"inline\"").count();
+    assert_eq!(
+        inline_count, 2,
+        "hoisted array must have one slot per renderScript index (index 0 empty, index 1 real): {output}"
+    );
+    assert!(
+        hoisted.contains("console.log(2)"),
+        "the real script must remain in the hoisted array: {output}"
+    );
+}
+
 // -------------------------------------------------------------------------
 // set:html must always use $$unescapeHTML (including template literals)
 // -------------------------------------------------------------------------
