@@ -112,6 +112,38 @@ pub(super) fn extract_slots_from_expression<'a>(
     }
 }
 
+fn collect_slot_from_attributes<'a>(
+    attrs: &'a [JSXAttributeItem<'a>],
+    slots: &mut Vec<CollectedSlot<'a>>,
+) {
+    match get_slot_attribute_value(attrs) {
+        Some(SlotValue::Static(_)) => {
+            if let Some(name_ref) = get_slot_attribute(attrs) {
+                slots.push(CollectedSlot::Static(name_ref));
+            }
+        }
+        Some(SlotValue::Dynamic(expr_str, span)) => {
+            slots.push(CollectedSlot::Dynamic(expr_str, span));
+        }
+        None => {}
+    }
+}
+
+fn collect_slots_from_arrow<'a>(
+    arrow: &'a oxc_ast::ast::ArrowFunctionExpression<'a>,
+    slots: &mut Vec<CollectedSlot<'a>>,
+) {
+    if arrow.expression {
+        if let Some(oxc_ast::ast::Statement::ExpressionStatement(expr_stmt)) =
+            arrow.body.statements.first()
+        {
+            collect_slots_from_inner_expression(&expr_stmt.expression, slots);
+        }
+    } else {
+        collect_slots_from_function_body(&arrow.body, slots);
+    }
+}
+
 /// Recursively collect slot entries from a JSX expression.
 fn collect_slots_from_expression<'a>(
     expr: &'a JSXExpression<'a>,
@@ -119,19 +151,7 @@ fn collect_slots_from_expression<'a>(
 ) {
     match expr {
         JSXExpression::JSXElement(el) => {
-            match get_slot_attribute_value(&el.opening_element.attributes) {
-                Some(SlotValue::Static(name)) => {
-                    if let Some(name_ref) = get_slot_attribute(&el.opening_element.attributes) {
-                        slots.push(CollectedSlot::Static(name_ref));
-                    } else {
-                        drop(name);
-                    }
-                }
-                Some(SlotValue::Dynamic(expr_str, span)) => {
-                    slots.push(CollectedSlot::Dynamic(expr_str, span));
-                }
-                None => {}
-            }
+            collect_slot_from_attributes(&el.opening_element.attributes, slots);
         }
         // A bare `<>` is opaque: its `slot=` children belong to the fragment, not the
         // parent, which receives the whole fragment as default content. Matches Go.
@@ -148,18 +168,7 @@ fn collect_slots_from_expression<'a>(
             collect_slots_from_inner_expression(&paren.expression, slots);
         }
         JSXExpression::ArrowFunctionExpression(arrow) => {
-            if arrow.expression {
-                // Expression-body arrow: `() => <span slot="c">C</span>`
-                // The body has one ExpressionStatement wrapping the JSX.
-                if let Some(oxc_ast::ast::Statement::ExpressionStatement(expr_stmt)) =
-                    arrow.body.statements.first()
-                {
-                    collect_slots_from_inner_expression(&expr_stmt.expression, slots);
-                }
-            } else {
-                // Block-body arrow: look inside return/switch/if statements
-                collect_slots_from_function_body(&arrow.body, slots);
-            }
+            collect_slots_from_arrow(arrow, slots);
         }
         JSXExpression::CallExpression(call) => {
             // e.g. items.map(item => <div slot="content">{item}</div>)
@@ -181,17 +190,7 @@ fn collect_slots_from_inner_expression<'a>(
 ) {
     match expr {
         Expression::JSXElement(el) => {
-            match get_slot_attribute_value(&el.opening_element.attributes) {
-                Some(SlotValue::Static(_)) => {
-                    if let Some(name_ref) = get_slot_attribute(&el.opening_element.attributes) {
-                        slots.push(CollectedSlot::Static(name_ref));
-                    }
-                }
-                Some(SlotValue::Dynamic(expr_str, span)) => {
-                    slots.push(CollectedSlot::Dynamic(expr_str, span));
-                }
-                None => {}
-            }
+            collect_slot_from_attributes(&el.opening_element.attributes, slots);
         }
         // Bare `<>` is opaque — see `collect_slots_from_expression`.
         Expression::JSXFragment(_) => {}
@@ -206,15 +205,7 @@ fn collect_slots_from_inner_expression<'a>(
             collect_slots_from_inner_expression(&paren.expression, slots);
         }
         Expression::ArrowFunctionExpression(arrow) => {
-            if arrow.expression {
-                if let Some(oxc_ast::ast::Statement::ExpressionStatement(expr_stmt)) =
-                    arrow.body.statements.first()
-                {
-                    collect_slots_from_inner_expression(&expr_stmt.expression, slots);
-                }
-            } else {
-                collect_slots_from_function_body(&arrow.body, slots);
-            }
+            collect_slots_from_arrow(arrow, slots);
         }
         Expression::CallExpression(call) => {
             // e.g. items.map(item => <div slot="content">{item}</div>)
@@ -242,15 +233,7 @@ fn collect_slots_from_call_arguments<'a>(
     for arg in arguments {
         match arg {
             oxc_ast::ast::Argument::ArrowFunctionExpression(arrow) => {
-                if arrow.expression {
-                    if let Some(oxc_ast::ast::Statement::ExpressionStatement(expr_stmt)) =
-                        arrow.body.statements.first()
-                    {
-                        collect_slots_from_inner_expression(&expr_stmt.expression, slots);
-                    }
-                } else {
-                    collect_slots_from_function_body(&arrow.body, slots);
-                }
+                collect_slots_from_arrow(arrow, slots);
             }
             oxc_ast::ast::Argument::FunctionExpression(func) => {
                 if let Some(body) = &func.body {
@@ -595,15 +578,19 @@ impl<'a> AstroCodegen<'a> {
         self.print_conditional_slot_expr(&expr.expression);
     }
 
+    fn print_conditional_slot_ternary(&mut self, cond: &oxc_ast::ast::ConditionalExpression<'a>) {
+        self.add_source_mapping_for_span(cond.span);
+        self.print_expression(&cond.test);
+        self.print(" ? ");
+        self.print_conditional_slot_branch(&cond.consequent);
+        self.print(" : ");
+        self.print_conditional_slot_branch(&cond.alternate);
+    }
+
     fn print_conditional_slot_expr(&mut self, expr: &JSXExpression<'a>) {
         match expr {
             JSXExpression::ConditionalExpression(cond) => {
-                self.add_source_mapping_for_span(cond.span);
-                self.print_expression(&cond.test);
-                self.print(" ? ");
-                self.print_conditional_slot_branch(&cond.consequent);
-                self.print(" : ");
-                self.print_conditional_slot_branch(&cond.alternate);
+                self.print_conditional_slot_ternary(cond);
             }
             JSXExpression::ArrowFunctionExpression(arrow) => {
                 self.add_source_mapping_for_span(arrow.span);
@@ -630,12 +617,7 @@ impl<'a> AstroCodegen<'a> {
                 self.print_conditional_slot_branch_expr(&paren.expression);
             }
             Expression::ConditionalExpression(cond) => {
-                self.add_source_mapping_for_span(cond.span);
-                self.print_expression(&cond.test);
-                self.print(" ? ");
-                self.print_conditional_slot_branch(&cond.consequent);
-                self.print(" : ");
-                self.print_conditional_slot_branch(&cond.alternate);
+                self.print_conditional_slot_ternary(cond);
             }
             Expression::CallExpression(call) => {
                 self.print_slot_aware_call_expression(call);
@@ -678,22 +660,7 @@ impl<'a> AstroCodegen<'a> {
     /// Print a call expression where callback arguments may return slotted JSX.
     fn print_slot_aware_call_expression(&mut self, call: &oxc_ast::ast::CallExpression<'a>) {
         // Print callee (same as regular call expression printing)
-        match &call.callee {
-            Expression::StaticMemberExpression(member) => {
-                self.print_expression(&member.object);
-                self.print(if member.optional { "?." } else { "." });
-                self.print(member.property.name.as_str());
-            }
-            Expression::ComputedMemberExpression(member) => {
-                self.print_expression(&member.object);
-                self.print(if member.optional { "?.[" } else { "[" });
-                self.print_expression(&member.expression);
-                self.print("]");
-            }
-            other => {
-                self.print_expression(other);
-            }
-        }
+        self.print_callee(&call.callee);
         if call.optional {
             self.print("?.");
         }
@@ -809,12 +776,7 @@ impl<'a> AstroCodegen<'a> {
                 self.print("}");
                 if let Some(handler) = &try_stmt.handler {
                     self.print(" catch");
-                    if let Some(param) = &handler.param {
-                        self.print("(");
-                        let code = gen_to_string(&param.pattern);
-                        self.print(&code);
-                        self.print(")");
-                    }
+                    self.print_catch_param(handler);
                     self.print(" {\n");
                     for s in &handler.body.body {
                         self.print_slot_aware_statement(s);
@@ -852,19 +814,7 @@ impl<'a> AstroCodegen<'a> {
             Statement::ForInStatement(for_in) => {
                 self.add_source_mapping_for_span(for_in.span);
                 self.print("for(");
-                match &for_in.left {
-                    oxc_ast::ast::ForStatementLeft::VariableDeclaration(decl) => {
-                        let code = gen_to_string(decl.as_ref());
-                        self.print(&code);
-                    }
-                    other => {
-                        let start = other.span().start as usize;
-                        let end = other.span().end as usize;
-                        if start < self.source_text.len() && end <= self.source_text.len() {
-                            self.print(&self.source_text[start..end]);
-                        }
-                    }
-                }
+                self.print_for_statement_left(&for_in.left);
                 self.print(" in ");
                 self.print_expression(&for_in.right);
                 self.print(") ");
@@ -874,19 +824,7 @@ impl<'a> AstroCodegen<'a> {
             Statement::ForOfStatement(for_of) => {
                 self.add_source_mapping_for_span(for_of.span);
                 self.print(if for_of.r#await { "for await(" } else { "for(" });
-                match &for_of.left {
-                    oxc_ast::ast::ForStatementLeft::VariableDeclaration(decl) => {
-                        let code = gen_to_string(decl.as_ref());
-                        self.print(&code);
-                    }
-                    other => {
-                        let start = other.span().start as usize;
-                        let end = other.span().end as usize;
-                        if start < self.source_text.len() && end <= self.source_text.len() {
-                            self.print(&self.source_text[start..end]);
-                        }
-                    }
-                }
+                self.print_for_statement_left(&for_of.left);
                 self.print(" of ");
                 self.print_expression(&for_of.right);
                 self.print(") ");
@@ -966,12 +904,7 @@ impl<'a> AstroCodegen<'a> {
             }
             Expression::ConditionalExpression(cond) => {
                 // Nested ternary
-                self.add_source_mapping_for_span(cond.span);
-                self.print_expression(&cond.test);
-                self.print(" ? ");
-                self.print_conditional_slot_branch(&cond.consequent);
-                self.print(" : ");
-                self.print_conditional_slot_branch(&cond.alternate);
+                self.print_conditional_slot_ternary(cond);
             }
             Expression::LogicalExpression(logic) => {
                 self.print_logical_slot_branch(logic);

@@ -235,14 +235,8 @@ impl<'a> AstroScanner<'a> {
         self.collect_script_from_text_children(&el.children, &attrs);
     }
 
-    /// Collect a script from its parsed program and attributes.
-    fn collect_script_from_program(
-        &mut self,
-        program: &Program<'a>,
-        attrs: &[&JSXAttributeItem<'a>],
-    ) {
+    fn extract_src_attribute(attrs: &[&JSXAttributeItem<'a>]) -> Option<String> {
         let mut src_value: Option<String> = None;
-
         for attr in attrs {
             if let JSXAttributeItem::Attribute(attr) = attr {
                 let attr_name = get_jsx_attribute_name(&attr.name);
@@ -253,13 +247,25 @@ impl<'a> AstroScanner<'a> {
                 }
             }
         }
+        src_value
+    }
 
-        if let Some(src) = src_value {
-            self.hoisted_scripts.push(TransformResultHoistedScript {
-                script_type: HoistedScriptType::External,
-                code: None,
-                src: Some(src),
-            });
+    fn push_external_script(&mut self, src: String) {
+        self.hoisted_scripts.push(TransformResultHoistedScript {
+            script_type: HoistedScriptType::External,
+            code: None,
+            src: Some(src),
+        });
+    }
+
+    /// Collect a script from its parsed program and attributes.
+    fn collect_script_from_program(
+        &mut self,
+        program: &Program<'a>,
+        attrs: &[&JSXAttributeItem<'a>],
+    ) {
+        if let Some(src) = Self::extract_src_attribute(attrs) {
+            self.push_external_script(src);
         } else {
             let content = get_script_content(self.allocator, program);
             if !content.is_empty() {
@@ -278,25 +284,8 @@ impl<'a> AstroScanner<'a> {
         children: &[JSXChild<'a>],
         attrs: &[&JSXAttributeItem<'a>],
     ) {
-        let mut src_value: Option<String> = None;
-
-        for attr in attrs {
-            if let JSXAttributeItem::Attribute(attr) = attr {
-                let attr_name = get_jsx_attribute_name(&attr.name);
-                if attr_name == "src"
-                    && let Some(JSXAttributeValue::StringLiteral(lit)) = &attr.value
-                {
-                    src_value = Some(lit.value.to_string());
-                }
-            }
-        }
-
-        if let Some(src) = src_value {
-            self.hoisted_scripts.push(TransformResultHoistedScript {
-                script_type: HoistedScriptType::External,
-                code: None,
-                src: Some(src),
-            });
+        if let Some(src) = Self::extract_src_attribute(attrs) {
+            self.push_external_script(src);
         } else {
             let content: String = children
                 .iter()

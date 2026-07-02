@@ -332,51 +332,74 @@ impl<'a> AstroCodegen<'a> {
         }
     }
 
+    pub(super) fn print_source_span_fallback(&mut self, span: oxc_span::Span) {
+        let start = span.start as usize;
+        let end = span.end as usize;
+        if start < self.source_text.len() && end <= self.source_text.len() {
+            self.print(&self.source_text[start..end]);
+        }
+    }
+
+    pub(super) fn print_for_statement_left(&mut self, left: &oxc_ast::ast::ForStatementLeft<'a>) {
+        match left {
+            oxc_ast::ast::ForStatementLeft::VariableDeclaration(decl) => {
+                let code = gen_to_string(decl.as_ref());
+                self.print(&code);
+            }
+            other => self.print_source_span_fallback(other.span()),
+        }
+    }
+
+    pub(super) fn print_catch_param(&mut self, handler: &oxc_ast::ast::CatchClause<'a>) {
+        if let Some(param) = &handler.param {
+            self.print("(");
+            let code = gen_to_string(&param.pattern);
+            self.print(&code);
+            self.print(")");
+        }
+    }
+
+    pub(super) fn print_static_member(&mut self, member: &StaticMemberExpression<'a>) {
+        self.print_expression(&member.object);
+        self.print(if member.optional { "?." } else { "." });
+        self.print(member.property.name.as_str());
+    }
+
+    pub(super) fn print_computed_member(&mut self, member: &ComputedMemberExpression<'a>) {
+        self.print_expression(&member.object);
+        self.print(if member.optional { "?.[" } else { "[" });
+        self.print_expression(&member.expression);
+        self.print("]");
+    }
+
+    pub(super) fn print_callee(&mut self, callee: &Expression<'a>) {
+        match callee {
+            Expression::StaticMemberExpression(member) => self.print_static_member(member),
+            Expression::ComputedMemberExpression(member) => self.print_computed_member(member),
+            other => self.print_expression(other),
+        }
+    }
+
     fn print_chain_expression(&mut self, chain: &oxc_ast::ast::ChainExpression<'a>) {
         match &chain.expression {
             oxc_ast::ast::ChainElement::CallExpression(call) => {
                 self.print_call_expression(call);
             }
             oxc_ast::ast::ChainElement::StaticMemberExpression(member) => {
-                self.print_expression(&member.object);
-                self.print(if member.optional { "?." } else { "." });
-                self.print(member.property.name.as_str());
+                self.print_static_member(member);
             }
             oxc_ast::ast::ChainElement::ComputedMemberExpression(member) => {
-                self.print_expression(&member.object);
-                self.print(if member.optional { "?.[" } else { "[" });
-                self.print_expression(&member.expression);
-                self.print("]");
+                self.print_computed_member(member);
             }
             _ => {
                 // TSNonNullExpression, PrivateFieldExpression — use source text fallback
-                let start = chain.span.start as usize;
-                let end = chain.span.end as usize;
-                if start < self.source_text.len() && end <= self.source_text.len() {
-                    self.print(&self.source_text[start..end]);
-                }
+                self.print_source_span_fallback(chain.span);
             }
         }
     }
 
     pub(super) fn print_call_expression(&mut self, call: &oxc_ast::ast::CallExpression<'a>) {
-        // Print callee
-        match &call.callee {
-            Expression::StaticMemberExpression(member) => {
-                self.print_expression(&member.object);
-                self.print(if member.optional { "?." } else { "." });
-                self.print(member.property.name.as_str());
-            }
-            Expression::ComputedMemberExpression(member) => {
-                self.print_expression(&member.object);
-                self.print(if member.optional { "?.[" } else { "[" });
-                self.print_expression(&member.expression);
-                self.print("]");
-            }
-            other => {
-                self.print_expression(other);
-            }
-        }
+        self.print_callee(&call.callee);
         // Print optional call syntax
         if call.optional {
             self.print("?.");
@@ -451,27 +474,7 @@ impl<'a> AstroCodegen<'a> {
             }
             Statement::VariableDeclaration(decl) => {
                 self.add_source_mapping_for_span(decl.span);
-                let kind = match decl.kind {
-                    VariableDeclarationKind::Var => "var",
-                    VariableDeclarationKind::Let => "let",
-                    VariableDeclarationKind::Const => "const",
-                    VariableDeclarationKind::Using => "using",
-                    VariableDeclarationKind::AwaitUsing => "await using",
-                };
-                for (i, declarator) in decl.declarations.iter().enumerate() {
-                    if i == 0 {
-                        self.print(kind);
-                        self.print(" ");
-                    } else {
-                        self.print(", ");
-                    }
-                    let pattern_code = gen_to_string(&declarator.id);
-                    self.print(&pattern_code);
-                    if let Some(init) = &declarator.init {
-                        self.print(" = ");
-                        self.print_expression(init);
-                    }
-                }
+                self.print_variable_declaration(decl);
                 self.print(";\n");
             }
             Statement::IfStatement(if_stmt) => {
@@ -497,19 +500,7 @@ impl<'a> AstroCodegen<'a> {
                 self.add_source_mapping_for_span(for_of.span);
                 self.print(if for_of.r#await { "for await(" } else { "for(" });
                 // left side: variable declaration or assignment target
-                match &for_of.left {
-                    oxc_ast::ast::ForStatementLeft::VariableDeclaration(decl) => {
-                        let code = gen_to_string(decl.as_ref());
-                        self.print(&code);
-                    }
-                    other => {
-                        let start = other.span().start as usize;
-                        let end = other.span().end as usize;
-                        if start < self.source_text.len() && end <= self.source_text.len() {
-                            self.print(&self.source_text[start..end]);
-                        }
-                    }
-                }
+                self.print_for_statement_left(&for_of.left);
                 self.print(" of ");
                 self.print_expression(&for_of.right);
                 self.print(") ");
@@ -546,12 +537,7 @@ impl<'a> AstroCodegen<'a> {
                 self.print("}");
                 if let Some(handler) = &try_stmt.handler {
                     self.print(" catch");
-                    if let Some(param) = &handler.param {
-                        self.print("(");
-                        let code = gen_to_string(&param.pattern);
-                        self.print(&code);
-                        self.print(")");
-                    }
+                    self.print_catch_param(handler);
                     self.print(" {\n");
                     for s in &handler.body.body {
                         self.print_jsx_aware_statement(s);
@@ -588,19 +574,7 @@ impl<'a> AstroCodegen<'a> {
             Statement::ForInStatement(for_in) => {
                 self.add_source_mapping_for_span(for_in.span);
                 self.print("for(");
-                match &for_in.left {
-                    oxc_ast::ast::ForStatementLeft::VariableDeclaration(decl) => {
-                        let code = gen_to_string(decl.as_ref());
-                        self.print(&code);
-                    }
-                    other => {
-                        let start = other.span().start as usize;
-                        let end = other.span().end as usize;
-                        if start < self.source_text.len() && end <= self.source_text.len() {
-                            self.print(&self.source_text[start..end]);
-                        }
-                    }
-                }
+                self.print_for_statement_left(&for_in.left);
                 self.print(" in ");
                 self.print_expression(&for_in.right);
                 self.print(") ");
@@ -830,30 +804,34 @@ impl<'a> AstroCodegen<'a> {
         }
     }
 
+    fn print_variable_declaration(&mut self, decl: &oxc_ast::ast::VariableDeclaration<'a>) {
+        let kind = match decl.kind {
+            VariableDeclarationKind::Var => "var",
+            VariableDeclarationKind::Let => "let",
+            VariableDeclarationKind::Const => "const",
+            VariableDeclarationKind::Using => "using",
+            VariableDeclarationKind::AwaitUsing => "await using",
+        };
+        for (i, declarator) in decl.declarations.iter().enumerate() {
+            if i == 0 {
+                self.print(kind);
+                self.print(" ");
+            } else {
+                self.print(", ");
+            }
+            let pattern_code = gen_to_string(&declarator.id);
+            self.print(&pattern_code);
+            if let Some(init) = &declarator.init {
+                self.print(" = ");
+                self.print_expression(init);
+            }
+        }
+    }
+
     fn print_for_init(&mut self, init: &oxc_ast::ast::ForStatementInit<'a>) {
         match init {
             oxc_ast::ast::ForStatementInit::VariableDeclaration(decl) => {
-                let kind = match decl.kind {
-                    VariableDeclarationKind::Var => "var",
-                    VariableDeclarationKind::Let => "let",
-                    VariableDeclarationKind::Const => "const",
-                    VariableDeclarationKind::Using => "using",
-                    VariableDeclarationKind::AwaitUsing => "await using",
-                };
-                for (i, declarator) in decl.declarations.iter().enumerate() {
-                    if i == 0 {
-                        self.print(kind);
-                        self.print(" ");
-                    } else {
-                        self.print(", ");
-                    }
-                    let pattern_code = gen_to_string(&declarator.id);
-                    self.print(&pattern_code);
-                    if let Some(init_expr) = &declarator.init {
-                        self.print(" = ");
-                        self.print_expression(init_expr);
-                    }
-                }
+                self.print_variable_declaration(decl);
             }
             other => {
                 if let Some(expr) = other.as_expression() {
