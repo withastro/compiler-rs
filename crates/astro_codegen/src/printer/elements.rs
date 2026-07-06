@@ -12,7 +12,7 @@ use super::whitespace::{has_is_raw_attr, is_raw_element_name};
 use super::{AstroCodegen, expr_to_string};
 use crate::css_scoping;
 use crate::options::{CompactMode, ScopedStyleStrategy};
-use crate::scanner::get_jsx_attribute_name;
+use crate::scanner::{get_jsx_attribute_name, is_equal_jsx_attribute_name};
 use oxc_ast::ast::*;
 
 /// Scope identifier for an element — either a CSS class or a data attribute,
@@ -296,21 +296,20 @@ impl<'a> AstroCodegen<'a> {
     /// Extract the `name` attribute from a slot element, defaulting to `"default"`.
     fn extract_slot_name(attrs: &[JSXAttributeItem<'a>]) -> String {
         for attr in attrs {
-            if let JSXAttributeItem::Attribute(attr) = attr {
-                let attr_name = get_jsx_attribute_name(&attr.name);
-                if attr_name == "name" {
-                    if let Some(JSXAttributeValue::StringLiteral(lit)) = &attr.value {
-                        return lit.value.to_string();
-                    }
-                    if let Some(JSXAttributeValue::ExpressionContainer(expr)) = &attr.value {
-                        // Dynamic slot name
-                        let expr_str = expr
-                            .expression
-                            .as_expression()
-                            .map(expr_to_string)
-                            .unwrap_or_default();
-                        return format!("\" + {expr_str} + \"");
-                    }
+            if let JSXAttributeItem::Attribute(attr) = attr
+                && is_equal_jsx_attribute_name(&attr.name, "name")
+            {
+                if let Some(JSXAttributeValue::StringLiteral(lit)) = &attr.value {
+                    return lit.value.to_string();
+                }
+                if let Some(JSXAttributeValue::ExpressionContainer(expr)) = &attr.value {
+                    // Dynamic slot name
+                    let expr_str = expr
+                        .expression
+                        .as_expression()
+                        .map(expr_to_string)
+                        .unwrap_or_default();
+                    return format!("\" + {expr_str} + \"");
                 }
             }
         }
@@ -320,11 +319,10 @@ impl<'a> AstroCodegen<'a> {
     /// Check if an element has the `is:inline` attribute.
     pub(super) fn has_is_inline_attribute(attrs: &[JSXAttributeItem<'a>]) -> bool {
         for attr in attrs {
-            if let JSXAttributeItem::Attribute(attr) = attr {
-                let name = get_jsx_attribute_name(&attr.name);
-                if name == "is:inline" {
-                    return true;
-                }
+            if let JSXAttributeItem::Attribute(attr) = attr
+                && is_equal_jsx_attribute_name(&attr.name, "is:inline")
+            {
+                return true;
             }
         }
         false
@@ -339,12 +337,13 @@ impl<'a> AstroCodegen<'a> {
     ) -> Option<(&'static str, String, bool, bool, oxc_span::Span)> {
         for attr in attrs {
             if let JSXAttributeItem::Attribute(attr) = attr {
-                let name = get_jsx_attribute_name(&attr.name);
-                if name == "set:html" || name == "set:text" {
-                    let directive_type = if name == "set:html" { "html" } else { "text" };
+                let is_html = is_equal_jsx_attribute_name(&attr.name, "set:html");
+                let is_text = is_equal_jsx_attribute_name(&attr.name, "set:text");
+                if is_html || is_text {
+                    let directive_type = if is_html { "html" } else { "text" };
                     let (value, needs_unescape, is_raw_text) = match &attr.value {
                         Some(JSXAttributeValue::StringLiteral(lit)) => {
-                            if directive_type == "text" {
+                            if is_text {
                                 // set:text with string literal: inline raw text without ${}
                                 (lit.value.as_str().to_string(), false, true)
                             } else {
@@ -364,7 +363,7 @@ impl<'a> AstroCodegen<'a> {
                             }
                             // set:html always needs $$unescapeHTML — its purpose is to inject
                             // raw HTML, and $$render escapes by default.
-                            let needs_unescape = directive_type == "html";
+                            let needs_unescape = is_html;
                             (value_str, needs_unescape, false)
                         }
                         _ => ("void 0".to_string(), false, false),
@@ -493,12 +492,12 @@ impl<'a> AstroCodegen<'a> {
 
         // Pre-scan for class/class:list attributes
         for attr in attrs {
-            if let JSXAttributeItem::Attribute(attr) = attr {
-                let name = get_jsx_attribute_name(&attr.name);
-                if name == "class" || name == "class:list" {
-                    has_class_attr = true;
-                    break;
-                }
+            if let JSXAttributeItem::Attribute(attr) = attr
+                && (is_equal_jsx_attribute_name(&attr.name, "class")
+                    || is_equal_jsx_attribute_name(&attr.name, "class:list"))
+            {
+                has_class_attr = true;
+                break;
             }
         }
 

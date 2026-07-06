@@ -218,8 +218,8 @@ fn split_selector_leading_combinator<'i>(
 /// order. A naive `.rev()` would also reverse intra-compound order, placing pseudo-classes
 /// before type selectors (`:not(.x)html` instead of `html:not(.x)`).
 fn flatten_selector_parse_order<'i>(selector: &Selector<'i>) -> Vec<Component<'i>> {
-    let mut flat = Vec::new();
-    for (index, (combinator, compound)) in split_into_compounds(selector).into_iter().enumerate() {
+    let mut flat = Vec::with_capacity(selector.len());
+    for (index, (combinator, compound)) in split_into_compounds(selector).enumerate() {
         if index > 0
             && let Some(combinator) = combinator
         {
@@ -232,25 +232,19 @@ fn flatten_selector_parse_order<'i>(selector: &Selector<'i>) -> Vec<Component<'i
 
 fn split_into_compounds<'i>(
     selector: &Selector<'i>,
-) -> Vec<(Option<Combinator>, Vec<Component<'i>>)> {
+) -> impl Iterator<Item = (Option<Combinator>, Vec<Component<'i>>)> {
     let raw_slice = selector.iter_raw_match_order().as_slice();
     let mut combinators = selector
         .iter_raw_match_order()
         .rev()
         .filter_map(|component| component.as_combinator());
 
-    let compound_slices: Vec<&[Component<'i>]> = raw_slice
-        .split(|component| component.is_combinator())
-        .rev()
-        .collect();
+    let compound_slices = raw_slice.split(|component| component.is_combinator()).rev();
 
-    let mut result = Vec::with_capacity(compound_slices.len());
-    for (index, compound) in compound_slices.iter().enumerate() {
+    compound_slices.enumerate().map(move |(index, compound)| {
         let combinator = if index == 0 { None } else { combinators.next() };
-        result.push((combinator, compound.to_vec()));
-    }
-
-    result
+        (combinator, compound.to_vec())
+    })
 }
 
 /// Stands in for a `*` during printing. Kept implausible as author CSS so the string
@@ -350,7 +344,7 @@ impl ScopeVisitor<'_> {
     /// Scope a single selector, potentially returning multiple selectors.
     fn scope_selector<'i>(&self, selector: &Selector<'i>) -> Vec<Selector<'i>> {
         let compounds = split_into_compounds(selector);
-        let merged = self.merge_pseudo_element_compounds(&compounds);
+        let merged = self.merge_pseudo_element_compounds(compounds);
 
         // Selectors that only reference `&` from inside `:is()`/`:where()`/`:not()`/`:has()`
         // have no top-level nesting to scope against — leaving them untouched avoids
@@ -409,7 +403,7 @@ impl ScopeVisitor<'_> {
     /// to the preceding compound so scoping treats e.g. `.x::part(y)` as one unit.
     fn merge_pseudo_element_compounds<'i>(
         &self,
-        compounds: &[(Option<Combinator>, Vec<Component<'i>>)],
+        compounds: impl Iterator<Item = (Option<Combinator>, Vec<Component<'i>>)>,
     ) -> Vec<(Option<Combinator>, Vec<Component<'i>>)> {
         let mut result: Vec<(Option<Combinator>, Vec<Component<'i>>)> = Vec::new();
 
@@ -419,12 +413,12 @@ impl ScopeVisitor<'_> {
                 Some(Combinator::PseudoElement | Combinator::Part | Combinator::SlotAssignment)
             ) {
                 if let Some(last) = result.last_mut() {
-                    last.1.extend(compound.iter().cloned());
+                    last.1.extend(compound);
                 } else {
-                    result.push((*combinator, compound.clone()));
+                    result.push((combinator, compound));
                 }
             } else {
-                result.push((*combinator, compound.clone()));
+                result.push((combinator, compound));
             }
         }
 

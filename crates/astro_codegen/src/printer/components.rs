@@ -11,7 +11,7 @@ use super::expr_to_string;
 use super::runtime;
 use super::whitespace::has_is_raw_attr;
 use crate::options::CompactMode;
-use crate::scanner::{get_jsx_attribute_name, is_custom_element};
+use crate::scanner::{get_jsx_attribute_name, is_custom_element, is_equal_jsx_attribute_name};
 use oxc_ast::ast::*;
 
 /// A client hydration directive parsed from a component's attributes.
@@ -59,7 +59,7 @@ impl<'a> AstroCodegen<'a> {
     pub(super) fn has_server_defer(attrs: &[JSXAttributeItem<'a>]) -> bool {
         attrs.iter().any(|attr| {
             if let JSXAttributeItem::Attribute(attr) = attr {
-                get_jsx_attribute_name(&attr.name) == "server:defer"
+                is_equal_jsx_attribute_name(&attr.name, "server:defer")
             } else {
                 false
             }
@@ -124,17 +124,13 @@ impl<'a> AstroCodegen<'a> {
         // This info is used for client:component-path and client:component-export attributes
         if let Some(info) = &mut hydration_info {
             // Handle member expressions like "components.A" or "defaultImport.Counter1"
-            if name.contains('.') {
-                let parts: Vec<&str> = name.split('.').collect();
-                let namespace = parts[0];
-                let property = parts[1..].join(".");
-
+            if let Some((namespace, property)) = name.split_once('.') {
                 if let Some(import_info) = self.component_imports.get(namespace) {
                     info.component_path = Some(import_info.specifier.clone());
                     // For namespace imports (import * as x), the export is just the property name
                     // For default imports (import x from), the export is "default.Property"
                     if import_info.is_namespace {
-                        info.component_export = Some(property);
+                        info.component_export = Some(property.to_string());
                     } else {
                         // Default or named import - prepend the original export name
                         info.component_export =
@@ -151,15 +147,12 @@ impl<'a> AstroCodegen<'a> {
         // Use resolve_specifier to match the Go compiler's ResolveIdForMatch behaviour —
         // the resolved path must match the key used in serverIslandNameMap.
         if let Some(info) = &mut server_defer_info {
-            if name.contains('.') {
-                let parts: Vec<&str> = name.split('.').collect();
-                let namespace = parts[0];
-                let property = parts[1..].join(".");
+            if let Some((namespace, property)) = name.split_once('.') {
                 if let Some(import_info) = self.component_imports.get(namespace) {
                     info.component_path =
                         Some(self.options.resolve_specifier(&import_info.specifier));
                     info.component_export = if import_info.is_namespace {
-                        Some(property)
+                        Some(property.to_string())
                     } else {
                         Some(format!("{}.{}", import_info.export_name, property))
                     };
@@ -287,9 +280,8 @@ impl<'a> AstroCodegen<'a> {
     ) -> Option<(String, bool, bool, bool, oxc_span::Span)> {
         for attr in attrs {
             if let JSXAttributeItem::Attribute(attr) = attr {
-                let name = get_jsx_attribute_name(&attr.name);
-                let is_html = name == "set:html";
-                let is_text = name == "set:text";
+                let is_html = is_equal_jsx_attribute_name(&attr.name, "set:html");
+                let is_text = is_equal_jsx_attribute_name(&attr.name, "set:text");
                 if is_html || is_text {
                     let (value, needs_unescape, is_raw_text) = match &attr.value {
                         Some(JSXAttributeValue::StringLiteral(lit)) => {
@@ -385,7 +377,7 @@ impl<'a> AstroCodegen<'a> {
 
                     // Skip filtered names
                     if let Some(names) = skip_names
-                        && names.contains(&name.as_str())
+                        && names.contains(&name.as_ref())
                     {
                         continue;
                     }

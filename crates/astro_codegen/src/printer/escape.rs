@@ -10,7 +10,11 @@ use oxc_syntax::xml_entities::XML_ENTITIES;
 /// Escape a string for safe embedding inside a JavaScript template literal.
 ///
 /// Escapes backticks, `${` sequences, and backslashes.
-pub fn escape_template_literal(s: &str) -> String {
+pub fn escape_template_literal(s: &str) -> std::borrow::Cow<'_, str> {
+    if !s.contains(['`', '$', '\\']) {
+        return std::borrow::Cow::Borrowed(s);
+    }
+
     let mut result = String::with_capacity(s.len());
     let mut chars = s.chars().peekable();
 
@@ -25,7 +29,7 @@ pub fn escape_template_literal(s: &str) -> String {
         }
     }
 
-    result
+    std::borrow::Cow::Owned(result)
 }
 
 /// Escape a string for embedding inside a `"..."` JS string literal.
