@@ -268,8 +268,7 @@ impl<'a> AstroCodegen<'a> {
             self.print(",");
             self.print(runtime::RENDER);
             self.print("`");
-            let refs: Vec<&JSXChild<'a>> = el.children.iter().collect();
-            self.print_slot_children(&refs);
+            self.print_jsx_children_compact(&el.children);
             self.print("`");
         }
 

@@ -360,7 +360,7 @@ impl<'a> AstroCodegen<'a> {
     /// whitespace-collapsing path so slotted content is trimmed like regular
     /// template children; with compact disabled they are emitted verbatim, which
     /// is what the Go compiler does for slot whitespace.
-    pub(super) fn print_slot_children(&mut self, children: &[&JSXChild<'a>]) {
+    fn print_slot_children(&mut self, children: &[&JSXChild<'a>]) {
         if self.options.compact == CompactMode::Disabled {
             for child in children {
                 self.print_jsx_child(child);
