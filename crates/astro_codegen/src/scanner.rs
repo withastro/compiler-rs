@@ -213,16 +213,10 @@ impl<'a> AstroScanner<'a> {
         }
     }
 
-    /// Check if a <script> element should be hoisted and collect it.
+    /// Pushes exactly one metadata entry (an empty inline entry for a
+    /// content-less script), keeping indices aligned with the printer's
+    /// `$$renderScript` calls. Callers must gate on [`is_extracted_hoisted_script`].
     fn try_collect_script(&mut self, el: &JSXElement<'a>) {
-        let name = get_jsx_element_name(&el.opening_element.name);
-        if name != "script" {
-            return;
-        }
-        if !should_hoist_script(&el.opening_element.attributes) {
-            return;
-        }
-
         let attrs: Vec<_> = el.opening_element.attributes.iter().collect();
 
         // Try AstroScript child first (parsed JS/TS content)
@@ -268,13 +262,11 @@ impl<'a> AstroScanner<'a> {
             self.push_external_script(src);
         } else {
             let content = get_script_content(self.allocator, program);
-            if !content.is_empty() {
-                self.hoisted_scripts.push(TransformResultHoistedScript {
-                    script_type: HoistedScriptType::Inline,
-                    code: Some(content),
-                    src: None,
-                });
-            }
+            self.hoisted_scripts.push(TransformResultHoistedScript {
+                script_type: HoistedScriptType::Inline,
+                code: Some(content),
+                src: None,
+            });
         }
     }
 
@@ -299,14 +291,11 @@ impl<'a> AstroScanner<'a> {
                 .collect::<Vec<_>>()
                 .join("");
 
-            let content = content.trim();
-            if !content.is_empty() {
-                self.hoisted_scripts.push(TransformResultHoistedScript {
-                    script_type: HoistedScriptType::Inline,
-                    code: Some(content.to_string()),
-                    src: None,
-                });
-            }
+            self.hoisted_scripts.push(TransformResultHoistedScript {
+                script_type: HoistedScriptType::Inline,
+                code: Some(content.trim().to_string()),
+                src: None,
+            });
         }
     }
 }
@@ -349,7 +338,7 @@ impl<'a> Visit<'a> for AstroScanner<'a> {
         // Check for hoistable scripts — if we collect one, skip walking
         // children to avoid visit_astro_script double-collecting the same script.
         if name == "script" {
-            if !self.in_non_hoistable && should_hoist_script(&el.opening_element.attributes) {
+            if !self.in_non_hoistable && is_extracted_hoisted_script(el) {
                 self.try_collect_script(el);
             }
             // Don't walk children for any <script> element — AstroScript children
@@ -500,6 +489,24 @@ pub fn should_hoist_script(attrs: &oxc_allocator::Vec<'_, JSXAttributeItem<'_>>)
 
     // Scripts with no attributes at all, or with just `type="module"`, are hoistable.
     attrs.is_empty() || (has_type_module && !has_other)
+}
+
+/// Returns `true` if a `<script>` is extracted and emitted via `$$renderScript`.
+/// Shared by the scanner (collects the metadata entry) and the printer (emits the
+/// call) so they can't disagree — a mismatch shifts indices and makes
+/// `$$renderScript` resolve to the wrong or a missing script at runtime.
+pub fn is_extracted_hoisted_script(el: &JSXElement<'_>) -> bool {
+    should_hoist_script(&el.opening_element.attributes)
+        && (el
+            .children
+            .iter()
+            .any(|child| matches!(child, JSXChild::AstroScript(_)))
+            || el.children.iter().any(|child| {
+                matches!(child, JSXChild::Text(text) if !text.value.trim().is_empty())
+            })
+            || el.opening_element.attributes.iter().any(|attr| {
+                matches!(attr, JSXAttributeItem::Attribute(attr) if is_equal_jsx_attribute_name(&attr.name, "src"))
+            }))
 }
 
 /// Get the script content as a string by codegen-ing the program.
