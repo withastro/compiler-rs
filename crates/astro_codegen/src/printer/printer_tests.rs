@@ -2068,8 +2068,7 @@ fn test_slot_element_with_fallback_content() {
 #[test]
 fn test_slot_fallback_content_compressed_jsx() {
     // <slot> fallback content must go through whitespace collapsing under compact
-    // mode, same as regular template children. Previously it was printed verbatim,
-    // so newlines around an expression survived despite compressHTML.
+    // mode, same as regular template children.
     let source =
         "<slot name=\"canonical\">\n        {cond ? '' : <link rel=\"canonical\" />}\n</slot>";
     let result = compile_astro_with_options(
