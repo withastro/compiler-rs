@@ -17,7 +17,7 @@ use rustc_hash::{FxHashMap, FxHashSet};
 use crate::options::CompactMode;
 use crate::scanner::{
     AstroScanner, ScanResult, get_jsx_attribute_name, get_jsx_element_name, is_component_name,
-    is_custom_element, should_hoist_script,
+    is_custom_element, is_extracted_hoisted_script,
 };
 use crate::{SourcemapOption, TransformOptions};
 use whitespace::{TextPosition, collapse_html, collapse_jsx};
@@ -1521,27 +1521,7 @@ impl<'a> AstroCodegen<'a> {
         }
 
         // Handle <script> elements that should be hoisted
-        let is_hoisted_script = should_hoist_script(&el.opening_element.attributes)
-            && (el
-                .children
-                .iter()
-                .any(|child| matches!(child, JSXChild::AstroScript(_)))
-                || el.children.iter().any(|child| {
-                    if let JSXChild::Text(text) = child {
-                        !text.value.trim().is_empty()
-                    } else {
-                        false
-                    }
-                })
-                || el.opening_element.attributes.iter().any(|attr| {
-                    if let JSXAttributeItem::Attribute(attr) = attr {
-                        get_jsx_attribute_name(&attr.name) == "src"
-                    } else {
-                        false
-                    }
-                }));
-
-        if name == "script" && !self.in_non_hoistable && is_hoisted_script {
+        if name == "script" && !self.in_non_hoistable && is_extracted_hoisted_script(el) {
             self.add_source_mapping_for_span(el.opening_element.span);
 
             let filename = self
