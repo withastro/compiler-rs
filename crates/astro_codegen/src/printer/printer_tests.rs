@@ -2491,7 +2491,6 @@ fn test_script_src_with_data_attr_not_hoisted() {
 
 #[test]
 fn test_empty_script_gets_hoisted_slot() {
-    // Empty script still emits renderScript index=0, so it must occupy metadata slot 0.
     let output = compile_astro("<script></script>");
 
     assert!(
@@ -2506,7 +2505,6 @@ fn test_empty_script_gets_hoisted_slot() {
 
 #[test]
 fn test_empty_then_real_script_indices_stay_aligned() {
-    // Regression: a leading empty script must not shift the real script off index 1.
     let output = compile_astro("<script></script>\n<script>console.log(2)</script>");
 
     assert!(
