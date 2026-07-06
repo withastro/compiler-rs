@@ -123,7 +123,6 @@ impl<'a> AstroCodegen<'a> {
             return;
         }
 
-        // Check if this is a special element
         let is_head = name == "head";
         let is_template = name == "template";
         let was_in_head = self.in_head;
@@ -158,7 +157,6 @@ impl<'a> AstroCodegen<'a> {
         // Determine if this element should receive a scope identifier
         let scope_id = self.scope_id_for(name);
 
-        // Opening tag
         self.print("<");
         self.print(name);
 
@@ -172,7 +170,6 @@ impl<'a> AstroCodegen<'a> {
             inject_define_vars,
         );
 
-        // Close the opening tag and handle content
         self.print(">");
 
         // Emit template depth tracking for HTML <template> elements
@@ -180,18 +177,14 @@ impl<'a> AstroCodegen<'a> {
             self.print_parts(["${", runtime::TEMPLATE_ENTER, "(", runtime::RESULT, ")}"]);
         }
 
-        // Handle special head insertion
         if is_head {
-            // Children (use compact-aware printing)
             self.print_jsx_children_compact(&el.children);
-            // Insert renderHead before closing head tag
             self.print_parts(["${", runtime::RENDER_HEAD, "(", runtime::RESULT, ")}"]);
             // Mark that head rendering is done — prevents $$maybeRenderHead from being inserted later.
             self.render_head_inserted = true;
         } else if let Some((directive_type, value, needs_unescape, is_raw_text, set_span)) =
             set_directive
         {
-            // set:html or set:text directive — inject the content
             self.add_source_mapping_for_span(set_span);
             if is_raw_text {
                 // set:text with string literal — inline raw text without ${}
@@ -228,7 +221,6 @@ impl<'a> AstroCodegen<'a> {
                 self.print(&escape_template_literal(raw));
             }
         } else {
-            // Regular children with compact-aware printing
             self.print_jsx_children_compact(&el.children);
         }
 
@@ -236,9 +228,7 @@ impl<'a> AstroCodegen<'a> {
             self.print_parts(["${", runtime::TEMPLATE_EXIT, "(", runtime::RESULT, ")}"]);
         }
 
-        // Closing tag (skip for void elements like <meta>, <input>, <br>, etc.)
         if !is_void_element(name) {
-            // Map closing tag to its source position so it appears in the sourcemap.
             if let Some(ref closing) = el.closing_element {
                 self.add_source_mapping_for_span(closing.span);
             }
@@ -264,7 +254,6 @@ impl<'a> AstroCodegen<'a> {
     /// - `<slot name="foo" />` → `$$renderSlot($$result, $$slots["foo"])`
     /// - `<slot><p>fallback</p></slot>` → `$$renderSlot($$result, $$slots["default"], $$render\`<p>fallback</p>\`)`
     fn print_slot_element(&mut self, el: &JSXElement<'a>) {
-        // Extract slot name from attributes (default is "default")
         let slot_name = Self::extract_slot_name(&el.opening_element.attributes);
 
         self.print("${");
@@ -275,18 +264,14 @@ impl<'a> AstroCodegen<'a> {
         self.print(&slot_name);
         self.print("\"]");
 
-        // Add fallback content if there are children
         if !el.children.is_empty() {
             self.print(",");
             self.print(runtime::RENDER);
             self.print("`");
-            for child in &el.children {
-                self.print_jsx_child(child);
-            }
+            self.print_jsx_children_compact(&el.children);
             self.print("`");
         }
 
-        // Map the closing </slot> tag to its source position (if present).
         if let Some(ref closing) = el.closing_element {
             self.add_source_mapping_for_span(closing.span);
         }
@@ -303,7 +288,6 @@ impl<'a> AstroCodegen<'a> {
                     return lit.value.to_string();
                 }
                 if let Some(JSXAttributeValue::ExpressionContainer(expr)) = &attr.value {
-                    // Dynamic slot name
                     let expr_str = expr
                         .expression
                         .as_expression()
@@ -396,11 +380,9 @@ impl<'a> AstroCodegen<'a> {
         scope_id: Option<&ScopeId>,
         inject_define_vars: bool,
     ) {
-        // Check for class + class:list combination that needs merging
         let mut static_class: Option<&str> = None;
         let mut class_list_expr: Option<&JSXExpressionContainer<'a>> = None;
 
-        // Check for transition attributes
         let mut transition_name: Option<(String, oxc_span::Span)> = None;
         let mut transition_animate: Option<(String, oxc_span::Span)> = None;
         let mut transition_persist: Option<(String, oxc_span::Span)> = None;
@@ -427,7 +409,6 @@ impl<'a> AstroCodegen<'a> {
             }
         }
 
-        // If both class and class:list exist, merge them
         let has_merged_class = static_class.is_some() && class_list_expr.is_some();
 
         // Handle transition:persist — priority order for the persist ID:
@@ -460,9 +441,7 @@ impl<'a> AstroCodegen<'a> {
             }
         }
 
-        // Handle transition:name and transition:animate together
         if transition_name.is_some() || transition_animate.is_some() {
-            // Map to whichever transition attribute comes first
             self.add_transition_source_mapping(&transition_name, &transition_animate);
             let name_val = transition_name.map_or_else(|| "\"\"".to_string(), |(v, _)| v);
             let animate_val = transition_animate.map_or_else(|| "\"\"".to_string(), |(v, _)| v);
@@ -484,13 +463,10 @@ impl<'a> AstroCodegen<'a> {
             ]);
         }
 
-        // Track whether the scope class was already injected into an existing class/class:list
         let mut scope_injected = false;
         let mut has_class_attr = false;
-        // Track whether $$definedVars style injection was already handled
         let mut define_vars_style_injected = false;
 
-        // Pre-scan for class/class:list attributes
         for attr in attrs {
             if let JSXAttributeItem::Attribute(attr) = attr
                 && (is_equal_jsx_attribute_name(&attr.name, "class")
@@ -534,19 +510,16 @@ impl<'a> AstroCodegen<'a> {
                     if has_merged_class && name == "class" {
                         continue;
                     }
-                    // Handle `style` attribute with define:vars injection
                     if name == "style" && inject_define_vars {
                         self.print_style_with_define_vars(attr);
                         define_vars_style_injected = true;
                         self.define_vars_injected = true;
                         continue;
                     }
-                    // Handle merged class:list (with scope class injection)
                     if has_merged_class && name == "class:list" {
                         if let (Some(static_val), Some(expr)) = (static_class, class_list_expr) {
                             self.add_source_mapping_for_span(attr.span);
                             self.print_parts(["${", runtime::ADD_ATTRIBUTE, "(["]);
-                            // Inject scope class into static_val if needed
                             if let Some(sid) = scope_id {
                                 if sid.is_attribute_strategy() {
                                     // For attribute strategy, don't merge into class
@@ -568,7 +541,6 @@ impl<'a> AstroCodegen<'a> {
                         }
                         continue;
                     }
-                    // Handle class attribute with scope class injection
                     if let Some(sid) = scope_id
                         && !sid.is_attribute_strategy()
                         && name == "class"
@@ -577,7 +549,6 @@ impl<'a> AstroCodegen<'a> {
                         scope_injected = true;
                         continue;
                     }
-                    // Handle class:list attribute with scope class injection
                     if let Some(sid) = scope_id
                         && !sid.is_attribute_strategy()
                         && name == "class:list"
@@ -599,8 +570,6 @@ impl<'a> AstroCodegen<'a> {
                 }
                 JSXAttributeItem::SpreadAttribute(spread) => {
                     self.add_source_mapping_for_span(spread.span);
-                    // If we have a scope identifier and no explicit class/class:list,
-                    // pass it as the 3rd argument to $$spreadAttributes
                     if let Some(sid) = scope_id
                         && !has_class_attr
                         && !scope_injected
@@ -630,13 +599,11 @@ impl<'a> AstroCodegen<'a> {
             }
         }
 
-        // If define:vars injection is needed but no `style` attribute existed, add one
         if inject_define_vars && !define_vars_style_injected {
             self.print_parts(["${", runtime::ADD_ATTRIBUTE, "($$definedVars, \"style\")}"]);
             self.define_vars_injected = true;
         }
 
-        // If scope wasn't injected into any existing attribute, add it
         if let Some(sid) = scope_id
             && !scope_injected
         {
@@ -686,7 +653,6 @@ impl<'a> AstroCodegen<'a> {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
 
-        // Increment counter to get unique index
         let counter = self.transition_counter;
         self.transition_counter += 1;
 
@@ -695,7 +661,6 @@ impl<'a> AstroCodegen<'a> {
         format!("{}-{}", self.source_hash, counter).hash(&mut hasher);
         let hash = hasher.finish();
 
-        // Convert to base32-like lowercase string (8 chars)
         Self::to_base32_like(hash)
     }
 
@@ -712,11 +677,9 @@ impl<'a> AstroCodegen<'a> {
         self.add_source_mapping_for_span(attr.span);
         match &attr.value {
             None => {
-                // Empty/boolean style → $$definedVars
                 self.print_parts(["${", runtime::ADD_ATTRIBUTE, "($$definedVars, \"style\")}"]);
             }
             Some(JSXAttributeValue::StringLiteral(lit)) => {
-                // Quoted style="val" → `${"val"}; ${$$definedVars}`
                 let val = lit.value.as_str();
                 let escaped = escape_double_quotes(val);
                 self.print_parts([
@@ -735,7 +698,6 @@ impl<'a> AstroCodegen<'a> {
                     let is_object = matches!(e, Expression::ObjectExpression(_));
                     let expr_str = expr_to_string(e);
                     if is_object {
-                        // Object expression: [{...},$$definedVars]
                         // Strip parentheses if present (oxc wraps objects in parens
                         // to avoid ambiguity with block statements).
                         let obj_str = expr_str
@@ -751,7 +713,6 @@ impl<'a> AstroCodegen<'a> {
                             ",$$definedVars], \"style\")}",
                         ]);
                     } else {
-                        // Other expression: `${expr}; ${$$definedVars}`
                         self.print_parts([
                             "${",
                             runtime::ADD_ATTRIBUTE,
@@ -761,12 +722,10 @@ impl<'a> AstroCodegen<'a> {
                         ]);
                     }
                 } else {
-                    // Fallback: just $$definedVars
                     self.print_parts(["${", runtime::ADD_ATTRIBUTE, "($$definedVars, \"style\")}"]);
                 }
             }
             _ => {
-                // Fallback: just $$definedVars
                 self.print_parts(["${", runtime::ADD_ATTRIBUTE, "($$definedVars, \"style\")}"]);
             }
         }
@@ -777,11 +736,9 @@ impl<'a> AstroCodegen<'a> {
         self.add_source_mapping_for_span(attr.span);
         match &attr.value {
             None => {
-                // Empty class attribute → just the scope class
                 self.print_parts([" class=\"", scope_class, "\""]);
             }
             Some(JSXAttributeValue::StringLiteral(lit)) => {
-                // Static class: append scope class
                 let val = lit.value.as_str();
                 if val.is_empty() {
                     self.print_parts([" class=\"", scope_class, "\""]);
@@ -791,14 +748,12 @@ impl<'a> AstroCodegen<'a> {
                 }
             }
             Some(JSXAttributeValue::ExpressionContainer(expr)) => {
-                // Dynamic class: expression + scope class
                 // Output: ${$$addAttribute((expr ?? "") + " astro-XXXX", "class")}
                 self.print_parts(["${", runtime::ADD_ATTRIBUTE, "(("]);
                 self.print_jsx_expression(&expr.expression);
                 self.print_parts([" ?? \"\") + \" ", scope_class, "\", \"class\")}"]);
             }
             _ => {
-                // Fallback: just output scope class
                 self.print_parts([" class=\"", scope_class, "\""]);
             }
         }
@@ -815,7 +770,6 @@ impl<'a> AstroCodegen<'a> {
                 self.print_parts([")", ", \"", scope_class, "\"], \"class:list\")}"]);
             }
             _ => {
-                // Fallback: just output scope class
                 self.print_parts([" class=\"", scope_class, "\""]);
             }
         }
@@ -832,7 +786,6 @@ impl<'a> AstroCodegen<'a> {
         self.add_source_mapping_for_span(attr.span);
         match &attr.value {
             None => {
-                // Boolean attribute
                 self.print(" ");
                 self.print(name);
             }
@@ -845,7 +798,6 @@ impl<'a> AstroCodegen<'a> {
                     self.print("\"");
                 }
                 JSXAttributeValue::ExpressionContainer(expr) => {
-                    // Dynamic attribute
                     self.print_parts(["${", runtime::ADD_ATTRIBUTE, "("]);
                     self.print_jsx_expression(&expr.expression);
                     self.print(", \"");
@@ -854,7 +806,6 @@ impl<'a> AstroCodegen<'a> {
                     self.print("\")}");
                 }
                 JSXAttributeValue::Element(el) => {
-                    // JSX element as attribute value (rare)
                     self.print(" ");
                     self.print(name);
                     self.print("=\"");

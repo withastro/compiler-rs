@@ -2065,6 +2065,30 @@ fn test_slot_element_with_fallback_content() {
     );
 }
 
+#[test]
+fn test_slot_fallback_content_compressed_jsx() {
+    // <slot> fallback content must go through whitespace collapsing under compact
+    // mode, same as regular template children.
+    let source =
+        "<slot name=\"canonical\">\n        {cond ? '' : <link rel=\"canonical\" />}\n</slot>";
+    let result = compile_astro_with_options(
+        source,
+        crate::TransformOptions::new()
+            .with_internal_url("http://localhost:3000/")
+            .with_compact(crate::CompactMode::Jsx),
+    );
+    assert!(
+        result.code.contains("$$renderSlot"),
+        "Should still emit renderSlot: {}",
+        result.code
+    );
+    assert!(
+        !result.code.contains("\n        ${"),
+        "Leading newline+indent before slot fallback expression should be collapsed: {}",
+        result.code
+    );
+}
+
 // -------------------------------------------------------------------------
 // extract_styles tests
 // -------------------------------------------------------------------------
