@@ -16,8 +16,8 @@ use rustc_hash::{FxHashMap, FxHashSet};
 
 use crate::options::CompactMode;
 use crate::scanner::{
-    AstroScanner, ScanResult, get_jsx_attribute_name, get_jsx_element_name, is_component_name,
-    is_custom_element, is_extracted_hoisted_script,
+    AstroScanner, ScanResult, get_jsx_element_name, is_component_name, is_custom_element,
+    is_equal_jsx_attribute_name, is_extracted_hoisted_script,
 };
 use crate::{SourcemapOption, TransformOptions};
 use whitespace::{TextPosition, collapse_html, collapse_jsx};
@@ -768,14 +768,13 @@ impl<'a> AstroCodegen<'a> {
                 .map(|c| format!("\"{}\"", c.name))
                 .collect();
 
-            let regular_components: Vec<String> = self
+            let regular_components = self
                 .scan_result
                 .hydrated_components
                 .iter()
                 .filter(|c| !c.is_custom_element)
                 .rev()
-                .map(|c| c.name.clone())
-                .collect();
+                .map(|c| c.name.clone());
 
             let mut items = custom_elements;
             items.extend(regular_components);
@@ -1436,7 +1435,7 @@ impl<'a> AstroCodegen<'a> {
         if name == "script" {
             let define_vars_expr = el.opening_element.attributes.iter().find_map(|attr| {
                 if let JSXAttributeItem::Attribute(attr) = attr
-                    && get_jsx_attribute_name(&attr.name) == "define:vars"
+                    && is_equal_jsx_attribute_name(&attr.name, "define:vars")
                 {
                     return match &attr.value {
                         Some(JSXAttributeValue::StringLiteral(lit)) => {
@@ -1455,13 +1454,11 @@ impl<'a> AstroCodegen<'a> {
                 self.add_source_mapping_for_span(el.opening_element.span);
 
                 let is_module = el.opening_element.attributes.iter().any(|attr| {
-                    if let JSXAttributeItem::Attribute(attr) = attr {
-                        let attr_name = get_jsx_attribute_name(&attr.name);
-                        if attr_name == "type"
-                            && let Some(JSXAttributeValue::StringLiteral(lit)) = &attr.value
-                        {
-                            return lit.value == "module";
-                        }
+                    if let JSXAttributeItem::Attribute(attr) = attr
+                        && is_equal_jsx_attribute_name(&attr.name, "type")
+                        && let Some(JSXAttributeValue::StringLiteral(lit)) = &attr.value
+                    {
+                        return lit.value == "module";
                     }
                     false
                 });

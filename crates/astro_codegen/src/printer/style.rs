@@ -7,7 +7,7 @@
 use oxc_ast::ast::*;
 
 use crate::css_scoping;
-use crate::scanner::{get_jsx_attribute_name, get_jsx_element_name};
+use crate::scanner::{get_jsx_attribute_name, get_jsx_element_name, is_equal_jsx_attribute_name};
 
 use super::{AstroCodegen, expr_to_string};
 
@@ -66,7 +66,7 @@ fn extract_styles_from_children<'a>(
                     });
                 } else {
                     let non_hoistable = in_non_hoistable
-                        || matches!(name.as_str(), "svg" | "noscript" | "template");
+                        || matches!(name.as_ref(), "svg" | "noscript" | "template");
                     extract_styles_from_children(&el.children, non_hoistable, blocks);
                 }
             }
@@ -115,11 +115,11 @@ pub(super) fn extract_style_attrs(el: &JSXElement<'_>) -> Vec<(String, String)> 
             match &attr.value {
                 None => {
                     // Boolean/empty attribute (e.g. `is:global`)
-                    attrs.push((name, String::new()));
+                    attrs.push((name.into_owned(), String::new()));
                 }
                 Some(JSXAttributeValue::StringLiteral(lit)) => {
                     // Quoted attribute (e.g. `lang="scss"`)
-                    attrs.push((name, lit.value.as_str().to_string()));
+                    attrs.push((name.into_owned(), lit.value.as_str().to_string()));
                 }
                 _ => {
                     // Expression attributes are skipped
@@ -149,7 +149,7 @@ impl<'a> AstroCodegen<'a> {
                 } else {
                     // Mark descendant context as non-hoistable for svg/noscript/template
                     let non_hoistable = in_non_hoistable
-                        || matches!(name.as_str(), "svg" | "noscript" | "template");
+                        || matches!(name.as_ref(), "svg" | "noscript" | "template");
                     for c in &el.children {
                         self.prescan_styles_child(c, non_hoistable);
                     }
@@ -218,7 +218,7 @@ impl<'a> AstroCodegen<'a> {
         // Check for is:global attribute
         let is_global = el.opening_element.attributes.iter().any(|attr| {
             if let JSXAttributeItem::Attribute(attr) = attr {
-                get_jsx_attribute_name(&attr.name) == "is:global"
+                is_equal_jsx_attribute_name(&attr.name, "is:global")
             } else {
                 false
             }
@@ -269,23 +269,22 @@ impl<'a> AstroCodegen<'a> {
     /// Returns `true` if `define:vars` was found.
     pub(super) fn collect_define_vars(&mut self, el: &JSXElement<'a>) -> bool {
         for attr in &el.opening_element.attributes {
-            if let JSXAttributeItem::Attribute(attr) = attr {
-                let name = get_jsx_attribute_name(&attr.name);
-                if name == "define:vars" {
-                    match &attr.value {
-                        Some(JSXAttributeValue::StringLiteral(lit)) => {
-                            self.define_vars_values
-                                .push(format!("'{}'", lit.value.as_str()));
-                        }
-                        Some(JSXAttributeValue::ExpressionContainer(expr)) => {
-                            if let Some(e) = expr.expression.as_expression() {
-                                self.define_vars_values.push(expr_to_string(e));
-                            }
-                        }
-                        _ => {}
+            if let JSXAttributeItem::Attribute(attr) = attr
+                && is_equal_jsx_attribute_name(&attr.name, "define:vars")
+            {
+                match &attr.value {
+                    Some(JSXAttributeValue::StringLiteral(lit)) => {
+                        self.define_vars_values
+                            .push(format!("'{}'", lit.value.as_str()));
                     }
-                    return true;
+                    Some(JSXAttributeValue::ExpressionContainer(expr)) => {
+                        if let Some(e) = expr.expression.as_expression() {
+                            self.define_vars_values.push(expr_to_string(e));
+                        }
+                    }
+                    _ => {}
                 }
+                return true;
             }
         }
         false

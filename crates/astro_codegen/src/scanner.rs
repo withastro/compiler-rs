@@ -4,6 +4,8 @@
 //! to collect metadata needed by the printer. This separates the analysis
 //! phase from the code generation phase.
 
+use std::borrow::Cow;
+
 use oxc_ast::ast::*;
 use oxc_ast_visit::{Visit, walk};
 use oxc_codegen::Codegen;
@@ -157,7 +159,7 @@ impl<'a> AstroScanner<'a> {
                         .any(|c| c.name == name)
                 {
                     self.server_deferred_components.push(HydratedComponent {
-                        name: name.clone(),
+                        name: name.to_string(),
                         is_custom_element: is_custom,
                     });
                 }
@@ -173,14 +175,14 @@ impl<'a> AstroScanner<'a> {
                                     .insert(namespace.to_string());
                             }
                         } else {
-                            self.client_only_component_names.insert(name.clone());
+                            self.client_only_component_names.insert(name.to_string());
                         }
                         // Store the full component name for metadata resolution
                         if (is_component || is_custom)
                             && !self.client_only_components.iter().any(|c| c.name == name)
                         {
                             self.client_only_components.push(HydratedComponent {
-                                name,
+                                name: name.to_string(),
                                 is_custom_element: is_custom,
                             });
                         }
@@ -195,7 +197,7 @@ impl<'a> AstroScanner<'a> {
                             && !self.hydrated_components.iter().any(|c| c.name == name)
                         {
                             self.hydrated_components.push(HydratedComponent {
-                                name,
+                                name: name.to_string(),
                                 is_custom_element: is_custom,
                             });
                         }
@@ -232,13 +234,11 @@ impl<'a> AstroScanner<'a> {
     fn extract_src_attribute(attrs: &[&JSXAttributeItem<'a>]) -> Option<String> {
         let mut src_value: Option<String> = None;
         for attr in attrs {
-            if let JSXAttributeItem::Attribute(attr) = attr {
-                let attr_name = get_jsx_attribute_name(&attr.name);
-                if attr_name == "src"
-                    && let Some(JSXAttributeValue::StringLiteral(lit)) = &attr.value
-                {
-                    src_value = Some(lit.value.to_string());
-                }
+            if let JSXAttributeItem::Attribute(attr) = attr
+                && is_equal_jsx_attribute_name(&attr.name, "src")
+                && let Some(JSXAttributeValue::StringLiteral(lit)) = &attr.value
+            {
+                src_value = Some(lit.value.to_string());
             }
         }
         src_value
@@ -348,7 +348,7 @@ impl<'a> Visit<'a> for AstroScanner<'a> {
 
         // Track non-hoistable context (template, svg, noscript) so scripts
         // inside these elements are not extracted, matching the Go compiler.
-        let is_non_hoistable = matches!(name.as_str(), "svg" | "noscript" | "template");
+        let is_non_hoistable = matches!(name.as_ref(), "svg" | "noscript" | "template");
         let was_in_non_hoistable = self.in_non_hoistable;
         if is_non_hoistable {
             self.in_non_hoistable = true;
@@ -388,15 +388,15 @@ impl<'a> Visit<'a> for AstroScanner<'a> {
 
 // --- Helper functions (shared with printer) ---
 
-pub fn get_jsx_element_name(name: &JSXElementName<'_>) -> String {
+pub fn get_jsx_element_name<'a>(name: &JSXElementName<'a>) -> Cow<'a, str> {
     match name {
-        JSXElementName::Identifier(ident) => ident.name.to_string(),
-        JSXElementName::IdentifierReference(ident) => ident.name.to_string(),
+        JSXElementName::Identifier(ident) => Cow::Borrowed(ident.name.as_str()),
+        JSXElementName::IdentifierReference(ident) => Cow::Borrowed(ident.name.as_str()),
         JSXElementName::NamespacedName(ns) => {
-            format!("{}:{}", ns.namespace.name, ns.name.name)
+            Cow::Owned(format!("{}:{}", ns.namespace.name, ns.name.name))
         }
-        JSXElementName::MemberExpression(expr) => get_jsx_member_expression_name(expr),
-        JSXElementName::ThisExpression(_) => "this".to_string(),
+        JSXElementName::MemberExpression(expr) => Cow::Owned(get_jsx_member_expression_name(expr)),
+        JSXElementName::ThisExpression(_) => Cow::Borrowed("this"),
     }
 }
 
@@ -409,11 +409,24 @@ fn get_jsx_member_expression_name(expr: &JSXMemberExpression<'_>) -> String {
     format!("{object_name}.{}", expr.property.name)
 }
 
-pub fn get_jsx_attribute_name(name: &JSXAttributeName<'_>) -> String {
+pub fn get_jsx_attribute_name<'a>(name: &JSXAttributeName<'a>) -> Cow<'a, str> {
     match name {
-        JSXAttributeName::Identifier(ident) => ident.name.to_string(),
+        JSXAttributeName::Identifier(ident) => Cow::Borrowed(ident.name.as_str()),
         JSXAttributeName::NamespacedName(ns) => {
-            format!("{}:{}", ns.namespace.name, ns.name.name)
+            Cow::Owned(format!("{}:{}", ns.namespace.name, ns.name.name))
+        }
+    }
+}
+
+pub fn is_equal_jsx_attribute_name(name: &JSXAttributeName<'_>, other: &str) -> bool {
+    match name {
+        JSXAttributeName::Identifier(ident) => ident.name == other,
+        JSXAttributeName::NamespacedName(ns) => {
+            if let Some((namespace, name)) = other.split_once(":") {
+                ns.namespace.name == namespace && ns.name.name == name
+            } else {
+                false
+            }
         }
     }
 }
@@ -428,7 +441,7 @@ pub fn is_custom_element(name: &str) -> bool {
 
 fn opening_element_has_client_only(el: &JSXOpeningElement<'_>) -> bool {
     el.attributes.iter().any(|attr| {
-        matches!(attr, JSXAttributeItem::Attribute(a) if get_jsx_attribute_name(&a.name) == "client:only")
+        matches!(attr, JSXAttributeItem::Attribute(a) if is_equal_jsx_attribute_name(&a.name, "client:only"))
     })
 }
 
@@ -444,7 +457,7 @@ pub fn should_hoist_script(attrs: &oxc_allocator::Vec<'_, JSXAttributeItem<'_>>)
     for attr in attrs {
         if let JSXAttributeItem::Attribute(attr) = attr {
             let attr_name = get_jsx_attribute_name(&attr.name);
-            match attr_name.as_str() {
+            match attr_name.as_ref() {
                 "is:inline" => is_inline = true,
                 "define:vars" => has_define_vars = true,
                 "src" => has_src = true,
@@ -492,7 +505,7 @@ pub fn is_extracted_hoisted_script(el: &JSXElement<'_>) -> bool {
                 matches!(child, JSXChild::Text(text) if !text.value.trim().is_empty())
             })
             || el.opening_element.attributes.iter().any(|attr| {
-                matches!(attr, JSXAttributeItem::Attribute(attr) if get_jsx_attribute_name(&attr.name) == "src")
+                matches!(attr, JSXAttributeItem::Attribute(attr) if is_equal_jsx_attribute_name(&attr.name, "src"))
             }))
 }
 

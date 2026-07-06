@@ -31,7 +31,7 @@
 
 use oxc_ast::ast::*;
 
-use crate::scanner::get_jsx_attribute_name;
+use crate::scanner::is_equal_jsx_attribute_name;
 
 /// Returns true for elements whose text content should **never** be touched
 /// by whitespace collapsing.
@@ -56,11 +56,10 @@ pub(super) fn is_raw_element_name(name: &str) -> bool {
 /// Returns true if the element opening tag carries `is:raw`.
 pub(super) fn has_is_raw_attr(attrs: &[JSXAttributeItem<'_>]) -> bool {
     for attr in attrs {
-        if let JSXAttributeItem::Attribute(attr) = attr {
-            let name = get_jsx_attribute_name(&attr.name);
-            if name == "is:raw" {
-                return true;
-            }
+        if let JSXAttributeItem::Attribute(attr) = attr
+            && is_equal_jsx_attribute_name(&attr.name, "is:raw")
+        {
+            return true;
         }
     }
     false
