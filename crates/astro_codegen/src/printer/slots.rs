@@ -11,7 +11,9 @@
 //!    `print_conditional_slot_*`, etc.).
 
 use oxc_ast::ast::*;
+use oxc_ast_visit::Visit;
 use oxc_span::GetSpan;
+use rustc_hash::FxHashSet;
 
 use super::AstroCodegen;
 use super::AwaitDetector;
@@ -69,6 +71,20 @@ pub(super) fn get_slot_attribute_value(attrs: &[JSXAttributeItem<'_>]) -> Option
     None
 }
 
+/// Extract the `&Expression` behind a dynamic `slot={expr}` attribute, if any.
+fn get_slot_expression<'a>(attrs: &'a [JSXAttributeItem<'a>]) -> Option<&'a Expression<'a>> {
+    for attr in attrs {
+        if let JSXAttributeItem::Attribute(attr) = attr
+            && let JSXAttributeName::Identifier(ident) = &attr.name
+            && ident.name.as_str() == "slot"
+            && let Some(JSXAttributeValue::ExpressionContainer(expr)) = &attr.value
+        {
+            return expr.expression.as_expression();
+        }
+    }
+    None
+}
+
 /// Information about slots found within an expression container.
 #[derive(Debug)]
 pub(super) enum ExpressionSlotInfo<'a> {
@@ -78,15 +94,23 @@ pub(super) enum ExpressionSlotInfo<'a> {
     Single(&'a str),
     /// Single dynamic slot found — use computed `[expr]` key for the entire expression.
     SingleDynamic(String, oxc_span::Span),
+    /// A `.map()`-style call whose callback yields elements with a slot name
+    /// derived from the callback's own parameters (e.g. `slot={`item-${i}`}`).
+    /// The name can't be hoisted to a computed key — it must be built per
+    /// iteration and merged via `$$mergeSlots(...call.map(...))`.
+    Mapped,
     /// Multiple different slots found — requires `$$mergeSlots`.
     Multiple,
 }
 
 /// A collected slot entry — either a static name or a dynamic expression.
+///
+/// `Dynamic` keeps a reference to the slot value's expression so callers can
+/// inspect which identifiers it references (see [`ExpressionSlotInfo::Mapped`]).
 #[derive(Debug)]
 enum CollectedSlot<'a> {
     Static(&'a str),
-    Dynamic(String, oxc_span::Span),
+    Dynamic(String, oxc_span::Span, &'a Expression<'a>),
 }
 
 /// Extract slot information from a JSX expression.
@@ -95,6 +119,13 @@ enum CollectedSlot<'a> {
 pub(super) fn extract_slots_from_expression<'a>(
     expr: &'a JSXExpression<'a>,
 ) -> ExpressionSlotInfo<'a> {
+    // A slot name derived from a `.map()` callback's parameters can't be hoisted
+    // to a computed object key — the key would reference a variable that only
+    // exists inside the callback. Route it through the merge-per-iteration path.
+    if is_mapped_dynamic_slot_expression(expr) {
+        return ExpressionSlotInfo::Mapped;
+    }
+
     let mut slots: Vec<CollectedSlot<'a>> = Vec::new();
     collect_slots_from_expression(expr, &mut slots);
 
@@ -102,7 +133,7 @@ pub(super) fn extract_slots_from_expression<'a>(
         0 => ExpressionSlotInfo::None,
         1 => match slots.remove(0) {
             CollectedSlot::Static(name) => ExpressionSlotInfo::Single(name),
-            CollectedSlot::Dynamic(expr_str, span) => {
+            CollectedSlot::Dynamic(expr_str, span, _) => {
                 ExpressionSlotInfo::SingleDynamic(expr_str, span)
             }
         },
@@ -110,6 +141,103 @@ pub(super) fn extract_slots_from_expression<'a>(
         // decides presence (`Astro.slots.has`) — keyed off count, not names, like Go.
         _ => ExpressionSlotInfo::Multiple,
     }
+}
+
+/// Unwrap parens / optional chaining to reach the underlying call expression
+/// (`items.map(...)`, `items?.map(...)`, `(items.map(...))`).
+fn unwrap_mapped_call<'a, 'b>(expr: &'b Expression<'a>) -> Option<&'b CallExpression<'a>> {
+    match expr {
+        Expression::CallExpression(call) => Some(call),
+        Expression::ChainExpression(chain) => match &chain.expression {
+            ChainElement::CallExpression(call) => Some(call),
+            _ => None,
+        },
+        Expression::ParenthesizedExpression(paren) => unwrap_mapped_call(&paren.expression),
+        _ => None,
+    }
+}
+
+/// Whether `expr` is a call (e.g. `items.map(...)`) whose arrow callback returns
+/// elements slotted with a name derived from the callback's own parameters.
+///
+/// This is exactly the case where hoisting the name to a `[expr]` key produces a
+/// runtime `ReferenceError` (the param is out of scope at the key position), so
+/// it's the only case promoted to [`ExpressionSlotInfo::Mapped`].
+fn is_mapped_dynamic_slot_expression(expr: &JSXExpression<'_>) -> bool {
+    expr.as_expression()
+        .and_then(unwrap_mapped_call)
+        .is_some_and(call_callback_has_param_dynamic_slot)
+}
+
+fn call_callback_has_param_dynamic_slot(call: &CallExpression<'_>) -> bool {
+    call.arguments.iter().any(|arg| {
+        matches!(arg, Argument::ArrowFunctionExpression(arrow)
+            if arrow_callback_has_param_dynamic_slot(arrow))
+    })
+}
+
+/// Whether the mapped call's callback is `async` (so its per-iteration objects
+/// arrive as promises and must be awaited before merging).
+fn mapped_callback_is_async(expr: &JSXExpression<'_>) -> bool {
+    expr.as_expression()
+        .and_then(unwrap_mapped_call)
+        .is_some_and(|call| {
+            call.arguments
+                .iter()
+                .any(|arg| matches!(arg, Argument::ArrowFunctionExpression(arrow) if arrow.r#async))
+        })
+}
+
+/// True when the arrow returns a slotted element whose `slot={expr}` references
+/// one of the arrow's own parameter bindings.
+fn arrow_callback_has_param_dynamic_slot(arrow: &ArrowFunctionExpression<'_>) -> bool {
+    let mut params = BoundNameCollector::default();
+    params.visit_formal_parameters(&arrow.params);
+    if params.names.is_empty() {
+        return false;
+    }
+
+    let mut slots = Vec::new();
+    collect_slots_from_arrow(arrow, &mut slots);
+    slots.iter().any(|slot| match slot {
+        CollectedSlot::Dynamic(_, _, expr) => expression_references_any(expr, &params.names),
+        CollectedSlot::Static(_) => false,
+    })
+}
+
+/// Collects the names bound by binding patterns (params, destructuring targets).
+#[derive(Default)]
+struct BoundNameCollector {
+    names: FxHashSet<String>,
+}
+
+impl<'a> Visit<'a> for BoundNameCollector {
+    fn visit_binding_identifier(&mut self, ident: &BindingIdentifier<'a>) {
+        self.names.insert(ident.name.to_string());
+    }
+}
+
+/// Checks whether an expression references any identifier in `names`.
+struct ReferenceChecker<'n> {
+    names: &'n FxHashSet<String>,
+    found: bool,
+}
+
+impl<'a> Visit<'a> for ReferenceChecker<'_> {
+    fn visit_identifier_reference(&mut self, ident: &IdentifierReference<'a>) {
+        if !self.found && self.names.contains(ident.name.as_str()) {
+            self.found = true;
+        }
+    }
+}
+
+fn expression_references_any(expr: &Expression<'_>, names: &FxHashSet<String>) -> bool {
+    let mut checker = ReferenceChecker {
+        names,
+        found: false,
+    };
+    checker.visit_expression(expr);
+    checker.found
 }
 
 fn collect_slot_from_attributes<'a>(
@@ -123,7 +251,9 @@ fn collect_slot_from_attributes<'a>(
             }
         }
         Some(SlotValue::Dynamic(expr_str, span)) => {
-            slots.push(CollectedSlot::Dynamic(expr_str, span));
+            if let Some(expr) = get_slot_expression(attrs) {
+                slots.push(CollectedSlot::Dynamic(expr_str, span, expr));
+            }
         }
         None => {}
     }
@@ -401,6 +531,9 @@ impl<'a> AstroCodegen<'a> {
         // (last-wins) object key. Matches the Go compiler.
         let mut named_slots: Vec<(String, Vec<&JSXChild<'a>>)> = Vec::new();
         let mut conditional_slots: Vec<&JSXExpressionContainer<'a>> = Vec::new();
+        // `.map()`-style expressions whose slot names derive from the callback's
+        // parameters; merged per iteration via `$$mergeSlots(...call.map(...))`.
+        let mut mapped_dynamic_slots: Vec<&JSXExpressionContainer<'a>> = Vec::new();
 
         // Direct elements with slot={expr} (e.g. <Comp slot={name} />)
         let mut dynamic_slots: Vec<(String, oxc_span::Span, Vec<&JSXChild<'a>>)> = Vec::new();
@@ -459,6 +592,9 @@ impl<'a> AstroCodegen<'a> {
                             // Use computed property syntax: [expr]: () => $$render`...`
                             dynamic_expression_slots.push((expr_str, span, child));
                         }
+                        ExpressionSlotInfo::Mapped => {
+                            mapped_dynamic_slots.push(expr);
+                        }
                         ExpressionSlotInfo::Multiple => {
                             conditional_slots.push(expr);
                         }
@@ -494,7 +630,7 @@ impl<'a> AstroCodegen<'a> {
         }
 
         // Determine if we need $$mergeSlots wrapper
-        let needs_merge_slots = !conditional_slots.is_empty();
+        let needs_merge_slots = !conditional_slots.is_empty() || !mapped_dynamic_slots.is_empty();
 
         if needs_merge_slots {
             self.print(runtime::MERGE_SLOTS);
@@ -565,9 +701,43 @@ impl<'a> AstroCodegen<'a> {
             self.print_conditional_slot_expression(expr);
         }
 
+        // Print mapped dynamic slots: spread the per-iteration slot objects so
+        // `$$mergeSlots` receives one object per element.
+        for expr in &mapped_dynamic_slots {
+            self.print(",...");
+            self.print_mapped_dynamic_slot(expr);
+        }
+
         if needs_merge_slots {
             self.print(")");
         }
+    }
+
+    /// Print a `.map()`-style expression as a spread of per-iteration slot
+    /// objects: `items.map((item, i) => ({[`x${i}`]: () => $$render`…`}))`.
+    fn print_mapped_dynamic_slot(&mut self, expr: &JSXExpressionContainer<'a>) {
+        self.add_source_mapping_for_span(expr.span);
+        let prev_wrap = self.wrap_arrow_slot_object;
+        let prev_skip = self.skip_slot_attribute;
+        self.wrap_arrow_slot_object = true;
+        // The slot name now lives in the object key, so strip the redundant
+        // `slot={…}` attribute from the element — matching the static `.map()` case.
+        self.skip_slot_attribute = true;
+        // An async callback yields promises; `Promise.all` resolves them so the
+        // spread hands `$$mergeSlots` objects, not pending promises. Only valid
+        // when the factory is async — otherwise the inert `async` is dropped instead.
+        let promise_all = mapped_callback_is_async(&expr.expression) && self.scan_result.has_await;
+        if promise_all {
+            self.print("(await Promise.all(");
+        }
+        if let Some(inner) = expr.expression.as_expression() {
+            self.print_conditional_slot_branch_expr(inner);
+        }
+        if promise_all {
+            self.print("))");
+        }
+        self.wrap_arrow_slot_object = prev_wrap;
+        self.skip_slot_attribute = prev_skip;
     }
 
     /// Print an expression with multiple conditional slots for `$$mergeSlots`.
@@ -696,22 +866,39 @@ impl<'a> AstroCodegen<'a> {
         arrow: &oxc_ast::ast::ArrowFunctionExpression<'a>,
     ) {
         self.add_source_mapping_for_span(arrow.span);
-        self.print_arrow_params(arrow);
+        // A mapped async callback drops its `async` when the factory is sync:
+        // there's no `await` to relocate, so the keyword is inert and keeping it
+        // would make `.map()` return promises that `$$mergeSlots` can't merge.
+        let inert_async = self.wrap_arrow_slot_object && !self.scan_result.has_await;
+        self.print_arrow_params_with_async(arrow, arrow.r#async && !inert_async);
 
         if arrow.expression {
             // Expression body
             if let Some(expr) = arrow.body.statements.first()
                 && let oxc_ast::ast::Statement::ExpressionStatement(expr_stmt) = expr
             {
+                // In a concise body, a returned slot object literal must be
+                // parenthesised so its leading `{` isn't read as a block.
+                let wrap = self.wrap_arrow_slot_object;
+                if wrap {
+                    self.print("(");
+                }
                 self.print_conditional_slot_branch(&expr_stmt.expression);
+                if wrap {
+                    self.print(")");
+                }
             }
         } else {
-            // Block body with slot-aware statements
+            // Block body with slot-aware statements. A `return {…}` disambiguates
+            // on its own, so the object never needs extra parens here.
+            let prev = self.wrap_arrow_slot_object;
+            self.wrap_arrow_slot_object = false;
             self.print("{\n");
             for stmt in &arrow.body.statements {
                 self.print_slot_aware_statement(stmt);
             }
             self.print("}");
+            self.wrap_arrow_slot_object = prev;
         }
     }
 
