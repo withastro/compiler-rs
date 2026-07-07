@@ -157,22 +157,35 @@ fn unwrap_mapped_call<'a, 'b>(expr: &'b Expression<'a>) -> Option<&'b CallExpres
     }
 }
 
-/// Whether `expr` is a call (e.g. `items.map(...)`) whose arrow callback returns
-/// elements slotted with a name derived from the callback's own parameters.
+/// Whether `expr` is a call (e.g. `items.map(...)`) that yields slotted elements
+/// whose slot name is derived from a callback binding — a parameter or local of
+/// the callback (or a nested callback, for `.map(g => g.items.map(...))`).
 ///
-/// This is exactly the case where hoisting the name to a `[expr]` key produces a
-/// runtime `ReferenceError` (the param is out of scope at the key position), so
-/// it's the only case promoted to [`ExpressionSlotInfo::Mapped`].
+/// That's exactly when hoisting the name to a `[expr]` key produces a runtime
+/// `ReferenceError` — the binding is out of scope at the key position — so it's
+/// the only case promoted to [`ExpressionSlotInfo::Mapped`]. A name built only
+/// from module/frontmatter values stays on the plain `[expr]` path.
 fn is_mapped_dynamic_slot_expression(expr: &JSXExpression<'_>) -> bool {
-    expr.as_expression()
-        .and_then(unwrap_mapped_call)
-        .is_some_and(call_callback_has_param_dynamic_slot)
-}
+    let Some(inner) = expr.as_expression() else {
+        return false;
+    };
+    if unwrap_mapped_call(inner).is_none() {
+        return false;
+    }
 
-fn call_callback_has_param_dynamic_slot(call: &CallExpression<'_>) -> bool {
-    call.arguments.iter().any(|arg| {
-        matches!(arg, Argument::ArrowFunctionExpression(arrow)
-            if arrow_callback_has_param_dynamic_slot(arrow))
+    // Every name bound inside the expression (callback params, destructuring,
+    // locals) is out of scope where the slot object is built.
+    let mut bound = BoundNameCollector::default();
+    bound.visit_expression(inner);
+    if bound.names.is_empty() {
+        return false;
+    }
+
+    let mut slots = Vec::new();
+    collect_slots_from_inner_expression(inner, &mut slots);
+    slots.iter().any(|slot| match slot {
+        CollectedSlot::Dynamic(_, _, expr) => expression_references_any(expr, &bound.names),
+        CollectedSlot::Static(_) => false,
     })
 }
 
@@ -188,21 +201,50 @@ fn mapped_callback_is_async(expr: &JSXExpression<'_>) -> bool {
         })
 }
 
-/// True when the arrow returns a slotted element whose `slot={expr}` references
-/// one of the arrow's own parameter bindings.
-fn arrow_callback_has_param_dynamic_slot(arrow: &ArrowFunctionExpression<'_>) -> bool {
-    let mut params = BoundNameCollector::default();
-    params.visit_formal_parameters(&arrow.params);
-    if params.names.is_empty() {
-        return false;
-    }
+/// Whether the outer callback returns another mapped call
+/// (`groups.map(g => g.items.map(i => …))`), so its result is an array of arrays
+/// that must be flattened before spreading into `$$mergeSlots`.
+fn mapped_expression_is_nested(expr: &JSXExpression<'_>) -> bool {
+    expr.as_expression()
+        .and_then(unwrap_mapped_call)
+        .and_then(first_arrow_arg)
+        .and_then(arrow_returned_expression)
+        .and_then(unwrap_mapped_call)
+        .is_some_and(call_yields_dynamic_slot)
+}
 
-    let mut slots = Vec::new();
-    collect_slots_from_arrow(arrow, &mut slots);
-    slots.iter().any(|slot| match slot {
-        CollectedSlot::Dynamic(_, _, expr) => expression_references_any(expr, &params.names),
-        CollectedSlot::Static(_) => false,
+fn first_arrow_arg<'a, 'b>(
+    call: &'b CallExpression<'a>,
+) -> Option<&'b ArrowFunctionExpression<'a>> {
+    call.arguments.iter().find_map(|arg| match arg {
+        Argument::ArrowFunctionExpression(arrow) => Some(&**arrow),
+        _ => None,
     })
+}
+
+/// The expression an arrow returns — its concise body, or the first `return`.
+fn arrow_returned_expression<'a, 'b>(
+    arrow: &'b ArrowFunctionExpression<'a>,
+) -> Option<&'b Expression<'a>> {
+    if arrow.expression {
+        match arrow.body.statements.first() {
+            Some(Statement::ExpressionStatement(stmt)) => Some(&stmt.expression),
+            _ => None,
+        }
+    } else {
+        arrow.body.statements.iter().find_map(|stmt| match stmt {
+            Statement::ReturnStatement(ret) => ret.argument.as_ref(),
+            _ => None,
+        })
+    }
+}
+
+fn call_yields_dynamic_slot(call: &CallExpression<'_>) -> bool {
+    let mut slots = Vec::new();
+    collect_slots_from_call_arguments(&call.arguments, &mut slots);
+    slots
+        .iter()
+        .any(|slot| matches!(slot, CollectedSlot::Dynamic(..)))
 }
 
 /// Collects the names bound by binding patterns (params, destructuring targets).
@@ -735,6 +777,11 @@ impl<'a> AstroCodegen<'a> {
         }
         if promise_all {
             self.print("))");
+        }
+        // A nested map yields an array of arrays; flatten so each slot object is
+        // spread individually rather than as a numerically-keyed inner array.
+        if mapped_expression_is_nested(&expr.expression) {
+            self.print(".flat(Infinity)");
         }
         self.wrap_arrow_slot_object = prev_wrap;
         self.skip_slot_attribute = prev_skip;
