@@ -209,6 +209,9 @@ pub struct AstroCodegen<'a> {
     component_imports: FxHashMap<String, ComponentImportInfo>,
     /// When true, skip printing slot="..." attributes on elements (used for conditional slots)
     skip_slot_attribute: bool,
+    /// When true, a slot-aware arrow's concise-body object literal is wrapped in
+    /// parens (used when spreading `.map()` results into `$$mergeSlots`).
+    wrap_arrow_slot_object: bool,
     /// Current script index for $$renderScript URLs
     script_index: usize,
     /// Current element nesting depth (0 = root level)
@@ -318,6 +321,7 @@ impl<'a> AstroCodegen<'a> {
             module_imports: Vec::new(),
             component_imports: FxHashMap::default(),
             skip_slot_attribute: false,
+            wrap_arrow_slot_object: false,
             script_index: 0,
             element_depth: 0,
             transition_counter: 0,
@@ -420,7 +424,17 @@ impl<'a> AstroCodegen<'a> {
     /// Print the arrow function header: async prefix, params, ` => `.
     /// The caller prints the body.
     fn print_arrow_params(&mut self, arrow: &ArrowFunctionExpression<'a>) {
-        if arrow.r#async {
+        self.print_arrow_params_with_async(arrow, arrow.r#async);
+    }
+
+    /// Like [`Self::print_arrow_params`] but with explicit control over the
+    /// `async` prefix, so a mapped-slot callback can drop an inert `async`.
+    fn print_arrow_params_with_async(
+        &mut self,
+        arrow: &ArrowFunctionExpression<'a>,
+        emit_async: bool,
+    ) {
+        if emit_async {
             self.print("async ");
         }
         let needs_parens = arrow.params.items.len() != 1
