@@ -1,0 +1,21 @@
+---
+source: crates/astro_codegen/tests/snapshots.rs
+input_file: crates/astro_codegen/tests/fixtures/define_vars_on_custom_element.astro
+---
+import { render as $$render, createComponent as $$createComponent, renderComponent as $$renderComponent, defineStyleVars as $$defineStyleVars, createMetadata as $$createMetadata } from "http://localhost:3000/";
+import "<stdin>?astro&type=style&index=0&lang.css";
+export const $$metadata = $$createMetadata(import.meta.url, {
+	modules: [],
+	hydratedComponents: [],
+	clientOnlyComponents: [],
+	hydrationDirectives: new Set([]),
+	hoisted: []
+});
+const $$Component = $$createComponent(($$result, $$props, $$slots) => {
+	const $$definedVars = $$defineStyleVars([{ a: "red" }]);
+	return $$render`${$$renderComponent($$result, "my-element", "my-element", {
+		"class": "x astro-unigz2e7",
+		"style": $$definedVars
+	})}`;
+}, undefined, undefined);
+export default $$Component;

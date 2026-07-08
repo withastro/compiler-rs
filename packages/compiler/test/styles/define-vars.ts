@@ -28,6 +28,18 @@ let color = 'red';
 		assert.deepStrictEqual(result.css.length, 1);
 	});
 
+	it('injects define:vars style attribute on custom elements', () => {
+		const input = `
+<my-element class="x"></my-element>
+
+<style define:vars={{ a: "red" }}>
+  .x { color: var(--a); }
+</style>
+`;
+		const result = transform(input);
+		assert.ok(result.code.includes('"style": $$definedVars'));
+	});
+
 	it('handles style object and define:vars', () => {
 		const input = `
 ---

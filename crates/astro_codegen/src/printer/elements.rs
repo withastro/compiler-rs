@@ -366,7 +366,7 @@ impl<'a> AstroCodegen<'a> {
     }
 
     /// Returns `true` if this element should receive `$$definedVars` style injection.
-    fn should_inject_define_vars(&self, name: &str) -> bool {
+    pub(super) fn should_inject_define_vars(&self, name: &str) -> bool {
         !self.define_vars_values.is_empty() && css_scoping::should_scope_element(name)
     }
 
@@ -653,31 +653,20 @@ impl<'a> AstroCodegen<'a> {
         Self::to_base32_like(hash)
     }
 
-    /// Print a `style` attribute merged with `$$definedVars`.
+    /// Build the value expression for a `style` attribute merged with `$$definedVars`.
     ///
-    /// Handles all attribute value types following the Go compiler's `injectDefineVars()` logic:
-    /// - Empty/boolean `style` → `${$$addAttribute($$definedVars, "style")}`
-    /// - Quoted `style="val"` → `` ${$$addAttribute(`${"val"}; ${$$definedVars}`, "style")} ``
-    /// - Expression `style={expr}` → if object `{...}` then `${$$addAttribute([{...},$$definedVars], "style")}`,
-    ///   else `` ${$$addAttribute(`${expr}; ${$$definedVars}`, "style")} ``
-    /// - Shorthand `{style}` → `` ${$$addAttribute(`${style}; ${$$definedVars}`, "style")} ``
-    /// - Template literal `` style=`val` `` → `` ${$$addAttribute(`${`val`}; ${$$definedVars}`, "style")} ``
-    fn print_style_with_define_vars(&mut self, attr: &JSXAttribute<'a>) {
-        self.add_source_mapping_for_span(attr.span);
+    /// Handles all attribute value types:
+    /// - Empty/boolean `style` → `$$definedVars`
+    /// - Quoted `style="val"` → `` `${"val"}; ${$$definedVars}` ``
+    /// - Expression `style={expr}` → if object `{...}` then `[{...},$$definedVars]`,
+    ///   else `` `${expr}; ${$$definedVars}` ``
+    /// - Shorthand `{style}` → `` `${style}; ${$$definedVars}` ``
+    /// - Template literal `` style=`val` `` → `` `${`val`}; ${$$definedVars}` ``
+    pub(super) fn style_value_with_define_vars(attr: &JSXAttribute<'a>) -> String {
         match &attr.value {
-            None => {
-                self.print_parts(["${", runtime::ADD_ATTRIBUTE, "($$definedVars, \"style\")}"]);
-            }
             Some(JSXAttributeValue::StringLiteral(lit)) => {
-                let val = lit.value.as_str();
-                let escaped = escape_double_quotes(val);
-                self.print_parts([
-                    "${",
-                    runtime::ADD_ATTRIBUTE,
-                    "(`${\"",
-                    &escaped,
-                    "\"}; ${$$definedVars}`, \"style\")}",
-                ]);
+                let escaped = escape_double_quotes(lit.value.as_str());
+                format!("`${{\"{escaped}\"}}; ${{$$definedVars}}`")
             }
             Some(JSXAttributeValue::ExpressionContainer(expr)) => {
                 if let Some(e) = expr.expression.as_expression() {
@@ -694,30 +683,23 @@ impl<'a> AstroCodegen<'a> {
                             .strip_prefix('(')
                             .and_then(|s| s.strip_suffix(')'))
                             .unwrap_or(expr_str.trim());
-                        self.print_parts([
-                            "${",
-                            runtime::ADD_ATTRIBUTE,
-                            "([",
-                            obj_str,
-                            ",$$definedVars], \"style\")}",
-                        ]);
+                        format!("[{obj_str},$$definedVars]")
                     } else {
-                        self.print_parts([
-                            "${",
-                            runtime::ADD_ATTRIBUTE,
-                            "(`${",
-                            &expr_str,
-                            "}; ${$$definedVars}`, \"style\")}",
-                        ]);
+                        format!("`${{{expr_str}}}; ${{$$definedVars}}`")
                     }
                 } else {
-                    self.print_parts(["${", runtime::ADD_ATTRIBUTE, "($$definedVars, \"style\")}"]);
+                    "$$definedVars".to_string()
                 }
             }
-            _ => {
-                self.print_parts(["${", runtime::ADD_ATTRIBUTE, "($$definedVars, \"style\")}"]);
-            }
+            _ => "$$definedVars".to_string(),
         }
+    }
+
+    /// Print a `style` attribute merged with `$$definedVars` via `$$addAttribute`.
+    fn print_style_with_define_vars(&mut self, attr: &JSXAttribute<'a>) {
+        self.add_source_mapping_for_span(attr.span);
+        let value = Self::style_value_with_define_vars(attr);
+        self.print_parts(["${", runtime::ADD_ATTRIBUTE, "(", &value, ", \"style\")}"]);
     }
 
     /// Print a class attribute with scope class appended.

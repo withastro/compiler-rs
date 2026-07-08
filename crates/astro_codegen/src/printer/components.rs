@@ -200,6 +200,9 @@ impl<'a> AstroCodegen<'a> {
         // that are not in the NeverScopedElements list.
         let scope_id = self.scope_id_for(name);
 
+        // Custom elements render as plain HTML tags, so they receive the $$definedVars style too.
+        let inject_define_vars = is_custom && self.should_inject_define_vars(name);
+
         // Components always receive slot as a prop.
         // Only HTML elements have the slot attribute stripped when inside named slots.
         let prev_skip_slot = self.skip_slot_attribute;
@@ -216,6 +219,7 @@ impl<'a> AstroCodegen<'a> {
                 None
             },
             scope_id.as_ref(),
+            inject_define_vars,
         );
 
         self.skip_slot_attribute = prev_skip_slot;
@@ -330,6 +334,7 @@ impl<'a> AstroCodegen<'a> {
         server_defer: Option<&ServerDeferInfo>,
         skip_names: Option<&[&str]>,
         scope_id: Option<&ScopeId>,
+        inject_define_vars: bool,
     ) {
         let mut first = true;
 
@@ -356,6 +361,8 @@ impl<'a> AstroCodegen<'a> {
 
         // Track whether the scope class was merged into an existing class attribute
         let mut scope_injected = false;
+
+        let mut define_vars_style_injected = false;
 
         // Determine the scope class string (for class/where strategy only)
         let scope_class = scope_id.and_then(|sid| {
@@ -441,6 +448,15 @@ impl<'a> AstroCodegen<'a> {
                             }
                         }
                         scope_injected = true;
+                        continue;
+                    }
+
+                    // Only the first style attribute receives the $$definedVars merge.
+                    if name == "style" && inject_define_vars && !define_vars_style_injected {
+                        let value = Self::style_value_with_define_vars(attr);
+                        self.print_parts(["(", &value, ")"]);
+                        define_vars_style_injected = true;
+                        self.define_vars_injected = true;
                         continue;
                     }
 
@@ -549,6 +565,15 @@ impl<'a> AstroCodegen<'a> {
                 let sc = sid.class_value();
                 self.print_parts(["\"class\":\"", &sc, "\""]);
             }
+        }
+
+        if inject_define_vars && !define_vars_style_injected {
+            if !first {
+                self.print(",");
+            }
+            first = false;
+            self.print("\"style\":($$definedVars)");
+            self.define_vars_injected = true;
         }
 
         // Add hydration attributes if present
