@@ -11,7 +11,10 @@ use super::expr_to_string;
 use super::runtime;
 use super::whitespace::has_is_raw_attr;
 use crate::options::CompactMode;
-use crate::scanner::{get_jsx_attribute_name, is_custom_element, is_equal_jsx_attribute_name};
+use crate::scanner::{
+    get_jsx_attribute_name, is_custom_element, is_equal_jsx_attribute_name,
+    jsx_attribute_value_is_empty,
+};
 use oxc_ast::ast::*;
 
 /// A client hydration directive parsed from a component's attributes.
@@ -331,10 +334,10 @@ impl<'a> AstroCodegen<'a> {
         let mut first = true;
 
         // Pre-scan for transition attributes
-        let mut transition_name: Option<&JSXAttribute<'a>> = None;
-        let mut transition_animate: Option<&JSXAttribute<'a>> = None;
-        let mut transition_persist: Option<&JSXAttribute<'a>> = None;
-        let mut transition_persist_props: Option<&JSXAttribute<'a>> = None;
+        let mut transition_name = None;
+        let mut transition_animate = None;
+        let mut transition_persist = None;
+        let mut transition_persist_props = None;
 
         for attr in attrs {
             if let JSXAttributeItem::Attribute(attr) = attr {
@@ -467,10 +470,10 @@ impl<'a> AstroCodegen<'a> {
                 transition_name.map(|a| a.span),
                 transition_animate.map(|a| a.span),
             );
-            let name_val =
-                transition_name.map_or_else(|| "\"\"".to_string(), Self::get_attr_value_string);
-            let animate_val =
-                transition_animate.map_or_else(|| "\"\"".to_string(), Self::get_attr_value_string);
+            let name_val = transition_name
+                .map_or_else(|| "\"\"".to_string(), |a| Self::get_attr_value_string(a));
+            let animate_val = transition_animate
+                .map_or_else(|| "\"\"".to_string(), |a| Self::get_attr_value_string(a));
             let hash = self.generate_transition_hash();
             self.print_parts([
                 "\"data-astro-transition-scope\":(",
@@ -504,7 +507,7 @@ impl<'a> AstroCodegen<'a> {
             }
             first = false;
             // Persist ID priority: explicit persist value, else transition:name value, else a generated hash.
-            if Self::attr_has_nonempty_value(persist_attr) {
+            if !jsx_attribute_value_is_empty(persist_attr) {
                 self.add_source_mapping_for_span(persist_attr.span);
                 self.print("\"data-astro-transition-persist\":");
                 self.print_component_attr_value(persist_attr);

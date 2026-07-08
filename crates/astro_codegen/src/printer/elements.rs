@@ -12,7 +12,9 @@ use super::whitespace::{has_is_raw_attr, is_raw_element_name};
 use super::{AstroCodegen, expr_to_string};
 use crate::css_scoping;
 use crate::options::{CompactMode, ScopedStyleStrategy};
-use crate::scanner::{get_jsx_attribute_name, is_equal_jsx_attribute_name};
+use crate::scanner::{
+    get_jsx_attribute_name, is_equal_jsx_attribute_name, jsx_attribute_value_is_empty,
+};
 use oxc_ast::ast::*;
 
 /// Scope identifier for an element — either a CSS class or a data attribute,
@@ -96,16 +98,6 @@ impl<'a> AstroCodegen<'a> {
     ) {
         if let Some(span) = transition_name.or(transition_animate) {
             self.add_source_mapping_for_span(span);
-        }
-    }
-
-    /// "Explicitly set" for transition:persist: a non-empty string literal or any
-    /// expression value (an empty string counts as unset — Go's `Val != ""`).
-    pub(super) fn attr_has_nonempty_value(attr: &JSXAttribute<'a>) -> bool {
-        match &attr.value {
-            None => false,
-            Some(JSXAttributeValue::StringLiteral(lit)) => !lit.value.as_str().is_empty(),
-            Some(_) => true,
         }
     }
 
@@ -391,9 +383,9 @@ impl<'a> AstroCodegen<'a> {
         let mut static_class: Option<&str> = None;
         let mut class_list_expr: Option<&JSXExpressionContainer<'a>> = None;
 
-        let mut transition_name: Option<&JSXAttribute<'a>> = None;
-        let mut transition_animate: Option<&JSXAttribute<'a>> = None;
-        let mut transition_persist: Option<&JSXAttribute<'a>> = None;
+        let mut transition_name = None;
+        let mut transition_animate = None;
+        let mut transition_persist = None;
 
         for attr in attrs {
             if let JSXAttributeItem::Attribute(attr) = attr {
@@ -420,7 +412,7 @@ impl<'a> AstroCodegen<'a> {
 
         // Persist ID priority: explicit persist value, else transition:name value, else a generated hash.
         if let Some(persist_attr) = transition_persist {
-            if Self::attr_has_nonempty_value(persist_attr) {
+            if !jsx_attribute_value_is_empty(persist_attr) {
                 self.print_html_attribute_with_name(persist_attr, "data-astro-transition-persist");
             } else if let Some(name_attr) = transition_name {
                 self.print_html_attribute_with_name(name_attr, "data-astro-transition-persist");
@@ -446,10 +438,10 @@ impl<'a> AstroCodegen<'a> {
                 transition_name.map(|a| a.span),
                 transition_animate.map(|a| a.span),
             );
-            let name_val =
-                transition_name.map_or_else(|| "\"\"".to_string(), Self::get_attr_value_string);
-            let animate_val =
-                transition_animate.map_or_else(|| "\"\"".to_string(), Self::get_attr_value_string);
+            let name_val = transition_name
+                .map_or_else(|| "\"\"".to_string(), |a| Self::get_attr_value_string(a));
+            let animate_val = transition_animate
+                .map_or_else(|| "\"\"".to_string(), |a| Self::get_attr_value_string(a));
             let hash = self.generate_transition_hash();
             self.print_parts([
                 "${",
