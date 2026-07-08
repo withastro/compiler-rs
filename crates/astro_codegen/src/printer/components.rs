@@ -6,7 +6,7 @@
 
 use super::AstroCodegen;
 use super::elements::ScopeId;
-use super::escape::{decode_html_entities, escape_double_quotes};
+use super::escape::{decode_html_entities, escape_double_quotes, escape_template_literal};
 use super::expr_to_string;
 use super::runtime;
 use super::whitespace::has_is_raw_attr;
@@ -228,8 +228,8 @@ impl<'a> AstroCodegen<'a> {
             self.print(runtime::RENDER);
             self.print("`");
             if is_raw_text {
-                // set:text with string literal - inline raw text without ${}
-                self.print(&value);
+                // Escape template-literal syntax so a literal `${...}` isn't evaluated at render time.
+                self.print(&escape_template_literal(&value));
             } else {
                 self.print("${");
                 if is_html && needs_unescape {
@@ -331,23 +331,22 @@ impl<'a> AstroCodegen<'a> {
         let mut first = true;
 
         // Pre-scan for transition attributes
-        let mut transition_name: Option<(String, oxc_span::Span)> = None;
-        let mut transition_animate: Option<(String, oxc_span::Span)> = None;
-        let mut transition_persist: Option<(String, oxc_span::Span)> = None;
-        let mut transition_persist_props: Option<(String, oxc_span::Span)> = None;
+        let mut transition_name: Option<&JSXAttribute<'a>> = None;
+        let mut transition_animate: Option<&JSXAttribute<'a>> = None;
+        let mut transition_persist: Option<&JSXAttribute<'a>> = None;
+        let mut transition_persist_props: Option<&JSXAttribute<'a>> = None;
 
         for attr in attrs {
             if let JSXAttributeItem::Attribute(attr) = attr {
                 let name = get_jsx_attribute_name(&attr.name);
                 if name == "transition:name" {
-                    transition_name = Some((Self::get_attr_value_string(attr), attr.span));
+                    transition_name = Some(attr);
                 } else if name == "transition:animate" {
-                    transition_animate = Some((Self::get_attr_value_string(attr), attr.span));
+                    transition_animate = Some(attr);
                 } else if name == "transition:persist" {
-                    transition_persist =
-                        Some((Self::get_attr_value_string_or_empty(attr), attr.span));
+                    transition_persist = Some(attr);
                 } else if name == "transition:persist-props" {
-                    transition_persist_props = Some((Self::get_attr_value_string(attr), attr.span));
+                    transition_persist_props = Some(attr);
                 }
             }
         }
@@ -442,34 +441,7 @@ impl<'a> AstroCodegen<'a> {
                         continue;
                     }
 
-                    match &attr.value {
-                        None => {
-                            self.print("true");
-                        }
-                        Some(JSXAttributeValue::StringLiteral(lit)) => {
-                            self.print("\"");
-                            self.print(&escape_double_quotes(lit.value.as_str()));
-                            self.print("\"");
-                        }
-                        Some(JSXAttributeValue::ExpressionContainer(expr)) => {
-                            if let Some(
-                                Expression::TemplateLiteral(_) | Expression::StringLiteral(_),
-                            ) = expr.expression.as_expression()
-                            {
-                                self.print_jsx_expression(&expr.expression);
-                            } else {
-                                self.print("(");
-                                self.print_jsx_expression(&expr.expression);
-                                self.print(")");
-                            }
-                        }
-                        Some(JSXAttributeValue::Element(_el)) => {
-                            self.print("\"[JSX]\"");
-                        }
-                        Some(JSXAttributeValue::Fragment(_)) => {
-                            self.print("\"[Fragment]\"");
-                        }
-                    }
+                    self.print_component_attr_value(attr);
                 }
                 JSXAttributeItem::SpreadAttribute(spread) => {
                     if !first {
@@ -491,11 +463,14 @@ impl<'a> AstroCodegen<'a> {
             }
             first = false;
             // Map to whichever transition attribute comes first
-            self.add_transition_source_mapping(&transition_name, &transition_animate);
-            let name_val = transition_name
-                .as_ref()
-                .map_or_else(|| "\"\"".to_string(), |(v, _)| v.clone());
-            let animate_val = transition_animate.map_or_else(|| "\"\"".to_string(), |(v, _)| v);
+            self.add_transition_source_mapping(
+                transition_name.map(|a| a.span),
+                transition_animate.map(|a| a.span),
+            );
+            let name_val =
+                transition_name.map_or_else(|| "\"\"".to_string(), Self::get_attr_value_string);
+            let animate_val =
+                transition_animate.map_or_else(|| "\"\"".to_string(), Self::get_attr_value_string);
             let hash = self.generate_transition_hash();
             self.print_parts([
                 "\"data-astro-transition-scope\":(",
@@ -513,32 +488,32 @@ impl<'a> AstroCodegen<'a> {
         }
 
         // Print transition:persist-props as a data attribute if present
-        if let Some((props_val, persist_props_span)) = &transition_persist_props {
+        if let Some(props_attr) = transition_persist_props {
             if !first {
                 self.print(",");
             }
             first = false;
-            self.add_source_mapping_for_span(*persist_props_span);
-            self.print_parts(["\"data-astro-transition-persist-props\":", props_val]);
+            self.add_source_mapping_for_span(props_attr.span);
+            let props_val = Self::get_attr_value_string(props_attr);
+            self.print_parts(["\"data-astro-transition-persist-props\":", &props_val]);
         }
 
-        if let Some((ref persist_val, persist_span)) = transition_persist {
+        if let Some(persist_attr) = transition_persist {
             if !first {
                 self.print(",");
             }
             first = false;
-            self.add_source_mapping_for_span(persist_span);
-            // Priority order for the persist ID:
-            // 1. Explicit string value on transition:persist (e.g. transition:persist="form")
-            // 2. transition:name value
-            // 3. Generated hash via $$createTransitionScope
-            let clean_persist = persist_val.trim_matches('"');
-            if !clean_persist.is_empty() {
-                self.print_parts(["\"data-astro-transition-persist\":\"", clean_persist, "\""]);
-            } else if let Some((ref name_val, _)) = transition_name {
-                let clean_val = name_val.trim_matches('"');
-                self.print_parts(["\"data-astro-transition-persist\":\"", clean_val, "\""]);
+            // Persist ID priority: explicit persist value, else transition:name value, else a generated hash.
+            if Self::attr_has_nonempty_value(persist_attr) {
+                self.add_source_mapping_for_span(persist_attr.span);
+                self.print("\"data-astro-transition-persist\":");
+                self.print_component_attr_value(persist_attr);
+            } else if let Some(name_attr) = transition_name {
+                self.add_source_mapping_for_span(persist_attr.span);
+                self.print("\"data-astro-transition-persist\":");
+                self.print_component_attr_value(name_attr);
             } else {
+                self.add_source_mapping_for_span(persist_attr.span);
                 let hash = self.generate_transition_hash();
                 self.print_parts([
                     "\"data-astro-transition-persist\":(",
@@ -621,6 +596,31 @@ impl<'a> AstroCodegen<'a> {
             if let Some(export) = &server_defer.component_export {
                 self.print_parts([",\"server:component-export\":(\"", export, "\")"]);
             }
+        }
+    }
+
+    /// Print an attribute's value as a component prop value (the RHS of a `"key": value` property).
+    fn print_component_attr_value(&mut self, attr: &JSXAttribute<'a>) {
+        match &attr.value {
+            None => self.print("true"),
+            Some(JSXAttributeValue::StringLiteral(lit)) => {
+                self.print("\"");
+                self.print(&escape_double_quotes(lit.value.as_str()));
+                self.print("\"");
+            }
+            Some(JSXAttributeValue::ExpressionContainer(expr)) => {
+                if let Some(Expression::TemplateLiteral(_) | Expression::StringLiteral(_)) =
+                    expr.expression.as_expression()
+                {
+                    self.print_jsx_expression(&expr.expression);
+                } else {
+                    self.print("(");
+                    self.print_jsx_expression(&expr.expression);
+                    self.print(")");
+                }
+            }
+            Some(JSXAttributeValue::Element(_)) => self.print("\"[JSX]\""),
+            Some(JSXAttributeValue::Fragment(_)) => self.print("\"[Fragment]\""),
         }
     }
 }
