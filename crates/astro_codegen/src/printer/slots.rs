@@ -714,8 +714,12 @@ impl<'a> AstroCodegen<'a> {
             self.print(expr_str);
             self.print("]: ");
             self.print_slot_fn_open(AwaitDetector::found_in_child(child));
-            // Do NOT set skip_slot_attribute — Go compiler keeps the slot prop on the component
+            // The name now lives in the object key, so strip the redundant
+            // `slot={…}` attribute from the element (like Go, and the static case).
+            let prev = self.skip_slot_attribute;
+            self.skip_slot_attribute = true;
             self.print_jsx_child(child);
+            self.skip_slot_attribute = prev;
             self.print("`,");
         }
 
@@ -1214,8 +1218,16 @@ impl<'a> AstroCodegen<'a> {
                         self.print(&expr_str);
                         self.print("]: ");
                         self.print_slot_fn_open(AwaitDetector::found_in_element(el));
-                        // Keep the slot prop on the component (matches Go compiler behavior)
+                        // Name lives in the object key now — strip the redundant
+                        // `slot={…}` attribute, like the static branch above and every
+                        // other regular-component case. (Custom elements and root-level
+                        // slots keep theirs via separate paths, for browser slotting;
+                        // Go leaves it on here too, but that's an inconsistency with its
+                        // own single-slot/static handling — a sanctioned divergence.)
+                        let prev = self.skip_slot_attribute;
+                        self.skip_slot_attribute = true;
                         self.print_jsx_element(el);
+                        self.skip_slot_attribute = prev;
                         self.print("`}");
                     }
                     None => {
