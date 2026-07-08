@@ -12,7 +12,9 @@ use super::whitespace::{has_is_raw_attr, is_raw_element_name};
 use super::{AstroCodegen, expr_to_string};
 use crate::css_scoping;
 use crate::options::{CompactMode, ScopedStyleStrategy};
-use crate::scanner::{get_jsx_attribute_name, is_equal_jsx_attribute_name};
+use crate::scanner::{
+    get_jsx_attribute_name, is_equal_jsx_attribute_name, jsx_attribute_value_is_empty,
+};
 use oxc_ast::ast::*;
 
 /// Scope identifier for an element — either a CSS class or a data attribute,
@@ -91,13 +93,11 @@ pub(super) fn is_head_element(name: &str) -> bool {
 impl<'a> AstroCodegen<'a> {
     pub(super) fn add_transition_source_mapping(
         &mut self,
-        transition_name: &Option<(String, oxc_span::Span)>,
-        transition_animate: &Option<(String, oxc_span::Span)>,
+        transition_name: Option<oxc_span::Span>,
+        transition_animate: Option<oxc_span::Span>,
     ) {
-        if let Some((_, span)) = transition_name {
-            self.add_source_mapping_for_span(*span);
-        } else if let Some((_, span)) = transition_animate {
-            self.add_source_mapping_for_span(*span);
+        if let Some(span) = transition_name.or(transition_animate) {
+            self.add_source_mapping_for_span(span);
         }
     }
 
@@ -187,8 +187,8 @@ impl<'a> AstroCodegen<'a> {
         {
             self.add_source_mapping_for_span(set_span);
             if is_raw_text {
-                // set:text with string literal — inline raw text without ${}
-                self.print(&value);
+                // Escape template-literal syntax so a literal `${...}` isn't evaluated at render time.
+                self.print(&escape_template_literal(&value));
             } else if directive_type == "html" && needs_unescape {
                 // Only use $$unescapeHTML for non-literal expressions
                 self.print_parts(["${", runtime::UNESCAPE_HTML, "(", &value, ")}"]);
@@ -383,9 +383,9 @@ impl<'a> AstroCodegen<'a> {
         let mut static_class: Option<&str> = None;
         let mut class_list_expr: Option<&JSXExpressionContainer<'a>> = None;
 
-        let mut transition_name: Option<(String, oxc_span::Span)> = None;
-        let mut transition_animate: Option<(String, oxc_span::Span)> = None;
-        let mut transition_persist: Option<(String, oxc_span::Span)> = None;
+        let mut transition_name = None;
+        let mut transition_animate = None;
+        let mut transition_persist = None;
 
         for attr in attrs {
             if let JSXAttributeItem::Attribute(attr) = attr {
@@ -399,33 +399,25 @@ impl<'a> AstroCodegen<'a> {
                         class_list_expr = Some(expr);
                     }
                 } else if name == "transition:name" {
-                    transition_name = Some((Self::get_attr_value_string(attr), attr.span));
+                    transition_name = Some(attr);
                 } else if name == "transition:animate" {
-                    transition_animate = Some((Self::get_attr_value_string(attr), attr.span));
+                    transition_animate = Some(attr);
                 } else if name == "transition:persist" {
-                    transition_persist =
-                        Some((Self::get_attr_value_string_or_empty(attr), attr.span));
+                    transition_persist = Some(attr);
                 }
             }
         }
 
         let has_merged_class = static_class.is_some() && class_list_expr.is_some();
 
-        // Handle transition:persist — priority order for the persist ID:
-        // 1. If transition:persist has an explicit string value (e.g. transition:persist="form"),
-        //    use that value directly.
-        // 2. If transition:name is present, use its value.
-        // 3. Otherwise generate a unique hash via $$createTransitionScope.
-        if let Some((ref persist_val, persist_span)) = transition_persist {
-            self.add_source_mapping_for_span(persist_span);
-            let clean_persist = persist_val.trim_matches('"');
-            if !clean_persist.is_empty() {
-                // Explicit string value on transition:persist — use it directly.
-                self.print_parts([" data-astro-transition-persist=\"", clean_persist, "\""]);
-            } else if let Some((ref name_val, _)) = transition_name {
-                let clean_val = name_val.trim_matches('"');
-                self.print_parts([" data-astro-transition-persist=\"", clean_val, "\""]);
+        // Persist ID priority: explicit persist value, else transition:name value, else a generated hash.
+        if let Some(persist_attr) = transition_persist {
+            if !jsx_attribute_value_is_empty(persist_attr) {
+                self.print_html_attribute_with_name(persist_attr, "data-astro-transition-persist");
+            } else if let Some(name_attr) = transition_name {
+                self.print_html_attribute_with_name(name_attr, "data-astro-transition-persist");
             } else {
+                self.add_source_mapping_for_span(persist_attr.span);
                 let hash = self.generate_transition_hash();
                 self.print_parts([
                     "${",
@@ -442,9 +434,14 @@ impl<'a> AstroCodegen<'a> {
         }
 
         if transition_name.is_some() || transition_animate.is_some() {
-            self.add_transition_source_mapping(&transition_name, &transition_animate);
-            let name_val = transition_name.map_or_else(|| "\"\"".to_string(), |(v, _)| v);
-            let animate_val = transition_animate.map_or_else(|| "\"\"".to_string(), |(v, _)| v);
+            self.add_transition_source_mapping(
+                transition_name.map(|a| a.span),
+                transition_animate.map(|a| a.span),
+            );
+            let name_val = transition_name
+                .map_or_else(|| "\"\"".to_string(), |a| Self::get_attr_value_string(a));
+            let animate_val = transition_animate
+                .map_or_else(|| "\"\"".to_string(), |a| Self::get_attr_value_string(a));
             let hash = self.generate_transition_hash();
             self.print_parts([
                 "${",
@@ -637,14 +634,6 @@ impl<'a> AstroCodegen<'a> {
                 }
             }
             _ => "\"\"".to_string(),
-        }
-    }
-
-    /// Get attribute value as a string, or empty string if no value (for boolean attrs).
-    pub(super) fn get_attr_value_string_or_empty(attr: &JSXAttribute<'a>) -> String {
-        match &attr.value {
-            None => String::new(),
-            _ => Self::get_attr_value_string(attr),
         }
     }
 

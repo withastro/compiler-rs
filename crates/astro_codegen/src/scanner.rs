@@ -418,6 +418,16 @@ pub fn get_jsx_attribute_name<'a>(name: &JSXAttributeName<'a>) -> Cow<'a, str> {
     }
 }
 
+/// Whether the attribute has no usable value: a boolean attribute or an empty
+/// string literal, both treated as unset. An expression value is never empty.
+pub fn jsx_attribute_value_is_empty(attr: &JSXAttribute<'_>) -> bool {
+    match &attr.value {
+        None => true,
+        Some(JSXAttributeValue::StringLiteral(lit)) => lit.value.as_str().is_empty(),
+        Some(_) => false,
+    }
+}
+
 pub fn is_equal_jsx_attribute_name(name: &JSXAttributeName<'_>, other: &str) -> bool {
     match name {
         JSXAttributeName::Identifier(ident) => ident.name == other,

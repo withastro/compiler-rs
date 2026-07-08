@@ -3357,3 +3357,63 @@ fn test_jsx_object_literal_lookup() {
         parsed.errors
     );
 }
+
+#[test]
+fn test_no_template_literal_injection_via_set_and_transition() {
+    // Literal `${...}` values are escaped so they render as inert text inside the
+    // `$$render` template literal.
+    let literal_escaped = [
+        r#"<div transition:persist="${globalThis.x=1}"></div>"#,
+        r#"<div transition:persist transition:name="${globalThis.x=1}"></div>"#,
+        r#"<div set:text="${globalThis.x=1}"></div>"#,
+    ];
+    for src in literal_escaped {
+        let output = compile_astro(src);
+        assert!(
+            output.contains("\\${globalThis.x=1}"),
+            "literal ${{...}} must be escaped for `{src}`:\n{output}"
+        );
+        assert!(
+            !output.contains("=\"${globalThis.x=1}") && !output.contains(">${globalThis.x=1}"),
+            "unescaped ${{...}} leaked into template literal for `{src}`:\n{output}"
+        );
+    }
+
+    // Expression values route through $$addAttribute, so the `${...}` sits inside a JS
+    // double-quoted string argument where it is inert — never a live substitution.
+    let expr_inert = [
+        r#"<div transition:persist={"${globalThis.x=1}"}></div>"#,
+        r#"<div transition:persist transition:name={"${globalThis.x=1}"}></div>"#,
+    ];
+    for src in expr_inert {
+        let output = compile_astro(src);
+        assert!(
+            output.contains(
+                r#"$$addAttribute("${globalThis.x=1}", "data-astro-transition-persist")"#
+            ),
+            "expression ${{...}} must be passed as an inert string to $$addAttribute for `{src}`:\n{output}"
+        );
+    }
+}
+
+#[test]
+fn test_no_template_literal_injection_via_component_set_text() {
+    let source = "---\nimport Button from './Button.astro';\n---\n<Button set:text=\"${globalThis.x=1}\"></Button>";
+    let output = compile_astro(source);
+    assert!(
+        output.contains("$$render`\\${globalThis.x=1}`"),
+        "component set:text must escape ${{...}}:\n{output}"
+    );
+}
+
+#[test]
+fn test_component_transition_persist_expression_uses_add_attribute_value() {
+    // Expression transition:persist on a component must emit the expression as a prop
+    // value, not a mangled quoted string.
+    let source = "---\nimport M from './M.astro';\n---\n<M transition:persist={pid} />";
+    let output = compile_astro(source);
+    assert!(
+        output.contains(r#""data-astro-transition-persist": pid"#),
+        "component transition:persist expression must be emitted verbatim: {output}"
+    );
+}
