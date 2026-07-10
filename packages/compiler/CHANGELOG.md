@@ -1,5 +1,25 @@
 # @astrojs/compiler-rs
 
+## 0.3.1
+
+### Patch Changes
+
+- 1cbdc51: Fixes `client:only` causing a component's import to be stripped when the same binding is still used elsewhere, such as another plain instance, a `<Scope.Component>` sharing the import, or a reference in the frontmatter.
+- f9cf9f2: Fixes empty script tags (i.e. `<script></script>`) causing the build to fail
+- 584d1c0: Fixes a `${...}` inside a `set:text` or `transition:*` attribute value (e.g. `set:text="${x}"`) being treated as code instead of literal text, which could break the build or run unintended expressions. The value is now emitted verbatim.
+- d9b63c4: Speeds up code generation by removing redundant string allocations in the printer hot path.
+- 919fbb2: Improves code generation performance by reducing string and vector allocations.
+- 911b54b: Fixes two conditional slot patterns that produced broken output:
+
+  - A guarded conditional such as `{show && (cond ? <a slot="s">A</a> : <b slot="s">B</b>)}` now places its content in the right slot and keeps the original condition intact.
+  - A conditional fragment such as `{cond && <>…</>}` now renders as the component's default content instead of emitting broken output.
+
+- 19569d4: Fixes `<slot>` fallback content ignoring `compressHTML`, so whitespace around an expression (e.g. `<slot name="canonical">\n  {cond ? '' : <link />}\n</slot>`) is now collapsed like regular template children instead of being emitted verbatim.
+- 911b54b: Fixes `Astro.slots.has()` reporting a slot as filled when its only `slot="..."` element sits inside a conditional that doesn't render it, such as `{cond ? <span slot="aside" /> : ...}` where every branch is currently false. Components that switch their layout based on `Astro.slots.has()` no longer render a spurious empty wrapper.
+- 2085fd9: Fixes a direct element and an expression slot targeting the same named slot, such as `<div slot="x">A</div>{b && <div slot="x">B</div>}`, rendering only the last one. Both now render into the slot, matching same-named expression slots.
+- 911b54b: Fixes multiple conditional elements targeting the same named slot, such as `{a && <div slot="x">A</div>}{b && <div slot="x">B</div>}`, rendering only the last one. All of them now render into the slot.
+  - @astrojs/compiler-binding@0.3.1
+
 ## 0.3.0
 
 ### Minor Changes
