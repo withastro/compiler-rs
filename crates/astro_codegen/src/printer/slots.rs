@@ -89,19 +89,14 @@ enum CollectedSlot<'a> {
 pub(super) fn extract_slots_from_expression<'a>(
     expr: &'a JSXExpression<'a>,
 ) -> ExpressionSlotInfo<'a> {
-    // A slot name computed from a callback binding (`(_, i) => slot={`x-${i}`}`)
-    // can't be hoisted to a `[expr]` object key — the binding is out of scope
-    // there. Route the whole expression through the runtime collector, which
-    // merges the per-iteration slot objects whatever shape it evaluates to
-    // (`.map`, `.flatMap`, `Array.from`, a helper, nested, async, …). No method
-    // name is assumed; non-array results just contribute nothing.
+    // A callback-bound slot name can't be a hoisted `[expr]` key (out of scope
+    // there), so collect the per-iteration slot objects at runtime instead.
     if dynamic_slot_references_local_binding(expr) {
         return ExpressionSlotInfo::Mapped;
     }
 
-    // An array literal of slotted elements (`{[<a slot="a"/>, <b slot="b"/>]}`)
-    // also goes through the collector, so each element's slot object is merged
-    // rather than `Object.assign`ed by array index.
+    // Array literals go through the collector too; spread into `$$mergeSlots`
+    // they'd key by array index.
     if is_array_slot_expression(expr) {
         return ExpressionSlotInfo::Mapped;
     }
@@ -123,8 +118,7 @@ pub(super) fn extract_slots_from_expression<'a>(
     }
 }
 
-/// Whether `expr` is an array literal (ignoring wrapping parens) with slotted
-/// elements. Its per-element slot objects go through the runtime collector.
+/// Whether `expr` is an array literal (ignoring parens) with slotted elements.
 fn is_array_slot_expression(expr: &JSXExpression<'_>) -> bool {
     let Some(inner) = expr.as_expression() else {
         return false;
@@ -133,11 +127,8 @@ fn is_array_slot_expression(expr: &JSXExpression<'_>) -> bool {
         && expression_has_slots(inner)
 }
 
-/// Whether any dynamic slot in `expr` derives its name from a binding local to
-/// `expr` — a callback parameter or local. Such a name is out of scope wherever
-/// the slot object is built, so it can't be hoisted to a `[expr]` key without a
-/// `ReferenceError`; the caller either merges per iteration (`.map()`) or renders
-/// the content as-is.
+/// Whether a dynamic slot name references a binding local to `expr` (a callback
+/// param) — such a name can't be hoisted to a `[expr]` key without a `ReferenceError`.
 fn dynamic_slot_references_local_binding(expr: &JSXExpression<'_>) -> bool {
     let Some(inner) = expr.as_expression() else {
         return false;
@@ -155,9 +146,8 @@ fn dynamic_slot_references_local_binding(expr: &JSXExpression<'_>) -> bool {
     })
 }
 
-/// Whether any callback anywhere in the mapped expression is `async`. This is an
-/// over-approximation — it also sees `async` used inside slot *content* — which
-/// is safe: an extra `Promise.all`/drain is a no-op on already-resolved values.
+/// Whether any callback in the expression is `async`. Over-approximates (also
+/// catches `async` in slot content) — safe, since awaiting a non-promise is a no-op.
 fn mapped_has_async_callback(expr: &JSXExpression<'_>) -> bool {
     let Some(inner) = expr.as_expression() else {
         return false;
@@ -167,7 +157,6 @@ fn mapped_has_async_callback(expr: &JSXExpression<'_>) -> bool {
     detector.found
 }
 
-/// Finds any `async` arrow or function anywhere within an expression.
 struct AsyncCallbackDetector {
     found: bool,
 }
@@ -335,7 +324,6 @@ fn collect_slots_from_inner_expression<'a>(
                 collect_slots_from_call(call, slots);
             }
         }
-        // e.g. items.map(item => [<a slot={`a-${item}`}/>, <b slot={`b-${item}`}/>])
         Expression::ArrayExpression(arr) => {
             collect_slots_from_array(arr, slots);
         }
@@ -343,11 +331,8 @@ fn collect_slots_from_inner_expression<'a>(
     }
 }
 
-/// Collect slots from a call: its callback arguments plus the callee's receiver,
-/// so a slot-producing call behind another method (`items.map(cb).filter(…)`) is
-/// still found — the producing call is the *object* of the outer call, not an
-/// argument. No method name is assumed; the runtime collector sorts out whatever
-/// the chain evaluates to.
+/// Collect slots from a call's arguments and its callee receiver, so a `.map(cb)`
+/// behind another method (`.map(cb).filter(…)`) is still found.
 fn collect_slots_from_call<'a>(call: &'a CallExpression<'a>, slots: &mut Vec<CollectedSlot<'a>>) {
     collect_slots_from_call_arguments(&call.arguments, slots);
     if let Some(member) = call.callee.as_member_expression() {
@@ -355,7 +340,6 @@ fn collect_slots_from_call<'a>(call: &'a CallExpression<'a>, slots: &mut Vec<Col
     }
 }
 
-/// Collect slots from the elements of an array literal.
 fn collect_slots_from_array<'a>(arr: &'a ArrayExpression<'a>, slots: &mut Vec<CollectedSlot<'a>>) {
     for element in &arr.elements {
         match element {
@@ -372,7 +356,6 @@ fn collect_slots_from_array<'a>(arr: &'a ArrayExpression<'a>, slots: &mut Vec<Co
     }
 }
 
-/// Whether `expr` contains any slotted JSX.
 fn expression_has_slots(expr: &Expression<'_>) -> bool {
     let mut slots = Vec::new();
     collect_slots_from_inner_expression(expr, &mut slots);
@@ -714,8 +697,7 @@ impl<'a> AstroCodegen<'a> {
             self.print(expr_str);
             self.print("]: ");
             self.print_slot_fn_open(AwaitDetector::found_in_child(child));
-            // The name now lives in the object key, so strip the redundant
-            // `slot={…}` attribute from the element (like Go, and the static case).
+            // Name lives in the object key now — strip the redundant `slot={…}` attr.
             let prev = self.skip_slot_attribute;
             self.skip_slot_attribute = true;
             self.print_jsx_child(child);
@@ -731,8 +713,6 @@ impl<'a> AstroCodegen<'a> {
             self.print_conditional_slot_expression(expr);
         }
 
-        // Print callback-bound dynamic slots: a runtime collector merges each
-        // expression's per-iteration slot objects into one object for `$$mergeSlots`.
         for expr in &mapped_dynamic_slots {
             self.print(",");
             self.print_mapped_dynamic_slot(expr);
@@ -743,16 +723,8 @@ impl<'a> AstroCodegen<'a> {
         }
     }
 
-    /// Print an expression whose slot names come from callback bindings, wrapped
-    /// in a runtime collector that merges its per-iteration slot objects.
-    ///
-    /// The callback's slotted JSX is transformed into slot objects
-    /// (`{[`x${i}`]: () => $$render`…`}`); the collector then walks whatever the
-    /// expression evaluates to — flattening arrays at any depth, awaiting promises
-    /// at any level, keeping slot objects, and ignoring everything else. That way
-    /// it works for `.map`, `.flatMap`, `Array.from`, a custom helper, nesting,
-    /// async — without assuming any method name; `.forEach` (`undefined`) or
-    /// `.join` (a string) simply contribute no slots instead of throwing.
+    /// Wrap a callback-bound-dynamic-slot expression in a runtime collector that
+    /// merges its slot objects, whatever shape (array/promise/nested) it yields.
     fn print_mapped_dynamic_slot(&mut self, expr: &JSXExpressionContainer<'a>) {
         self.add_source_mapping_for_span(expr.span);
         let prev_wrap = self.wrap_arrow_slot_object;
@@ -762,10 +734,8 @@ impl<'a> AstroCodegen<'a> {
         // `slot={…}` attribute from the element — matching the static `.map()` case.
         self.skip_slot_attribute = true;
 
-        // An async callback yields promises the collector must await; the sync
-        // collector is used otherwise (an `async` with no surviving `await` is
-        // dropped as inert, so it stays on the sync path). Redundant parens are
-        // stripped by the later TS-strip pass.
+        // Async callbacks yield promises the collector must await; otherwise the
+        // sync collector is used.
         let has_async = self.scan_result.has_await && mapped_has_async_callback(&expr.expression);
 
         let (prefix, suffix): (&str, &str) = if has_async {
@@ -890,11 +860,9 @@ impl<'a> AstroCodegen<'a> {
         }
     }
 
-    /// Print a call's callee, transforming a slot-producing receiver so a `.map()`
-    /// behind another method (`items.map(cb).filter(…)`) has its elements turned
-    /// into slot objects too. Purely structural — no method name is inspected.
-    /// The receiver is parenthesised (the TS-strip pass drops redundant parens),
-    /// so precedence-sensitive receivers like `(await x).map(…)` stay correct.
+    /// Print a callee, transforming a slot-producing receiver (`.map(cb).filter(…)`)
+    /// too. The receiver is parenthesised so `(await x).map(…)` keeps its precedence
+    /// (redundant parens are dropped by the TS-strip pass).
     fn print_slot_aware_callee(&mut self, callee: &Expression<'a>) {
         match callee {
             Expression::StaticMemberExpression(member) if expression_has_slots(&member.object) => {
@@ -918,9 +886,7 @@ impl<'a> AstroCodegen<'a> {
         }
     }
 
-    /// Print an array literal, transforming each slotted element into a slot
-    /// object (`[<a slot={x}/>, <b slot={y}/>]` → `[{[x]: …}, {[y]: …}]`). The
-    /// runtime collector flattens the result, so nested arrays merge correctly.
+    /// Print an array literal, transforming each slotted element into a slot object.
     fn print_slot_aware_array(&mut self, arr: &oxc_ast::ast::ArrayExpression<'a>) {
         self.print("[");
         let mut first = true;
@@ -1006,9 +972,8 @@ impl<'a> AstroCodegen<'a> {
                 }
             }
         } else {
-            // Keep `wrap_arrow_slot_object` as-is: a nested map's inner arrow
-            // (`g => g.items.map(i => ({…}))`) still needs to parenthesise its
-            // object body even when reached through this block's `return`.
+            // Keep `wrap_arrow_slot_object` set: a nested map's inner arrow still
+            // needs its object body parenthesised even inside this block's `return`.
             self.print("{\n");
             for stmt in &arrow.body.statements {
                 self.print_slot_aware_statement(stmt);
@@ -1017,9 +982,7 @@ impl<'a> AstroCodegen<'a> {
         }
     }
 
-    /// Print a `function` expression callback whose `return`s may contain
-    /// slotted JSX (`items.map(function (item) { return <div slot={…}> })`),
-    /// mirroring the block-body handling of [`Self::print_slot_aware_arrow_function`].
+    /// Print a `function`-expression callback whose `return`s may contain slotted JSX.
     fn print_slot_aware_function_expression(&mut self, func: &oxc_ast::ast::Function<'a>) {
         self.add_source_mapping_for_span(func.span);
         // Drop an inert `async` for the same reason as a mapped arrow callback.
@@ -1218,12 +1181,9 @@ impl<'a> AstroCodegen<'a> {
                         self.print(&expr_str);
                         self.print("]: ");
                         self.print_slot_fn_open(AwaitDetector::found_in_element(el));
-                        // Name lives in the object key now — strip the redundant
-                        // `slot={…}` attribute, like the static branch above and every
-                        // other regular-component case. (Custom elements and root-level
-                        // slots keep theirs via separate paths, for browser slotting;
-                        // Go leaves it on here too, but that's an inconsistency with its
-                        // own single-slot/static handling — a sanctioned divergence.)
+                        // Name lives in the object key — strip the redundant `slot={…}`
+                        // attr. (Custom elements/root-level keep theirs via other paths;
+                        // Go leaves it on here, inconsistently — sanctioned divergence.)
                         let prev = self.skip_slot_attribute;
                         self.skip_slot_attribute = true;
                         self.print_jsx_element(el);
