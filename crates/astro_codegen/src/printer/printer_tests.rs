@@ -65,7 +65,7 @@ import Component from 'test';
 
 #[test]
 fn test_doctype() {
-    let source = "<!DOCTYPE html><div></div>";
+    let source = "<!doctype html><div></div>";
     let output = compile_astro(source);
 
     assert!(output.contains("<div></div>"), "Missing div element");

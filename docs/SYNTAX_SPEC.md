@@ -144,7 +144,7 @@ The `is:raw` attribute on any element allows the content to be treated as raw te
 The [HTML doctype declaration](https://html.spec.whatwg.org/multipage/syntax.html#the-doctype) is allowed.
 
 ```astro
-<!DOCTYPE html>
+<!doctype html>
 ```
 
 ##### Top-level text nodes
