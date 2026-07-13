@@ -17,7 +17,7 @@ astro_codegen = { path = "crates/astro_codegen" }
 # All must come from the same git source to avoid duplicate crate issues.
 # Crates with Astro-specific changes: oxc_ast, oxc_ast_visit, oxc_codegen, oxc_parser, oxc_span
 # Crates without changes (but must match source): oxc_allocator, oxc_data_structures, oxc_diagnostics, oxc_syntax
-oxc_allocator = { git = "https://github.com/withastro/oxc", rev = "287b923e9611c7d0a6b4bef51d1afbf233fdf785" }
+oxc_allocator = { git = "https://github.com/withastro/oxc", rev = "c308857332de9256f38c3ff5b1b33e5f21e29ef3" }
 oxc_ast = { git = "https://github.com/withastro/oxc", rev = "287b923e9611c7d0a6b4bef51d1afbf233fdf785" }
 oxc_estree = { git = "https://github.com/withastro/oxc", rev = "287b923e9611c7d0a6b4bef51d1afbf233fdf785" }
 oxc_ast_visit = { git = "https://github.com/withastro/oxc", rev = "287b923e9611c7d0a6b4bef51d1afbf233fdf785" }
