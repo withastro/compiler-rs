@@ -9,6 +9,7 @@ use oxc_ast::ast::*;
 use crate::css_scoping;
 use crate::scanner::{get_jsx_attribute_name, get_jsx_element_name, is_equal_jsx_attribute_name};
 
+use super::escape::escape_double_quotes;
 use super::{AstroCodegen, expr_to_string};
 
 /// Metadata about an extractable `<style>` block in an Astro component.
@@ -288,5 +289,48 @@ impl<'a> AstroCodegen<'a> {
             }
         }
         false
+    }
+
+    /// Print the merged `style` value expression for `define:vars` injection.
+    ///
+    /// Combines the element's existing `style` value (if any) with `$$definedVars`.
+    /// Only the value is printed; each caller wraps it for its own output:
+    /// - HTML elements: `${$$addAttribute(<value>, "style")}`
+    /// - Custom-element props: `"style":(<value>)`
+    ///
+    /// Value shapes by `style` attribute kind:
+    /// - none / empty / non-expression → `$$definedVars`
+    /// - quoted `style="v"` → `` `${"v"}; ${$$definedVars}` ``
+    /// - object `style={{…}}` → `[{…},$$definedVars]`
+    /// - shorthand / template literal / other expression → `` `${expr}; ${$$definedVars}` ``
+    pub(super) fn print_define_vars_style_value(&mut self, attr: &JSXAttribute<'a>) {
+        match &attr.value {
+            None => self.print("$$definedVars"),
+            Some(JSXAttributeValue::StringLiteral(lit)) => {
+                let escaped = escape_double_quotes(lit.value.as_str());
+                self.print_parts(["`${\"", escaped.as_ref(), "\"}; ${$$definedVars}`"]);
+            }
+            Some(JSXAttributeValue::ExpressionContainer(expr)) => {
+                match expr.expression.as_expression() {
+                    Some(e @ Expression::ObjectExpression(_)) => {
+                        // Strip parentheses if present (oxc wraps objects in parens
+                        // to avoid ambiguity with block statements).
+                        let expr_str = expr_to_string(e);
+                        let obj_str = expr_str
+                            .trim()
+                            .strip_prefix('(')
+                            .and_then(|s| s.strip_suffix(')'))
+                            .unwrap_or(expr_str.trim());
+                        self.print_parts(["[", obj_str, ",$$definedVars]"]);
+                    }
+                    Some(e) => {
+                        let expr_str = expr_to_string(e);
+                        self.print_parts(["`${", expr_str.as_str(), "}; ${$$definedVars}`"]);
+                    }
+                    None => self.print("$$definedVars"),
+                }
+            }
+            _ => self.print("$$definedVars"),
+        }
     }
 }

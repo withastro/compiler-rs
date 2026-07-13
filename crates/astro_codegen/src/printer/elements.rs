@@ -653,71 +653,16 @@ impl<'a> AstroCodegen<'a> {
         Self::to_base32_like(hash)
     }
 
-    /// Print a `style` attribute merged with `$$definedVars`.
+    /// Print a `style` attribute merged with `$$definedVars` on an HTML element.
     ///
-    /// Handles all attribute value types following the Go compiler's `injectDefineVars()` logic:
-    /// - Empty/boolean `style` → `${$$addAttribute($$definedVars, "style")}`
-    /// - Quoted `style="val"` → `` ${$$addAttribute(`${"val"}; ${$$definedVars}`, "style")} ``
-    /// - Expression `style={expr}` → if object `{...}` then `${$$addAttribute([{...},$$definedVars], "style")}`,
-    ///   else `` ${$$addAttribute(`${expr}; ${$$definedVars}`, "style")} ``
-    /// - Shorthand `{style}` → `` ${$$addAttribute(`${style}; ${$$definedVars}`, "style")} ``
-    /// - Template literal `` style=`val` `` → `` ${$$addAttribute(`${`val`}; ${$$definedVars}`, "style")} ``
+    /// The merged value is printed by [`AstroCodegen::print_define_vars_style_value`]
+    /// (shared with the custom-element props path) and wrapped here as
+    /// `${$$addAttribute(<value>, "style")}`.
     fn print_style_with_define_vars(&mut self, attr: &JSXAttribute<'a>) {
         self.add_source_mapping_for_span(attr.span);
-        match &attr.value {
-            None => {
-                self.print_parts(["${", runtime::ADD_ATTRIBUTE, "($$definedVars, \"style\")}"]);
-            }
-            Some(JSXAttributeValue::StringLiteral(lit)) => {
-                let val = lit.value.as_str();
-                let escaped = escape_double_quotes(val);
-                self.print_parts([
-                    "${",
-                    runtime::ADD_ATTRIBUTE,
-                    "(`${\"",
-                    &escaped,
-                    "\"}; ${$$definedVars}`, \"style\")}",
-                ]);
-            }
-            Some(JSXAttributeValue::ExpressionContainer(expr)) => {
-                if let Some(e) = expr.expression.as_expression() {
-                    // Check if the expression is an ObjectExpression at the AST level
-                    // (rather than relying on the string representation, which may be
-                    // wrapped in parentheses by the codegen).
-                    let is_object = matches!(e, Expression::ObjectExpression(_));
-                    let expr_str = expr_to_string(e);
-                    if is_object {
-                        // Strip parentheses if present (oxc wraps objects in parens
-                        // to avoid ambiguity with block statements).
-                        let obj_str = expr_str
-                            .trim()
-                            .strip_prefix('(')
-                            .and_then(|s| s.strip_suffix(')'))
-                            .unwrap_or(expr_str.trim());
-                        self.print_parts([
-                            "${",
-                            runtime::ADD_ATTRIBUTE,
-                            "([",
-                            obj_str,
-                            ",$$definedVars], \"style\")}",
-                        ]);
-                    } else {
-                        self.print_parts([
-                            "${",
-                            runtime::ADD_ATTRIBUTE,
-                            "(`${",
-                            &expr_str,
-                            "}; ${$$definedVars}`, \"style\")}",
-                        ]);
-                    }
-                } else {
-                    self.print_parts(["${", runtime::ADD_ATTRIBUTE, "($$definedVars, \"style\")}"]);
-                }
-            }
-            _ => {
-                self.print_parts(["${", runtime::ADD_ATTRIBUTE, "($$definedVars, \"style\")}"]);
-            }
-        }
+        self.print_parts(["${", runtime::ADD_ATTRIBUTE, "("]);
+        self.print_define_vars_style_value(attr);
+        self.print(", \"style\")}");
     }
 
     /// Print a class attribute with scope class appended.

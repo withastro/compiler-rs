@@ -200,6 +200,12 @@ impl<'a> AstroCodegen<'a> {
         // that are not in the NeverScopedElements list.
         let scope_id = self.scope_id_for(name);
 
+        // Custom elements render as real DOM elements, so `define:vars` must inject
+        // the CSS custom properties as an inline `style` prop. PascalCase components
+        // are excluded: they control their own root element, so the style cannot be
+        // attached to them here.
+        let inject_define_vars = is_custom && !self.define_vars_values.is_empty();
+
         // Components always receive slot as a prop.
         // Only HTML elements have the slot attribute stripped when inside named slots.
         let prev_skip_slot = self.skip_slot_attribute;
@@ -216,6 +222,7 @@ impl<'a> AstroCodegen<'a> {
                 None
             },
             scope_id.as_ref(),
+            inject_define_vars,
         );
 
         self.skip_slot_attribute = prev_skip_slot;
@@ -330,6 +337,7 @@ impl<'a> AstroCodegen<'a> {
         server_defer: Option<&ServerDeferInfo>,
         skip_names: Option<&[&str]>,
         scope_id: Option<&ScopeId>,
+        inject_define_vars: bool,
     ) {
         let mut first = true;
 
@@ -356,6 +364,9 @@ impl<'a> AstroCodegen<'a> {
 
         // Track whether the scope class was merged into an existing class attribute
         let mut scope_injected = false;
+
+        // Track whether `define:vars` was merged into an existing `style` attribute.
+        let mut define_vars_style_injected = false;
 
         // Determine the scope class string (for class/where strategy only)
         let scope_class = scope_id.and_then(|sid| {
@@ -396,6 +407,18 @@ impl<'a> AstroCodegen<'a> {
 
                     // Skip server:defer directive
                     if name == "server:defer" {
+                        continue;
+                    }
+
+                    // Merge `define:vars` into an existing `style` prop on custom elements.
+                    if inject_define_vars && name == "style" {
+                        if !first {
+                            self.print(",");
+                        }
+                        first = false;
+                        self.print_component_style_prop_with_define_vars(attr);
+                        define_vars_style_injected = true;
+                        self.define_vars_injected = true;
                         continue;
                     }
 
@@ -551,6 +574,18 @@ impl<'a> AstroCodegen<'a> {
             }
         }
 
+        // Inject `define:vars` as a `style` prop when the custom element has no
+        // existing `style` attribute. Appended after the scope class so the injected
+        // props keep a stable `class`-then-`style` order.
+        if inject_define_vars && !define_vars_style_injected {
+            if !first {
+                self.print(",");
+            }
+            first = false;
+            self.print("\"style\":($$definedVars)");
+            self.define_vars_injected = true;
+        }
+
         // Add hydration attributes if present
         if let Some(hydration) = hydration {
             if !first {
@@ -625,5 +660,17 @@ impl<'a> AstroCodegen<'a> {
             Some(JSXAttributeValue::Element(_)) => self.print("\"[JSX]\""),
             Some(JSXAttributeValue::Fragment(_)) => self.print("\"[Fragment]\""),
         }
+    }
+
+    /// Print a custom element's `style` prop merged with `$$definedVars`.
+    ///
+    /// The merged value is printed by [`AstroCodegen::print_define_vars_style_value`]
+    /// (shared with the HTML-element path) and wrapped here as the object property
+    /// `"style":(<value>)`.
+    fn print_component_style_prop_with_define_vars(&mut self, attr: &JSXAttribute<'a>) {
+        self.add_source_mapping_for_span(attr.span);
+        self.print("\"style\":(");
+        self.print_define_vars_style_value(attr);
+        self.print(")");
     }
 }
