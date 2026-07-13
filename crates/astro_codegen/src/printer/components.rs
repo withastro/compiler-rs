@@ -664,12 +664,13 @@ impl<'a> AstroCodegen<'a> {
 
     /// Print a custom element's `style` prop merged with `$$definedVars`.
     ///
-    /// The merged value is produced by [`AstroCodegen::build_define_vars_style_value`]
+    /// The merged value is printed by [`AstroCodegen::print_define_vars_style_value`]
     /// (shared with the HTML-element path) and wrapped here as the object property
     /// `"style":(<value>)`.
     fn print_component_style_prop_with_define_vars(&mut self, attr: &JSXAttribute<'a>) {
         self.add_source_mapping_for_span(attr.span);
-        let value = Self::build_define_vars_style_value(attr);
-        self.print_parts(["\"style\":(", &value, ")"]);
+        self.print("\"style\":(");
+        self.print_define_vars_style_value(attr);
+        self.print(")");
     }
 }

@@ -291,11 +291,10 @@ impl<'a> AstroCodegen<'a> {
         false
     }
 
-    /// Build the merged `style` value expression for `define:vars` injection.
+    /// Print the merged `style` value expression for `define:vars` injection.
     ///
     /// Combines the element's existing `style` value (if any) with `$$definedVars`.
-    /// The returned expression is context-agnostic; each caller wraps it for its own
-    /// output:
+    /// Only the value is printed; each caller wraps it for its own output:
     /// - HTML elements: `${$$addAttribute(<value>, "style")}`
     /// - Custom-element props: `"style":(<value>)`
     ///
@@ -304,15 +303,12 @@ impl<'a> AstroCodegen<'a> {
     /// - quoted `style="v"` → `` `${"v"}; ${$$definedVars}` ``
     /// - object `style={{…}}` → `[{…},$$definedVars]`
     /// - shorthand / template literal / other expression → `` `${expr}; ${$$definedVars}` ``
-    pub(super) fn build_define_vars_style_value(attr: &JSXAttribute<'a>) -> String {
+    pub(super) fn print_define_vars_style_value(&mut self, attr: &JSXAttribute<'a>) {
         match &attr.value {
-            None => "$$definedVars".to_string(),
+            None => self.print("$$definedVars"),
             Some(JSXAttributeValue::StringLiteral(lit)) => {
                 let escaped = escape_double_quotes(lit.value.as_str());
-                let mut value = String::from("`${\"");
-                value.push_str(&escaped);
-                value.push_str("\"}; ${$$definedVars}`");
-                value
+                self.print_parts(["`${\"", escaped.as_ref(), "\"}; ${$$definedVars}`"]);
             }
             Some(JSXAttributeValue::ExpressionContainer(expr)) => {
                 match expr.expression.as_expression() {
@@ -325,22 +321,16 @@ impl<'a> AstroCodegen<'a> {
                             .strip_prefix('(')
                             .and_then(|s| s.strip_suffix(')'))
                             .unwrap_or(expr_str.trim());
-                        let mut value = String::from("[");
-                        value.push_str(obj_str);
-                        value.push_str(",$$definedVars]");
-                        value
+                        self.print_parts(["[", obj_str, ",$$definedVars]"]);
                     }
                     Some(e) => {
                         let expr_str = expr_to_string(e);
-                        let mut value = String::from("`${");
-                        value.push_str(&expr_str);
-                        value.push_str("}; ${$$definedVars}`");
-                        value
+                        self.print_parts(["`${", expr_str.as_str(), "}; ${$$definedVars}`"]);
                     }
-                    None => "$$definedVars".to_string(),
+                    None => self.print("$$definedVars"),
                 }
             }
-            _ => "$$definedVars".to_string(),
+            _ => self.print("$$definedVars"),
         }
     }
 }
