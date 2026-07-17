@@ -1974,4 +1974,48 @@ mod tests {
             ".panel:where(.astro-xxxxxx) > .a, .panel:where(.astro-xxxxxx) .b {\n}\n"
         );
     }
+
+    #[test]
+    fn test_global_selector_list_comma_in_attribute_value() {
+        // The top-level comma split must ignore commas inside an attribute value, so a
+        // leading-combinator list with a comma in `[data-x="a,b"]` stays a single item.
+        assert_eq!(
+            scope(".panel :global(> [data-x=\"a,b\"], > .c){}"),
+            ".panel:where(.astro-xxxxxx) > [data-x=\"a,b\"], .panel:where(.astro-xxxxxx) > .c {\n}\n"
+        );
+        assert_eq!(
+            scope_attribute(".panel :global(> [data-x=\"a,b\"], > .c){}"),
+            ".panel[data-astro-cid-xxxxxx] > [data-x=\"a,b\"], .panel[data-astro-cid-xxxxxx] > .c {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_selector_list_comma_in_nested_pseudo() {
+        // The top-level comma split must ignore commas inside `:is(...)` parentheses, so a
+        // leading-combinator list keeps `> :is(a, b)` as a single item.
+        assert_eq!(
+            scope(".panel :global(> :is(a, b), > .c){}"),
+            ".panel:where(.astro-xxxxxx) > :is(a, b), .panel:where(.astro-xxxxxx) > .c {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_selector_list_with_leading_local() {
+        // A leading local part scopes the compound AND the `:global()` list distributes,
+        // so each item carries the scoped leading local.
+        assert_eq!(
+            scope(".a:global(.x, .y){}"),
+            ".a:where(.astro-xxxxxx).x, .a:where(.astro-xxxxxx).y {\n}\n"
+        );
+        assert_eq!(
+            scope_attribute(".a:global(.x, .y){}"),
+            ".a[data-astro-cid-xxxxxx].x, .a[data-astro-cid-xxxxxx].y {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_selector_list_trailing_comma() {
+        // An empty item from a trailing comma is dropped, leaving just the real item.
+        assert_eq!(scope(":global(ul,){}"), "ul {\n}\n");
+    }
 }
