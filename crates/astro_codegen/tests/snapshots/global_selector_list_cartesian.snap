@@ -1,0 +1,7 @@
+---
+source: crates/astro_codegen/tests/css_scoping_snapshots.rs
+expression: css
+---
+a c, a d, b c, b d {
+  color: red;
+}
