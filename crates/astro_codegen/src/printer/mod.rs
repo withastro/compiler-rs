@@ -1491,19 +1491,25 @@ impl<'a> AstroCodegen<'a> {
                         .collect()
                 };
 
+                // Print the opening tag with the element's remaining attributes
+                // (`type="module"`, `data-astro-rerun`, `id`, `nonce`, …) —
+                // print_html_attributes skips the compiler directives
+                // (define:vars, is:inline, …) itself.
+                self.print("<script");
+                self.print_html_attributes(&el.opening_element.attributes, None, false);
+                self.print(">");
+
                 if is_module {
                     // type="module" — no IIFE, just prepend $$defineScriptVars
-                    self.print("<script type=\"module\">");
+                    // (imports are illegal inside functions)
                     self.print("${");
                     self.print(runtime::DEFINE_SCRIPT_VARS);
                     self.print("(");
                     self.print(&define_vars_expr);
                     self.print(")}");
                     self.print(&escape_template_literal(&text_content));
-                    self.print("</script>");
                 } else {
                     // No type="module" — wrap in IIFE
-                    self.print("<script>");
                     self.print("(function(){${");
                     self.print(runtime::DEFINE_SCRIPT_VARS);
                     self.print("(");
@@ -1511,8 +1517,8 @@ impl<'a> AstroCodegen<'a> {
                     self.print(")}");
                     self.print(&escape_template_literal(&text_content));
                     self.print("})();");
-                    self.print("</script>");
                 }
+                self.print("</script>");
                 return;
             }
         }
