@@ -80,7 +80,7 @@ jobs:
       - name: Run triagebot
         # Requires a triagebot-action release that supports `auto-pr-on-fix`.
         # Bump this pin to that release (or its commit SHA) before enabling.
-        uses: withastro/triagebot-action@476b3c1de66f1ab42060b7ca58d590b34775fa39
+        uses: withastro/triagebot-action@ed70e2ffafce37fb48482509422c8aa3860e7532
         with:
           read-token: ${{ secrets.GITHUB_TOKEN }}
           write-token: ${{ secrets.FREDKBOT_GITHUB_TOKEN }}
