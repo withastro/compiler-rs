@@ -80,11 +80,12 @@ jobs:
       - name: Run triagebot
         # Requires a triagebot-action release that supports `auto-pr-on-fix`.
         # Bump this pin to that release (or its commit SHA) before enabling.
-        uses: withastro/triagebot-action@v0.4.0
+        uses: withastro/triagebot-action@476b3c1de66f1ab42060b7ca58d590b34775fa39
         with:
           read-token: ${{ secrets.GITHUB_TOKEN }}
           write-token: ${{ secrets.FREDKBOT_GITHUB_TOKEN }}
-          anthropic-api-key: ${{ secrets.CI_ANTHROPIC_API_KEY }}
+          cloudflare-api-key: ${{ secrets.CLOUDFLARE_API_KEY }}
+          cloudflare-account-id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           triage-skill: .agents/skills/triage
           pr-skill: .agents/skills/pr-writer
           pr-skill-name: pr-writer
