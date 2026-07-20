@@ -16,3 +16,6 @@ Cargo.lock
 
 # insta pending snapshots
 *.snap.new
+
+# Automated triage reproduction projects (triagebot)
+/triage/
