@@ -1,5 +1,12 @@
 # @astrojs/compiler-binding
 
+## 0.3.2
+
+### Patch Changes
+
+- 2264c9a: Fixes an issue where `define:vars` didn't work correctly for custom components.
+- 4006641: Fixes two `:global()` scoping mismatches with the Go compiler. An attribute or class suffixed onto a leading `:global()` (`:global(a)[role="button"]`, `:global(a).cls`) is no longer mis-scoped and now stays global. A selector list inside `:global()` (`.x :global(ul, ol)`) no longer drops later items; the scope prefix is distributed across every item instead.
+
 ## 0.3.1
 
 ## 0.3.0
