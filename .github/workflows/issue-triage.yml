@@ -91,5 +91,5 @@ jobs:
           pr-skill-name: pr-writer
           bot-logins: astrobot-houston
           auto-pr-on-fix: true
-          triage-model: @cf/moonshotai/kimi-k2.6
-          verification-model: @cf/moonshotai/kimi-k2.6
+          triage-model: cloudflare/@cf/moonshotai/kimi-k2.6
+          verification-model: cloudflare/@cf/moonshotai/kimi-k2.6
