@@ -21,7 +21,7 @@ oxc_allocator = { git = "https://github.com/withastro/oxc", rev = "287b923e9611c
 oxc_ast = { git = "https://github.com/withastro/oxc", rev = "287b923e9611c7d0a6b4bef51d1afbf233fdf785" }
 oxc_estree = { git = "https://github.com/withastro/oxc", rev = "287b923e9611c7d0a6b4bef51d1afbf233fdf785" }
 oxc_ast_visit = { git = "https://github.com/withastro/oxc", rev = "287b923e9611c7d0a6b4bef51d1afbf233fdf785" }
-oxc_codegen = { git = "https://github.com/withastro/oxc", rev = "287b923e9611c7d0a6b4bef51d1afbf233fdf785", default-features = false }
+oxc_codegen = { git = "https://github.com/withastro/oxc", rev = "c308857332de9256f38c3ff5b1b33e5f21e29ef3", default-features = false }
 oxc_data_structures = { git = "https://github.com/withastro/oxc", rev = "287b923e9611c7d0a6b4bef51d1afbf233fdf785" }
 oxc_diagnostics = { git = "https://github.com/withastro/oxc", rev = "287b923e9611c7d0a6b4bef51d1afbf233fdf785" }
 oxc_parser = { git = "https://github.com/withastro/oxc", rev = "287b923e9611c7d0a6b4bef51d1afbf233fdf785", features = [
