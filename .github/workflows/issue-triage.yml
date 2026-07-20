@@ -84,10 +84,12 @@ jobs:
         with:
           read-token: ${{ secrets.GITHUB_TOKEN }}
           write-token: ${{ secrets.FREDKBOT_GITHUB_TOKEN }}
-          cloudflare-api-key: ${{ secrets.CLOUDFLARE_API_KEY }}
+          cloudflare-api-key: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           cloudflare-account-id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           triage-skill: .agents/skills/triage
           pr-skill: .agents/skills/pr-writer
           pr-skill-name: pr-writer
           bot-logins: astrobot-houston
           auto-pr-on-fix: true
+          triage-model: @cf/moonshotai/kimi-k2.6
+          verification-model: @cf/moonshotai/kimi-k2.6
