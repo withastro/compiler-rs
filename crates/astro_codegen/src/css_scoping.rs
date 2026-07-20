@@ -21,7 +21,7 @@ use lightningcss::visitor::{Visit, VisitTypes, Visitor};
 
 use crate::ScopedStyleStrategy;
 
-fn parser_options<'a, 'i>() -> ParserOptions<'a, 'i> {
+fn parser_options<'a>() -> ParserOptions<'a> {
     ParserOptions {
         flags: ParserFlags::NESTING,
         error_recovery: true,

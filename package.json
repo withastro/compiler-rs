@@ -6,10 +6,14 @@
     "type": "git",
     "url": "git+https://github.com/withastro/compiler-rs.git"
   },
+  "workspaces": [
+    "packages/*",
+    "crates/astro_napi"
+  ],
   "scripts": {
-    "build:napi": "pnpm --filter ./crates/astro_napi run build-dev",
-    "build:compiler": "pnpm --filter @astrojs/compiler-rs run build",
     "build:all": "pnpm run build:napi && pnpm run build:compiler",
+    "build:compiler": "pnpm --filter @astrojs/compiler-rs run build",
+    "build:napi": "pnpm --filter ./crates/astro_napi run build-dev",
     "format": "pnpm run format:code && pnpm run format:imports",
     "format:ci": "pnpm run format:code:ci && pnpm run format:imports:ci",
     "format:code": "biome format --write && cargo fmt",
@@ -23,19 +27,15 @@
     "test": "node --import tsx --test 'packages/compiler/test/**/*.ts'",
     "test:ci": "pnpm run test"
   },
-  "packageManager": "pnpm@10.29.3",
-  "workspaces": [
-    "packages/*",
-    "crates/astro_napi"
-  ],
   "devDependencies": {
-    "@biomejs/biome": "2.3.15",
+    "@biomejs/biome": "2.5.4",
     "@changesets/changelog-github": "^0.5.2",
     "@changesets/cli": "^2.29.8",
     "sass": "^1.97.3",
     "tsx": "^4.21.0",
     "typescript": "~5.9.3"
   },
+  "packageManager": "pnpm@10.29.3",
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
   }

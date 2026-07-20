@@ -1,29 +1,15 @@
 {
   "name": "@astrojs/compiler-rs",
-  "author": "withastro",
-  "license": "MIT",
-  "type": "module",
-  "bugs": "https://github.com/withastro/compiler-rs/issues",
-  "homepage": "https://astro.build",
   "version": "0.3.1",
-  "scripts": {
-    "build": "tsdown && publint"
-  },
-  "main": "./dist/index.mjs",
+  "homepage": "https://astro.build",
+  "bugs": "https://github.com/withastro/compiler-rs/issues",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/withastro/compiler-rs.git"
   },
-  "publishConfig": {
-    "access": "public",
-    "provenance": true
-  },
-  "files": [
-    "dist",
-    "types.d.ts",
-    "utils.d.ts",
-    "async.d.ts"
-  ],
+  "license": "MIT",
+  "author": "withastro",
+  "type": "module",
   "exports": {
     ".": {
       "types": "./dist/index.d.mts",
@@ -39,17 +25,31 @@
     },
     "./package.json": "./package.json"
   },
+  "main": "./dist/index.mjs",
+  "files": [
+    "dist",
+    "types.d.ts",
+    "utils.d.ts",
+    "async.d.ts"
+  ],
+  "scripts": {
+    "build": "tsdown && publint"
+  },
   "dependencies": {
     "@astrojs/compiler-binding": "workspace:*"
   },
   "devDependencies": {
     "@jridgewell/trace-mapping": "^0.3.16",
     "@types/node": "^22",
+    "publint": "^0.3.21",
     "tsdown": "^0.22.3",
-    "typescript": "~5.5.3",
-    "publint": "^0.3.21"
+    "typescript": "~5.5.3"
   },
   "engines": {
     "node": ">=22.12.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
   }
 }
