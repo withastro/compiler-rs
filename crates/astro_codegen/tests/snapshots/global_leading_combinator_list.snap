@@ -1,0 +1,7 @@
+---
+source: crates/astro_codegen/tests/css_scoping_snapshots.rs
+expression: css
+---
+.panel:where(.astro-463vp4hy) > .a, .panel:where(.astro-463vp4hy) > .b {
+  color: green;
+}

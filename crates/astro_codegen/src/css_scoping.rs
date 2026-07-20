@@ -43,21 +43,84 @@ impl<'i> Visitor<'i> for GlobalSelectorVisitor {
     }
 
     fn visit_selector_list(&mut self, selectors: &mut SelectorList<'i>) -> Result<(), Self::Error> {
-        Visit::visit_children(selectors, self)
-    }
-
-    fn visit_selector(&mut self, selector: &mut Selector<'i>) -> Result<(), Self::Error> {
-        // Both passes below flatten and rebuild the whole selector, so skip them unless
-        // there is actually a `:global()` to handle — most selectors have none.
-        if !selector_contains_global(selector) {
-            return Ok(());
+        // Rebuild the rule's top-level selector list, expanding any `:global()` that wraps a
+        // selector list into one selector per item (`.x :global(ul, ol)` becomes the two
+        // selectors `.x :global(ul)` and `.x :global(ol)`). Arguments of `:not()`/`:is()`/
+        // `:has()` are not traversed, so a nested `:global(...)` stays opaque and is emitted
+        // verbatim.
+        let mut expanded: Vec<Selector<'i>> = Vec::with_capacity(selectors.0.len());
+        for selector in selectors.0.iter() {
+            // Both passes below flatten and rebuild the whole selector, so skip them unless
+            // there is actually a `:global()` to handle — most selectors have none.
+            if !selector_contains_global(selector) {
+                expanded.push(selector.clone());
+                continue;
+            }
+            for mut normalized in expand_global_selector_lists(selector) {
+                hoist_global_leading_combinators(&mut normalized);
+                expanded.push(normalized);
+            }
         }
-        // Don't descend into `:not()`/`:is()`/`:has()` arguments: like the Go compiler, a
-        // nested `:global(...)` stays opaque and is emitted verbatim.
-        normalize_global_pseudos(selector);
-        hoist_global_leading_combinators(selector);
+        selectors.0 = expanded.into();
         Ok(())
     }
+}
+
+/// Normalize `:global()` components in a single selector and distribute any that wrap a
+/// selector list, returning one selector per combination of list items.
+///
+/// A selector normally yields a single result; only a `:global()` whose argument is a
+/// comma-separated list (`:global(ul, ol)`) produces more than one, and multiple such
+/// globals in the same selector expand as a cartesian product (`:global(a, b) :global(c, d)`
+/// → `a c`, `a d`, `b c`, `b d`).
+fn expand_global_selector_lists<'i>(selector: &Selector<'i>) -> Vec<Selector<'i>> {
+    let flat = flatten_selector_parse_order(selector);
+    let per_component: Vec<Vec<Component<'i>>> =
+        flat.into_iter().map(normalize_component_options).collect();
+
+    let mut combos: Vec<Vec<Component<'i>>> = vec![Vec::new()];
+    for options in per_component {
+        let mut next = Vec::with_capacity(combos.len() * options.len());
+        for prefix in &combos {
+            for option in &options {
+                let mut combo = prefix.clone();
+                combo.push(option.clone());
+                next.push(combo);
+            }
+        }
+        combos = next;
+    }
+
+    combos.into_iter().map(Selector::from).collect()
+}
+
+/// Expand a single component into its normalized options.
+///
+/// Every component maps to exactly one option except a `:global()` list, which maps to one
+/// `Global` per list item (`:global(ul, ol)` → `[Global(ul), Global(ol)]`).
+fn normalize_component_options<'i>(component: Component<'i>) -> Vec<Component<'i>> {
+    let Component::NonTSPseudoClass(PseudoClass::CustomFunction { name, arguments }) = &component
+    else {
+        return vec![component];
+    };
+    if !name.eq_ignore_ascii_case("global") {
+        return vec![component];
+    }
+
+    if let Some(items) = parse_global_argument_list(arguments) {
+        return items
+            .into_iter()
+            .map(|selector| {
+                Component::NonTSPseudoClass(PseudoClass::Global {
+                    selector: Box::new(selector),
+                })
+            })
+            .collect();
+    }
+
+    // Empty or unparseable argument; leave it to the single-selector path, which keeps an
+    // empty `:global()` opaque.
+    vec![normalize_component(component)]
 }
 
 /// Cheap, allocation-free check for a top-level `:global()` — the raw `CustomFunction`
@@ -126,6 +189,115 @@ fn parse_global_argument<'i>(tokens: &TokenList<'_>) -> Selector<'i> {
         Ok(selector) => selector.into_owned(),
         Err(_) => empty_selector(),
     }
+}
+
+/// Parse a `:global(...)` argument as a selector list, so a list can be distributed across
+/// the enclosing selector. Returns `None` when the argument is empty or every item fails to
+/// parse.
+fn parse_global_argument_list<'i>(tokens: &TokenList<'_>) -> Option<Vec<Selector<'i>>> {
+    let serialized = token_list_to_css(tokens);
+    let argument_text = serialized.trim();
+    if argument_text.is_empty() {
+        return None;
+    }
+    let options = parser_options();
+
+    // Common case: a comma-separated list with no leading combinators parses directly.
+    // lightningcss handles commas nested inside attribute values or `:is(a, b)`.
+    if let Ok(list) = SelectorList::parse_string_with_options(argument_text, options)
+        && !list.0.is_empty()
+    {
+        return Some(
+            list.0
+                .into_iter()
+                .map(|selector| {
+                    // Detach from the temporary serialized string, then normalize any nested
+                    // `:global()` inside the item.
+                    let mut selector = selector.into_owned();
+                    normalize_global_pseudos(&mut selector);
+                    selector
+                })
+                .collect(),
+        );
+    }
+
+    // A leading combinator (`:global(> *)`, `:global(> .a, > .b)`) can't be parsed as a list
+    // by lightningcss, so split the top-level commas manually and parse each item with its
+    // own leading combinator hoisted in.
+    let items: Vec<Selector<'i>> = split_top_level_commas(argument_text)
+        .into_iter()
+        .filter_map(parse_global_argument_item)
+        .collect();
+    if items.is_empty() { None } else { Some(items) }
+}
+
+/// Parse one item of a `:global(...)` argument, hoisting a leading combinator (`> .a`) into
+/// the selector. Returns `None` if the item is empty or fails to parse.
+fn parse_global_argument_item<'i>(item_text: &str) -> Option<Selector<'i>> {
+    let item_text = item_text.trim();
+    if item_text.is_empty() {
+        return None;
+    }
+    let options = parser_options();
+
+    let mut selector = if let Some((combinator, rest)) = split_leading_combinator_str(item_text) {
+        let rest = rest.trim();
+        if rest.is_empty() {
+            return None;
+        }
+        let parsed = Selector::parse_string_with_options(rest, options).ok()?;
+        let mut flat = vec![Component::Combinator(combinator)];
+        flat.extend(flatten_selector_parse_order(&parsed));
+        Selector::from(flat).into_owned()
+    } else {
+        Selector::parse_string_with_options(item_text, options)
+            .ok()?
+            .into_owned()
+    };
+
+    normalize_global_pseudos(&mut selector);
+    Some(selector)
+}
+
+/// Split a `:global(...)` argument into its top-level comma-separated items, ignoring commas
+/// nested inside `()`/`[]` or string literals.
+fn split_top_level_commas(input: &str) -> Vec<&str> {
+    let mut items = Vec::new();
+    let mut start = 0;
+    let mut paren = 0i32;
+    let mut bracket = 0i32;
+    let mut quote: Option<char> = None;
+    let mut escaped = false;
+
+    for (index, ch) in input.char_indices() {
+        if escaped {
+            escaped = false;
+            continue;
+        }
+        if let Some(open_quote) = quote {
+            match ch {
+                '\\' => escaped = true,
+                _ if ch == open_quote => quote = None,
+                _ => {}
+            }
+            continue;
+        }
+        match ch {
+            '\\' => escaped = true,
+            '"' | '\'' => quote = Some(ch),
+            '(' => paren += 1,
+            ')' => paren -= 1,
+            '[' => bracket += 1,
+            ']' => bracket -= 1,
+            ',' if paren == 0 && bracket == 0 => {
+                items.push(&input[start..index]);
+                start = index + 1;
+            }
+            _ => {}
+        }
+    }
+    items.push(&input[start..]);
+    items
 }
 
 fn split_leading_combinator_str(input: &str) -> Option<(Combinator, &str)> {
@@ -508,15 +680,23 @@ impl ScopeVisitor<'_> {
     }
 
     /// Process a compound that contains :global() — strip the wrapper and return
-    /// inner content unscoped, while scoping non-global parts.
+    /// inner content unscoped, while scoping a leading local part.
+    ///
+    /// Only a local (non-global) simple selector that appears *before* the first `:global()`
+    /// makes the compound scoped (`.local:global(.g)` → `.local[scope].g`). Once a `:global()`
+    /// has been seen, any following type/class/id/attribute selector belongs to the global
+    /// compound and stays unscoped (`:global(a)[role="button"]` → `a[role="button"]`,
+    /// `:global(a).cls` → `a.cls`).
     fn process_global_compound<'i>(&self, compound: &[Component<'i>]) -> Vec<Component<'i>> {
         let mut result = Vec::new();
-        let mut has_non_global = false;
+        let mut has_leading_local = false;
+        let mut seen_global = false;
         let mut index = 0;
 
         while index < compound.len() {
             let component = &compound[index];
             if let Component::NonTSPseudoClass(PseudoClass::Global { selector }) = component {
+                seen_global = true;
                 let trailing_end = compound[index + 1..]
                     .iter()
                     .take_while(|component| {
@@ -539,7 +719,11 @@ impl ScopeVisitor<'_> {
                 continue;
             }
 
-            has_non_global = true;
+            // A leading local part (before any `:global()`) is what gets scoped. A local part
+            // after a `:global()` is a suffix on the global compound and stays unscoped.
+            if !seen_global {
+                has_leading_local = true;
+            }
             result.push(component.clone());
             index += 1;
         }
@@ -549,9 +733,8 @@ impl ScopeVisitor<'_> {
             return result;
         }
 
-        // If there were non-global parts mixed in (e.g., `.class:global(.bar)`),
-        // we need to scope the non-global parts.
-        if has_non_global {
+        // Scope only when there was a leading local part (e.g., `.class:global(.bar)`).
+        if has_leading_local {
             return self.inject_scope_into_compound(&result);
         }
 
@@ -1560,13 +1743,12 @@ mod tests {
 
     #[test]
     fn test_global_does_not_overglobalize_local_parts() {
-        assert_eq!(
-            scope(":global(.foo).is-active{}"),
-            ".foo:where(.astro-xxxxxx).is-active {\n}\n"
-        );
+        // A class suffixed onto a leading `:global()` attaches to the global compound and
+        // stays unscoped; only a local part BEFORE the `:global()` gets scoped.
+        assert_eq!(scope(":global(.foo).is-active{}"), ".foo.is-active {\n}\n");
         assert_eq!(
             scope_attribute(":global(.foo).is-active{}"),
-            ".foo[data-astro-cid-xxxxxx].is-active {\n}\n"
+            ".foo.is-active {\n}\n"
         );
         assert_eq!(
             scope(":global(.foo):hover .child{}"),
@@ -1635,9 +1817,205 @@ mod tests {
         // The inner `:global()` survives the outer expansion and is stripped by the printer;
         // the trailing local part still gets scoped, like the non-nested `:global(.x).foo`.
         assert_eq!(scope(":global(:global(.x)){}"), ".x {\n}\n");
+        // `.foo` follows the (nested) `:global()`, so like `:global(.foo).is-active` it
+        // attaches to the global compound and stays unscoped.
+        assert_eq!(scope(":global(:global(.x)).foo{}"), ".x.foo {\n}\n");
+    }
+
+    // An attribute or class suffixed onto a leading `:global()` must NOT be scoped — the
+    // whole compound stays global.
+
+    #[test]
+    fn test_global_attribute_suffix_stays_global() {
         assert_eq!(
-            scope(":global(:global(.x)).foo{}"),
-            ".x.foo:where(.astro-xxxxxx) {\n}\n"
+            scope(":global(a)[role=\"button\"]{}"),
+            "a[role=\"button\"] {\n}\n"
         );
+        assert_eq!(
+            scope_attribute(":global(a)[role=\"button\"]{}"),
+            "a[role=\"button\"] {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_attribute_suffix_with_scoped_ancestor() {
+        assert_eq!(
+            scope("section > :global(a)[role=\"button\"]{}"),
+            "section:where(.astro-xxxxxx) > a[role=\"button\"] {\n}\n"
+        );
+        assert_eq!(
+            scope_attribute("section > :global(a)[role=\"button\"]{}"),
+            "section[data-astro-cid-xxxxxx] > a[role=\"button\"] {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_class_suffix_stays_global() {
+        assert_eq!(scope(":global(a).cls{}"), "a.cls {\n}\n");
+        assert_eq!(scope_attribute(":global(a).cls{}"), "a.cls {\n}\n");
+    }
+
+    #[test]
+    fn test_global_id_suffix_stays_global() {
+        assert_eq!(scope(":global(a)#id{}"), "a#id {\n}\n");
+    }
+
+    #[test]
+    fn test_global_multiple_suffixes_stay_global() {
+        assert_eq!(scope(":global(a).b.c{}"), "a.b.c {\n}\n");
+    }
+
+    #[test]
+    fn test_leading_local_before_global_with_suffix_scopes() {
+        // A local part BEFORE the `:global()` still scopes, and the trailing suffix
+        // rides along on the already-scoped compound.
+        assert_eq!(
+            scope(".local:global(.global).bar{}"),
+            ".local:where(.astro-xxxxxx).global.bar {\n}\n"
+        );
+        assert_eq!(
+            scope_attribute(".local:global(.global)[data-x]{}"),
+            ".local[data-astro-cid-xxxxxx].global[data-x] {\n}\n"
+        );
+    }
+
+    // A selector list inside `:global()` must keep every item, with the scope prefix
+    // distributed across each.
+
+    #[test]
+    fn test_global_selector_list_bare() {
+        assert_eq!(scope(":global(ul, ol){}"), "ul, ol {\n}\n");
+    }
+
+    #[test]
+    fn test_global_selector_list_with_scoped_ancestor() {
+        assert_eq!(
+            scope(".x :global(ul, ol){}"),
+            ".x:where(.astro-xxxxxx) ul, .x:where(.astro-xxxxxx) ol {\n}\n"
+        );
+        assert_eq!(
+            scope_attribute(".x :global(ul, ol){}"),
+            ".x[data-astro-cid-xxxxxx] ul, .x[data-astro-cid-xxxxxx] ol {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_selector_list_with_scoped_descendant() {
+        assert_eq!(
+            scope(".x :global(ul, ol) .y{}"),
+            ".x:where(.astro-xxxxxx) ul .y:where(.astro-xxxxxx), .x:where(.astro-xxxxxx) ol .y:where(.astro-xxxxxx) {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_selector_list_with_suffix() {
+        // Each distributed item carries the trailing suffix, still unscoped.
+        assert_eq!(scope(":global(ul, ol).cls{}"), "ul.cls, ol.cls {\n}\n");
+        assert_eq!(
+            scope(":global(div, span):hover{}"),
+            "div:hover, span:hover {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_selector_list_within_larger_list() {
+        assert_eq!(
+            scope(".a :global(ul, ol), .b :global(p){}"),
+            ".a:where(.astro-xxxxxx) ul, .a:where(.astro-xxxxxx) ol, .b:where(.astro-xxxxxx) p {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_selector_list_cartesian() {
+        // Two list globals in one selector expand as a cartesian product.
+        assert_eq!(
+            scope(":global(a, b) :global(c, d){}"),
+            "a c, a d, b c, b d {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_selector_list_is_workaround_unchanged() {
+        // `:global(:is(ul, ol))` is a single component, not a selector list, so it is
+        // emitted intact with no distribution.
+        assert_eq!(
+            scope(".x :global(:is(ul, ol)){}"),
+            ".x:where(.astro-xxxxxx) :is(ul, ol) {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_selector_list_with_leading_child_combinators() {
+        // Each item keeps its own hoisted combinator and the scope prefix is distributed.
+        assert_eq!(
+            scope(".panel :global(> .a, > .b){}"),
+            ".panel:where(.astro-xxxxxx) > .a, .panel:where(.astro-xxxxxx) > .b {\n}\n"
+        );
+        assert_eq!(
+            scope_attribute(".panel :global(> .a, > .b){}"),
+            ".panel[data-astro-cid-xxxxxx] > .a, .panel[data-astro-cid-xxxxxx] > .b {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_selector_list_with_leading_sibling_combinators() {
+        assert_eq!(
+            scope(".panel :global(+ .a, ~ .b){}"),
+            ".panel:where(.astro-xxxxxx) + .a, .panel:where(.astro-xxxxxx) ~ .b {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_selector_list_mixed_leading_combinator() {
+        // A combinator on only some items still distributes; items without one stay
+        // descendants of the scoped ancestor.
+        assert_eq!(
+            scope(".panel :global(> .a, .b){}"),
+            ".panel:where(.astro-xxxxxx) > .a, .panel:where(.astro-xxxxxx) .b {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_selector_list_comma_in_attribute_value() {
+        // The top-level comma split must ignore commas inside an attribute value, so a
+        // leading-combinator list with a comma in `[data-x="a,b"]` stays a single item.
+        assert_eq!(
+            scope(".panel :global(> [data-x=\"a,b\"], > .c){}"),
+            ".panel:where(.astro-xxxxxx) > [data-x=\"a,b\"], .panel:where(.astro-xxxxxx) > .c {\n}\n"
+        );
+        assert_eq!(
+            scope_attribute(".panel :global(> [data-x=\"a,b\"], > .c){}"),
+            ".panel[data-astro-cid-xxxxxx] > [data-x=\"a,b\"], .panel[data-astro-cid-xxxxxx] > .c {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_selector_list_comma_in_nested_pseudo() {
+        // The top-level comma split must ignore commas inside `:is(...)` parentheses, so a
+        // leading-combinator list keeps `> :is(a, b)` as a single item.
+        assert_eq!(
+            scope(".panel :global(> :is(a, b), > .c){}"),
+            ".panel:where(.astro-xxxxxx) > :is(a, b), .panel:where(.astro-xxxxxx) > .c {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_selector_list_with_leading_local() {
+        // A leading local part scopes the compound AND the `:global()` list distributes,
+        // so each item carries the scoped leading local.
+        assert_eq!(
+            scope(".a:global(.x, .y){}"),
+            ".a:where(.astro-xxxxxx).x, .a:where(.astro-xxxxxx).y {\n}\n"
+        );
+        assert_eq!(
+            scope_attribute(".a:global(.x, .y){}"),
+            ".a[data-astro-cid-xxxxxx].x, .a[data-astro-cid-xxxxxx].y {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_selector_list_trailing_comma() {
+        // An empty item from a trailing comma is dropped, leaving just the real item.
+        assert_eq!(scope(":global(ul,){}"), "ul {\n}\n");
     }
 }

@@ -1,0 +1,11 @@
+---
+source: crates/astro_codegen/tests/css_scoping_snapshots.rs
+expression: css
+---
+a.cls {
+  color: red;
+}
+
+a[role="button"] {
+  color: #00f;
+}

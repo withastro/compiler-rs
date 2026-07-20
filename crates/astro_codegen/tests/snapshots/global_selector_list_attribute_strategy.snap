@@ -1,0 +1,7 @@
+---
+source: crates/astro_codegen/tests/css_scoping_snapshots.rs
+expression: css
+---
+.wrapper[data-astro-cid-icmhjx3i] ul, .wrapper[data-astro-cid-icmhjx3i] ol {
+  margin: 0;
+}
