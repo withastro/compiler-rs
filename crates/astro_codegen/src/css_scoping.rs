@@ -45,9 +45,9 @@ impl<'i> Visitor<'i> for GlobalSelectorVisitor {
     fn visit_selector_list(&mut self, selectors: &mut SelectorList<'i>) -> Result<(), Self::Error> {
         // Rebuild the rule's top-level selector list, expanding any `:global()` that wraps a
         // selector list into one selector per item (`.x :global(ul, ol)` becomes the two
-        // selectors `.x :global(ul)` and `.x :global(ol)`). We deliberately do NOT descend
-        // into `:not()`/`:is()`/`:has()` arguments: like the Go compiler, a nested
-        // `:global(...)` stays opaque and is emitted verbatim.
+        // selectors `.x :global(ul)` and `.x :global(ol)`). Arguments of `:not()`/`:is()`/
+        // `:has()` are not traversed, so a nested `:global(...)` stays opaque and is emitted
+        // verbatim.
         let mut expanded: Vec<Selector<'i>> = Vec::with_capacity(selectors.0.len());
         for selector in selectors.0.iter() {
             // Both passes below flatten and rebuild the whole selector, so skip them unless
@@ -72,7 +72,7 @@ impl<'i> Visitor<'i> for GlobalSelectorVisitor {
 /// A selector normally yields a single result; only a `:global()` whose argument is a
 /// comma-separated list (`:global(ul, ol)`) produces more than one, and multiple such
 /// globals in the same selector expand as a cartesian product (`:global(a, b) :global(c, d)`
-/// → `a c`, `a d`, `b c`, `b d`), matching the split-`:global()` workaround.
+/// → `a c`, `a d`, `b c`, `b d`).
 fn expand_global_selector_lists<'i>(selector: &Selector<'i>) -> Vec<Selector<'i>> {
     let flat = flatten_selector_parse_order(selector);
     let per_component: Vec<Vec<Component<'i>>> =
@@ -202,9 +202,8 @@ fn parse_global_argument_list<'i>(tokens: &TokenList<'_>) -> Option<Vec<Selector
     }
     let options = parser_options();
 
-    // Common case: a comma-separated list with no leading combinators parses directly, and
-    // lightningcss handles every tokenization edge case (commas inside attribute values,
-    // `:is(a, b)`, and so on).
+    // Common case: a comma-separated list with no leading combinators parses directly.
+    // lightningcss handles commas nested inside attribute values or `:is(a, b)`.
     if let Ok(list) = SelectorList::parse_string_with_options(argument_text, options)
         && !list.0.is_empty()
     {
@@ -223,8 +222,8 @@ fn parse_global_argument_list<'i>(tokens: &TokenList<'_>) -> Option<Vec<Selector
     }
 
     // A leading combinator (`:global(> *)`, `:global(> .a, > .b)`) can't be parsed as a list
-    // by lightningcss, so split top-level commas ourselves and parse each item with its own
-    // leading combinator hoisted in.
+    // by lightningcss, so split the top-level commas manually and parse each item with its
+    // own leading combinator hoisted in.
     let items: Vec<Selector<'i>> = split_top_level_commas(argument_text)
         .into_iter()
         .filter_map(parse_global_argument_item)
@@ -687,7 +686,7 @@ impl ScopeVisitor<'_> {
     /// makes the compound scoped (`.local:global(.g)` → `.local[scope].g`). Once a `:global()`
     /// has been seen, any following type/class/id/attribute selector belongs to the global
     /// compound and stays unscoped (`:global(a)[role="button"]` → `a[role="button"]`,
-    /// `:global(a).cls` → `a.cls`), matching the Go compiler.
+    /// `:global(a).cls` → `a.cls`).
     fn process_global_compound<'i>(&self, compound: &[Component<'i>]) -> Vec<Component<'i>> {
         let mut result = Vec::new();
         let mut has_leading_local = false;
@@ -1745,7 +1744,7 @@ mod tests {
     #[test]
     fn test_global_does_not_overglobalize_local_parts() {
         // A class suffixed onto a leading `:global()` attaches to the global compound and
-        // stays unscoped (Go parity); only a local part BEFORE the `:global()` gets scoped.
+        // stays unscoped; only a local part BEFORE the `:global()` gets scoped.
         assert_eq!(scope(":global(.foo).is-active{}"), ".foo.is-active {\n}\n");
         assert_eq!(
             scope_attribute(":global(.foo).is-active{}"),
@@ -1824,7 +1823,7 @@ mod tests {
     }
 
     // An attribute or class suffixed onto a leading `:global()` must NOT be scoped — the
-    // whole compound stays global, matching the Go compiler.
+    // whole compound stays global.
 
     #[test]
     fn test_global_attribute_suffix_stays_global() {
@@ -1869,7 +1868,7 @@ mod tests {
     #[test]
     fn test_leading_local_before_global_with_suffix_scopes() {
         // A local part BEFORE the `:global()` still scopes, and the trailing suffix
-        // rides along on the already-scoped compound (Go: `.local[scope].global.bar`).
+        // rides along on the already-scoped compound.
         assert_eq!(
             scope(".local:global(.global).bar{}"),
             ".local:where(.astro-xxxxxx).global.bar {\n}\n"
@@ -1881,7 +1880,7 @@ mod tests {
     }
 
     // A selector list inside `:global()` must keep every item, with the scope prefix
-    // distributed across each. (Go drops the prefix on later items, leaking them globally.)
+    // distributed across each.
 
     #[test]
     fn test_global_selector_list_bare() {
@@ -1937,7 +1936,8 @@ mod tests {
 
     #[test]
     fn test_global_selector_list_is_workaround_unchanged() {
-        // The `:is()` workaround keeps working (single item, no distribution).
+        // `:global(:is(ul, ol))` is a single component, not a selector list, so it is
+        // emitted intact with no distribution.
         assert_eq!(
             scope(".x :global(:is(ul, ol)){}"),
             ".x:where(.astro-xxxxxx) :is(ul, ol) {\n}\n"
