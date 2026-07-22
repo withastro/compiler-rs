@@ -1,0 +1,16 @@
+---
+source: crates/astro_codegen/tests/snapshots.rs
+input_file: crates/astro_codegen/tests/fixtures/sibling_inline_elements_852.astro
+---
+import { render as $$render, createComponent as $$createComponent, maybeRenderHead as $$maybeRenderHead, createMetadata as $$createMetadata } from "http://localhost:3000/";
+export const $$metadata = $$createMetadata(import.meta.url, {
+	modules: [],
+	hydratedComponents: [],
+	clientOnlyComponents: [],
+	hydrationDirectives: new Set([]),
+	hoisted: []
+});
+const $$Component = $$createComponent(($$result, $$props, $$slots) => {
+	return $$render`${$$maybeRenderHead($$result)}<p><span>text</span> <span>text</span></p> <p>${"text"} <span>text</span></p>`;
+}, undefined, undefined);
+export default $$Component;

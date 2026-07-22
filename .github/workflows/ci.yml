@@ -12,7 +12,7 @@ permissions:
 
 on:
   push:
-    branches: [main, next, feat/rust]
+    branches: [main, next]
     tags-ignore:
       - "**"
     paths-ignore:
@@ -22,7 +22,7 @@ on:
       - .editorconfig
       - docs/**
   pull_request:
-    branches: [main, next, feat/rust]
+    branches: [main, next]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -107,6 +107,12 @@ jobs:
         run: pnpm test
         working-directory: crates/astro_napi
 
+      - name: Build compiler package
+        run: pnpm run build:compiler
+
+      - name: Test compiler package
+        run: pnpm test
+
   build:
     if: github.event_name != 'pull_request'
     strategy:
@@ -132,10 +138,10 @@ jobs:
           # -- Linux GNU --
           - host: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            build: pnpm run build --target x86_64-unknown-linux-gnu
+            build: pnpm run build --target x86_64-unknown-linux-gnu --use-napi-cross
           - host: ubuntu-latest
             target: aarch64-unknown-linux-gnu
-            build: pnpm run build --target aarch64-unknown-linux-gnu -x
+            build: pnpm run build --target aarch64-unknown-linux-gnu --use-napi-cross
 
           # -- Linux musl --
           - host: ubuntu-latest
@@ -194,13 +200,13 @@ jobs:
           key: ${{ matrix.settings.target }}-cargo-${{ matrix.settings.host }}
 
       - uses: mlugg/setup-zig@v2
-        if: ${{ contains(matrix.settings.target, 'linux') }}
+        if: ${{ contains(matrix.settings.target, 'musl') }}
         with:
           version: 0.15.2
 
       - name: Install cargo-zigbuild
         uses: taiki-e/install-action@v2
-        if: ${{ contains(matrix.settings.target, 'linux') }}
+        if: ${{ contains(matrix.settings.target, 'musl') }}
         env:
           GITHUB_TOKEN: ${{ github.token }}
         with:
@@ -218,6 +224,8 @@ jobs:
       - name: Build
         run: ${{ matrix.settings.build }}
         shell: bash
+        env:
+          TARGET_CC: clang
 
       - name: Upload artifact
         uses: actions/upload-artifact@v6

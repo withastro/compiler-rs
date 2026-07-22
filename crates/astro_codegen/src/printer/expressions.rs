@@ -9,14 +9,14 @@ use oxc_ast::ast::*;
 use oxc_span::GetSpan;
 
 use super::AstroCodegen;
+use super::AwaitDetector;
 use super::runtime;
 use super::{expr_to_string, gen_to_string};
 
 impl<'a> AstroCodegen<'a> {
     pub(super) fn print_jsx_fragment(&mut self, frag: &JSXFragment<'a>) {
         self.add_source_mapping_for_span(frag.span);
-        // Render fragment using $$renderComponent with Fragment
-        let async_prefix = self.get_async_prefix();
+        let async_prefix = Self::async_prefix(AwaitDetector::found_in_children(&frag.children));
         let slot_params = self.get_slot_params();
         self.print("${");
         self.print(runtime::RENDER_COMPONENT);
@@ -24,12 +24,10 @@ impl<'a> AstroCodegen<'a> {
         self.print(runtime::RESULT);
         self.print(",\"Fragment\",");
         self.print(runtime::FRAGMENT);
-        self.print(&format!(",{{}},{{\"default\": {async_prefix}{slot_params}"));
+        self.print_parts([",{},{\"default\": ", async_prefix, slot_params]);
         self.print(runtime::RENDER);
         self.print("`");
-        for child in &frag.children {
-            self.print_jsx_child(child);
-        }
+        self.print_jsx_children_compact(&frag.children);
         // Map the closing fragment tag (</>) to the `)` that closes
         // $$renderComponent(...) — the semantic equivalent in generated code.
         if !frag.closing_fragment.span.is_empty() {
@@ -51,7 +49,12 @@ impl<'a> AstroCodegen<'a> {
         }
 
         self.print("${");
+        // Prescan never descends into expressions, so a nested `<style>` is
+        // unextracted and must render inline rather than be skipped (`in_expression`).
+        let was_in_expression = self.in_expression;
+        self.in_expression = true;
         self.print_jsx_expression(&expr.expression);
+        self.in_expression = was_in_expression;
         self.print("}");
     }
 
@@ -108,31 +111,34 @@ impl<'a> AstroCodegen<'a> {
                 let is_explicit_fragment = !frag.opening_fragment.span.is_empty();
 
                 if is_explicit_fragment {
-                    // Explicit <>...</> syntax gets wrapped in $$renderComponent with Fragment
+                    // Explicit <>...</> syntax gets wrapped in $$renderComponent with Fragment.
+                    // Whitespace inside <>..</> is intentional authored content — preserve it.
+                    let async_prefix =
+                        Self::async_prefix(AwaitDetector::found_in_children(&frag.children));
                     let slot_params = self.get_slot_params();
                     self.print(runtime::RENDER);
                     self.print("`${");
                     self.print(runtime::RENDER_COMPONENT);
-                    self.print(&format!(
-                        "($$result,\"Fragment\",Fragment,{{}},{{\"default\":{slot_params}"
-                    ));
+                    self.print_parts([
+                        "($$result,\"Fragment\",Fragment,{},{\"default\":",
+                        async_prefix,
+                        slot_params,
+                    ]);
                     self.print(runtime::RENDER);
                     self.print("`");
-                    for child in &frag.children {
-                        self.print_jsx_child(child);
-                    }
+                    self.print_jsx_children_compact(&frag.children);
                     // Map closing fragment tag (</>) before the closing boilerplate.
                     if !frag.closing_fragment.span.is_empty() {
                         self.add_source_mapping_for_span(frag.closing_fragment.span);
                     }
                     self.print("`,})}`");
                 } else {
-                    // Implicit fragments (multiple JSX siblings) are just wrapped in $$render`...`
+                    // Implicit fragments (multiple JSX siblings) are just wrapped
+                    // in $$render`...`. Edge whitespace-only text nodes are
+                    // stripped by the parser, so we render children directly.
                     self.print(runtime::RENDER);
                     self.print("`");
-                    for child in &frag.children {
-                        self.print_jsx_child(child);
-                    }
+                    self.print_jsx_children_compact(&frag.children);
                     self.print("`");
                 }
             }
@@ -177,6 +183,143 @@ impl<'a> AstroCodegen<'a> {
                 // Handle arrow functions that may return JSX
                 self.print_arrow_function(arrow);
             }
+            Expression::FunctionExpression(func) => {
+                self.add_source_mapping_for_span(expr.span());
+                self.print_function(func);
+            }
+            Expression::ClassExpression(class) => {
+                self.add_source_mapping_for_span(expr.span());
+                self.print_class(class);
+            }
+            Expression::YieldExpression(yield_expr) => {
+                self.add_source_mapping_for_span(expr.span());
+                self.print("yield");
+                if yield_expr.delegate {
+                    self.print("*");
+                }
+                if let Some(arg) = &yield_expr.argument {
+                    self.print(" ");
+                    self.print_expression(arg);
+                }
+            }
+            Expression::AwaitExpression(await_expr) => {
+                self.add_source_mapping_for_span(expr.span());
+                self.print("await ");
+                self.print_expression(&await_expr.argument);
+            }
+            Expression::ArrayExpression(arr) => {
+                self.add_source_mapping_for_span(expr.span());
+                // Arrays may contain JSX elements — iterate and transform each element.
+                self.print("[");
+                let mut first = true;
+                for element in &arr.elements {
+                    if !first {
+                        self.print(", ");
+                    }
+                    first = false;
+                    match element {
+                        oxc_ast::ast::ArrayExpressionElement::SpreadElement(spread) => {
+                            self.print("...");
+                            self.print_expression(&spread.argument);
+                        }
+                        oxc_ast::ast::ArrayExpressionElement::Elision(_) => {
+                            // Elision — empty slot, e.g. [1,,3]
+                        }
+                        _ => {
+                            if let Some(e) = element.as_expression() {
+                                self.print_expression(e);
+                            }
+                        }
+                    }
+                }
+                self.print("]");
+            }
+            Expression::AssignmentExpression(assign) => {
+                self.add_source_mapping_for_span(expr.span());
+                let left_code = gen_to_string(&assign.left);
+                self.print(&left_code);
+                self.print_parts([" ", assign.operator.as_str(), " "]);
+                self.print_expression(&assign.right);
+            }
+            Expression::StaticMemberExpression(member) => {
+                self.add_source_mapping_for_span(expr.span());
+                self.print_expression(&member.object);
+                self.print(if member.optional { "?." } else { "." });
+                self.print(member.property.name.as_str());
+            }
+            Expression::ComputedMemberExpression(member) => {
+                self.add_source_mapping_for_span(expr.span());
+                self.print_expression(&member.object);
+                self.print(if member.optional { "?.[" } else { "[" });
+                self.print_expression(&member.expression);
+                self.print("]");
+            }
+            Expression::SequenceExpression(seq) => {
+                self.add_source_mapping_for_span(expr.span());
+                for (i, expr) in seq.expressions.iter().enumerate() {
+                    if i > 0 {
+                        self.print(", ");
+                    }
+                    self.print_expression(expr);
+                }
+            }
+            Expression::ObjectExpression(obj) => {
+                self.add_source_mapping_for_span(expr.span());
+                self.print("{");
+                let mut first = true;
+                for prop in &obj.properties {
+                    if !first {
+                        self.print(", ");
+                    }
+                    first = false;
+                    match prop {
+                        oxc_ast::ast::ObjectPropertyKind::ObjectProperty(p) => {
+                            if p.computed {
+                                self.print("[");
+                                self.print_expression(p.key.as_expression().unwrap());
+                                self.print("]");
+                            } else {
+                                let key_code = gen_to_string(&p.key);
+                                self.print(&key_code);
+                            }
+                            if !p.shorthand {
+                                self.print(": ");
+                                self.print_expression(&p.value);
+                            }
+                        }
+                        oxc_ast::ast::ObjectPropertyKind::SpreadProperty(spread) => {
+                            self.print("...");
+                            self.print_expression(&spread.argument);
+                        }
+                    }
+                }
+                self.print("}");
+            }
+            Expression::NewExpression(new_expr) => {
+                self.add_source_mapping_for_span(expr.span());
+                self.print("new ");
+                self.print_expression(&new_expr.callee);
+                self.print("(");
+                let mut first = true;
+                for arg in &new_expr.arguments {
+                    if !first {
+                        self.print(", ");
+                    }
+                    first = false;
+                    match arg {
+                        oxc_ast::ast::Argument::SpreadElement(spread) => {
+                            self.print("...");
+                            self.print_expression(&spread.argument);
+                        }
+                        _ => {
+                            if let Some(e) = arg.as_expression() {
+                                self.print_expression(e);
+                            }
+                        }
+                    }
+                }
+                self.print(")");
+            }
             _ => {
                 self.add_source_mapping_for_span(expr.span());
                 // For all other expressions, use regular codegen
@@ -191,51 +334,74 @@ impl<'a> AstroCodegen<'a> {
         }
     }
 
+    pub(super) fn print_source_span_fallback(&mut self, span: oxc_span::Span) {
+        let start = span.start as usize;
+        let end = span.end as usize;
+        if start < self.source_text.len() && end <= self.source_text.len() {
+            self.print(&self.source_text[start..end]);
+        }
+    }
+
+    pub(super) fn print_for_statement_left(&mut self, left: &oxc_ast::ast::ForStatementLeft<'a>) {
+        match left {
+            oxc_ast::ast::ForStatementLeft::VariableDeclaration(decl) => {
+                let code = gen_to_string(decl.as_ref());
+                self.print(&code);
+            }
+            other => self.print_source_span_fallback(other.span()),
+        }
+    }
+
+    pub(super) fn print_catch_param(&mut self, handler: &oxc_ast::ast::CatchClause<'a>) {
+        if let Some(param) = &handler.param {
+            self.print("(");
+            let code = gen_to_string(&param.pattern);
+            self.print(&code);
+            self.print(")");
+        }
+    }
+
+    pub(super) fn print_static_member(&mut self, member: &StaticMemberExpression<'a>) {
+        self.print_expression(&member.object);
+        self.print(if member.optional { "?." } else { "." });
+        self.print(member.property.name.as_str());
+    }
+
+    pub(super) fn print_computed_member(&mut self, member: &ComputedMemberExpression<'a>) {
+        self.print_expression(&member.object);
+        self.print(if member.optional { "?.[" } else { "[" });
+        self.print_expression(&member.expression);
+        self.print("]");
+    }
+
+    pub(super) fn print_callee(&mut self, callee: &Expression<'a>) {
+        match callee {
+            Expression::StaticMemberExpression(member) => self.print_static_member(member),
+            Expression::ComputedMemberExpression(member) => self.print_computed_member(member),
+            other => self.print_expression(other),
+        }
+    }
+
     fn print_chain_expression(&mut self, chain: &oxc_ast::ast::ChainExpression<'a>) {
         match &chain.expression {
             oxc_ast::ast::ChainElement::CallExpression(call) => {
                 self.print_call_expression(call);
             }
             oxc_ast::ast::ChainElement::StaticMemberExpression(member) => {
-                self.print_expression(&member.object);
-                self.print(if member.optional { "?." } else { "." });
-                self.print(member.property.name.as_str());
+                self.print_static_member(member);
             }
             oxc_ast::ast::ChainElement::ComputedMemberExpression(member) => {
-                self.print_expression(&member.object);
-                self.print(if member.optional { "?.[" } else { "[" });
-                self.print_expression(&member.expression);
-                self.print("]");
+                self.print_computed_member(member);
             }
             _ => {
                 // TSNonNullExpression, PrivateFieldExpression — use source text fallback
-                let start = chain.span.start as usize;
-                let end = chain.span.end as usize;
-                if start < self.source_text.len() && end <= self.source_text.len() {
-                    self.print(&self.source_text[start..end]);
-                }
+                self.print_source_span_fallback(chain.span);
             }
         }
     }
 
     pub(super) fn print_call_expression(&mut self, call: &oxc_ast::ast::CallExpression<'a>) {
-        // Print callee
-        match &call.callee {
-            Expression::StaticMemberExpression(member) => {
-                self.print_expression(&member.object);
-                self.print(if member.optional { "?." } else { "." });
-                self.print(member.property.name.as_str());
-            }
-            Expression::ComputedMemberExpression(member) => {
-                self.print_expression(&member.object);
-                self.print(if member.optional { "?.[" } else { "[" });
-                self.print_expression(&member.expression);
-                self.print("]");
-            }
-            other => {
-                self.print_expression(other);
-            }
-        }
+        self.print_callee(&call.callee);
         // Print optional call syntax
         if call.optional {
             self.print("?.");
@@ -310,10 +476,8 @@ impl<'a> AstroCodegen<'a> {
             }
             Statement::VariableDeclaration(decl) => {
                 self.add_source_mapping_for_span(decl.span);
-                // Use regular codegen for variable declarations
-                let code = gen_to_string(decl.as_ref());
-                self.print(&code);
-                self.print("\n");
+                self.print_variable_declaration(decl);
+                self.print(";\n");
             }
             Statement::IfStatement(if_stmt) => {
                 self.add_source_mapping_for_span(if_stmt.span);
@@ -333,6 +497,17 @@ impl<'a> AstroCodegen<'a> {
                     self.print_jsx_aware_statement(s);
                 }
                 self.print("}");
+            }
+            Statement::ForOfStatement(for_of) => {
+                self.add_source_mapping_for_span(for_of.span);
+                self.print(if for_of.r#await { "for await(" } else { "for(" });
+                // left side: variable declaration or assignment target
+                self.print_for_statement_left(&for_of.left);
+                self.print(" of ");
+                self.print_expression(&for_of.right);
+                self.print(") ");
+                self.print_jsx_aware_statement(&for_of.body);
+                self.print("\n");
             }
             Statement::SwitchStatement(switch_stmt) => {
                 self.add_source_mapping_for_span(switch_stmt.span);
@@ -355,6 +530,97 @@ impl<'a> AstroCodegen<'a> {
                 }
                 self.print("}");
             }
+            Statement::TryStatement(try_stmt) => {
+                self.add_source_mapping_for_span(try_stmt.span);
+                self.print("try {\n");
+                for s in &try_stmt.block.body {
+                    self.print_jsx_aware_statement(s);
+                }
+                self.print("}");
+                if let Some(handler) = &try_stmt.handler {
+                    self.print(" catch");
+                    self.print_catch_param(handler);
+                    self.print(" {\n");
+                    for s in &handler.body.body {
+                        self.print_jsx_aware_statement(s);
+                    }
+                    self.print("}");
+                }
+                if let Some(finalizer) = &try_stmt.finalizer {
+                    self.print(" finally {\n");
+                    for s in &finalizer.body {
+                        self.print_jsx_aware_statement(s);
+                    }
+                    self.print("}");
+                }
+                self.print("\n");
+            }
+            Statement::ForStatement(for_stmt) => {
+                self.add_source_mapping_for_span(for_stmt.span);
+                self.print("for(");
+                if let Some(init) = &for_stmt.init {
+                    self.print_for_init(init);
+                }
+                self.print(";");
+                if let Some(test) = &for_stmt.test {
+                    self.print_expression(test);
+                }
+                self.print(";");
+                if let Some(update) = &for_stmt.update {
+                    self.print_expression(update);
+                }
+                self.print(") ");
+                self.print_jsx_aware_statement(&for_stmt.body);
+                self.print("\n");
+            }
+            Statement::ForInStatement(for_in) => {
+                self.add_source_mapping_for_span(for_in.span);
+                self.print("for(");
+                self.print_for_statement_left(&for_in.left);
+                self.print(" in ");
+                self.print_expression(&for_in.right);
+                self.print(") ");
+                self.print_jsx_aware_statement(&for_in.body);
+                self.print("\n");
+            }
+            Statement::WhileStatement(while_stmt) => {
+                self.add_source_mapping_for_span(while_stmt.span);
+                self.print("while (");
+                self.print_expression(&while_stmt.test);
+                self.print(") ");
+                self.print_jsx_aware_statement(&while_stmt.body);
+                self.print("\n");
+            }
+            Statement::DoWhileStatement(do_while) => {
+                self.add_source_mapping_for_span(do_while.span);
+                self.print("do ");
+                self.print_jsx_aware_statement(&do_while.body);
+                self.print(" while (");
+                self.print_expression(&do_while.test);
+                self.print(");\n");
+            }
+            Statement::LabeledStatement(labeled) => {
+                self.add_source_mapping_for_span(labeled.span);
+                self.print(&labeled.label.name);
+                self.print(": ");
+                self.print_jsx_aware_statement(&labeled.body);
+            }
+            Statement::FunctionDeclaration(func) => {
+                self.add_source_mapping_for_span(func.span);
+                self.print_function(func);
+                self.print("\n");
+            }
+            Statement::ClassDeclaration(class) => {
+                self.add_source_mapping_for_span(class.span);
+                self.print_class(class);
+                self.print("\n");
+            }
+            Statement::ThrowStatement(throw_stmt) => {
+                self.add_source_mapping_for_span(throw_stmt.span);
+                self.print("throw ");
+                self.print_expression(&throw_stmt.argument);
+                self.print(";\n");
+            }
             _ => {
                 self.add_source_mapping_for_span(stmt.span());
                 // For other statements, use regular codegen
@@ -365,6 +631,68 @@ impl<'a> AstroCodegen<'a> {
         }
     }
 
+    /// Print a function declaration or expression with JSX-aware body.
+    pub(super) fn print_function(&mut self, func: &oxc_ast::ast::Function<'a>) {
+        if func.r#async {
+            self.print("async ");
+        }
+        self.print("function");
+        if func.generator {
+            self.print("*");
+        }
+        if let Some(id) = &func.id {
+            self.print(" ");
+            self.print(id.name.as_str());
+        }
+        self.print("(");
+        self.print_formal_parameters(&func.params);
+        self.print(") ");
+        if let Some(body) = &func.body {
+            self.print_jsx_aware_function_body(body);
+        }
+    }
+
+    /// Print a `FormalParameters` list, including default-value initializers
+    /// and the rest parameter. No surrounding parens.
+    ///
+    /// Parameter-property modifiers and decorators have runtime effect (Phase 2
+    /// turns them into `this.x = x` assignments), so they're emitted faithfully.
+    pub(super) fn print_formal_parameters(&mut self, params: &oxc_ast::ast::FormalParameters<'a>) {
+        use oxc_ast::ast::TSAccessibility;
+        let mut first = true;
+        for param in &params.items {
+            if !first {
+                self.print(", ");
+            }
+            first = false;
+            self.print_decorators(&param.decorators);
+            match param.accessibility {
+                Some(TSAccessibility::Public) => self.print("public "),
+                Some(TSAccessibility::Protected) => self.print("protected "),
+                Some(TSAccessibility::Private) => self.print("private "),
+                None => {}
+            }
+            if param.r#override {
+                self.print("override ");
+            }
+            if param.readonly {
+                self.print("readonly ");
+            }
+            self.print_binding_pattern(&param.pattern);
+            if let Some(init) = &param.initializer {
+                self.print(" = ");
+                self.print_expression(init);
+            }
+        }
+        if let Some(rest) = &params.rest {
+            if !first {
+                self.print(", ");
+            }
+            self.print("...");
+            self.print_binding_pattern(&rest.rest.argument);
+        }
+    }
+
     pub(super) fn print_binding_pattern(&mut self, pattern: &oxc_ast::ast::BindingPattern<'a>) {
         if let oxc_ast::ast::BindingPattern::BindingIdentifier(ident) = pattern {
             self.print(ident.name.as_str());
@@ -372,6 +700,146 @@ impl<'a> AstroCodegen<'a> {
             // For complex patterns, use regular codegen
             let code = gen_to_string(pattern);
             self.print(&code);
+        }
+    }
+
+    /// Print leading decorators as `@expr `.
+    fn print_decorators(&mut self, decorators: &[oxc_ast::ast::Decorator<'a>]) {
+        for decorator in decorators {
+            self.print("@");
+            self.print_expression(&decorator.expression);
+            self.print(" ");
+        }
+    }
+
+    /// Print a class declaration or expression with JSX-aware method bodies,
+    /// property initializers, and static blocks.
+    pub(super) fn print_class(&mut self, class: &oxc_ast::ast::Class<'a>) {
+        self.print_decorators(&class.decorators);
+        self.print("class");
+        if let Some(id) = &class.id {
+            self.print(" ");
+            self.print(id.name.as_str());
+        }
+        if let Some(super_class) = &class.super_class {
+            self.print(" extends ");
+            self.print_expression(super_class);
+        }
+        self.print(" {\n");
+        for element in &class.body.body {
+            self.print_class_element(element);
+        }
+        self.print("}");
+    }
+
+    fn print_class_element(&mut self, element: &oxc_ast::ast::ClassElement<'a>) {
+        use oxc_ast::ast::{ClassElement, MethodDefinitionKind};
+        match element {
+            ClassElement::MethodDefinition(method) => {
+                self.add_source_mapping_for_span(method.span);
+                self.print_decorators(&method.decorators);
+                if method.r#static {
+                    self.print("static ");
+                }
+                match method.kind {
+                    MethodDefinitionKind::Get => self.print("get "),
+                    MethodDefinitionKind::Set => self.print("set "),
+                    MethodDefinitionKind::Constructor | MethodDefinitionKind::Method => {}
+                }
+                if method.value.r#async {
+                    self.print("async ");
+                }
+                if method.value.generator {
+                    self.print("*");
+                }
+                if method.computed {
+                    self.print("[");
+                }
+                let key_code = gen_to_string(&method.key);
+                self.print(&key_code);
+                if method.computed {
+                    self.print("]");
+                }
+                self.print("(");
+                self.print_formal_parameters(&method.value.params);
+                self.print(") ");
+                if let Some(body) = &method.value.body {
+                    self.print_jsx_aware_function_body(body);
+                }
+                self.print("\n");
+            }
+            ClassElement::PropertyDefinition(prop) => {
+                self.add_source_mapping_for_span(prop.span);
+                self.print_decorators(&prop.decorators);
+                if prop.r#static {
+                    self.print("static ");
+                }
+                if prop.computed {
+                    self.print("[");
+                }
+                let key_code = gen_to_string(&prop.key);
+                self.print(&key_code);
+                if prop.computed {
+                    self.print("]");
+                }
+                if let Some(value) = &prop.value {
+                    self.print(" = ");
+                    self.print_expression(value);
+                }
+                self.print(";\n");
+            }
+            ClassElement::StaticBlock(block) => {
+                self.add_source_mapping_for_span(block.span);
+                self.print("static {\n");
+                for stmt in &block.body {
+                    self.print_jsx_aware_statement(stmt);
+                }
+                self.print("}\n");
+            }
+            // TSIndexSignature is type-only; AccessorProperty rarely carries
+            // JSX. Both fall back to plain codegen.
+            ClassElement::AccessorProperty(_) | ClassElement::TSIndexSignature(_) => {
+                let code = gen_to_string(element);
+                self.print(&code);
+                self.print("\n");
+            }
+        }
+    }
+
+    fn print_variable_declaration(&mut self, decl: &oxc_ast::ast::VariableDeclaration<'a>) {
+        let kind = match decl.kind {
+            VariableDeclarationKind::Var => "var",
+            VariableDeclarationKind::Let => "let",
+            VariableDeclarationKind::Const => "const",
+            VariableDeclarationKind::Using => "using",
+            VariableDeclarationKind::AwaitUsing => "await using",
+        };
+        for (i, declarator) in decl.declarations.iter().enumerate() {
+            if i == 0 {
+                self.print(kind);
+                self.print(" ");
+            } else {
+                self.print(", ");
+            }
+            let pattern_code = gen_to_string(&declarator.id);
+            self.print(&pattern_code);
+            if let Some(init) = &declarator.init {
+                self.print(" = ");
+                self.print_expression(init);
+            }
+        }
+    }
+
+    fn print_for_init(&mut self, init: &oxc_ast::ast::ForStatementInit<'a>) {
+        match init {
+            oxc_ast::ast::ForStatementInit::VariableDeclaration(decl) => {
+                self.print_variable_declaration(decl);
+            }
+            other => {
+                if let Some(expr) = other.as_expression() {
+                    self.print_expression(expr);
+                }
+            }
         }
     }
 }

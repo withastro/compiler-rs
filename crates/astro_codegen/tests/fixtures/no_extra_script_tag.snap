@@ -2,16 +2,13 @@
 source: crates/astro_codegen/tests/snapshots.rs
 input_file: crates/astro_codegen/tests/fixtures/no_extra_script_tag.astro
 ---
-import { Fragment, render as $$render, createAstro as $$createAstro, createComponent as $$createComponent, renderComponent as $$renderComponent, renderHead as $$renderHead, maybeRenderHead as $$maybeRenderHead, unescapeHTML as $$unescapeHTML, renderSlot as $$renderSlot, mergeSlots as $$mergeSlots, addAttribute as $$addAttribute, spreadAttributes as $$spreadAttributes, defineStyleVars as $$defineStyleVars, defineScriptVars as $$defineScriptVars, renderTransition as $$renderTransition, createTransitionScope as $$createTransitionScope, renderScript as $$renderScript, createMetadata as $$createMetadata } from "http://localhost:3000/";
+import { render as $$render, createComponent as $$createComponent, createMetadata as $$createMetadata } from "http://localhost:3000/";
 export const $$metadata = $$createMetadata(import.meta.url, {
 	modules: [],
 	hydratedComponents: [],
 	clientOnlyComponents: [],
 	hydrationDirectives: new Set([]),
-	hoisted: [{
-		type: "external",
-		src: "/make-scrollable-code-focusable.js"
-	}]
+	hoisted: []
 });
 const $$Component = $$createComponent(($$result, $$props, $$slots) => {
 	return $$render`<!-- Global Metadata -->
@@ -34,13 +31,24 @@ const $$Component = $$createComponent(($$result, $$props, $$slots) => {
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:ital@0;1&display=swap" rel="stylesheet">
 
 <!-- Scrollable a11y code helper -->
-${$$renderScript($$result, "/src/pages/index.astro?astro&type=script&index=0&lang.ts")}<script>const root = document.documentElement;
+<script type="module" src="/make-scrollable-code-focusable.js"><\/script><!-- This is intentionally inlined to avoid FOUC -->
+<script>
+  const root = document.documentElement;
   const theme = localStorage.getItem('theme');
   if (theme === 'dark' || (!theme) && window.matchMedia('(prefers-color-scheme: dark)').matches) {
     root.classList.add('theme-dark');
   } else {
     root.classList.remove('theme-dark');
   }
-<\/script>`;
+<\/script>
+
+<!-- Global site tag (gtag.js) - Google Analytics -->
+<!-- <script async src="https://www.googletagmanager.com/gtag/js?id=G-TEL60V1WM9"><\/script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+  gtag('js', new Date());
+  gtag('config', 'G-TEL60V1WM9');
+<\/script> -->`;
 }, undefined, undefined);
 export default $$Component;

@@ -56,6 +56,7 @@ const {
   },
 })
 export default __napiModule.exports
+export const CompactOptions = __napiModule.exports.CompactOptions
 export const compileAstro = __napiModule.exports.compileAstro
 export const compileAstroSync = __napiModule.exports.compileAstroSync
 export const DiagnosticSeverity = __napiModule.exports.DiagnosticSeverity

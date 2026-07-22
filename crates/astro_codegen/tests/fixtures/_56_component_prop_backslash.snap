@@ -1,0 +1,26 @@
+---
+source: crates/astro_codegen/tests/snapshots.rs
+input_file: crates/astro_codegen/tests/fixtures/_56_component_prop_backslash.astro
+---
+import { render as $$render, createComponent as $$createComponent, renderComponent as $$renderComponent, maybeRenderHead as $$maybeRenderHead, unescapeHTML as $$unescapeHTML, createMetadata as $$createMetadata } from "http://localhost:3000/";
+import Comp from "./Comp.astro";
+import * as $$module1 from "./Comp.astro";
+export const $$metadata = $$createMetadata(import.meta.url, {
+	modules: [{
+		module: $$module1,
+		specifier: "./Comp.astro",
+		assert: {}
+	}],
+	hydratedComponents: [],
+	clientOnlyComponents: [],
+	hydrationDirectives: new Set([]),
+	hoisted: []
+});
+const $$Component = $$createComponent(($$result, $$props, $$slots) => {
+	return $$render`${$$renderComponent($$result, "Comp", Comp, {
+		"pattern": "^example\\.com$",
+		"data-path": "C:\\Users\\me"
+	})}
+${$$maybeRenderHead($$result)}<div>${$$unescapeHTML("line\\nbreak")}</div>`;
+}, undefined, undefined);
+export default $$Component;

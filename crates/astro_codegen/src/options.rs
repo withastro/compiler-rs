@@ -1,6 +1,6 @@
 //! Options for Astro codegen.
 //!
-//! Some fields (such as `compact`, `sourcemap`, CSS scoping) are accepted but
+//! Some fields (such as `sourcemap`, CSS scoping) are accepted but
 //! stubbed for API compatibility.
 
 /// Controls whether and how source maps are emitted.
@@ -23,6 +23,26 @@ impl SourcemapOption {
     pub fn is_enabled(self) -> bool {
         self != Self::None
     }
+}
+
+/// Controls how whitespace is collapsed in the HTML output.
+///
+/// - `Disabled` (default): no whitespace modification.
+/// - `Html`: HTML-aware whitespace collapsing, following the same rules as a browser
+///   (preserves significant whitespace, collapses runs of whitespace to a single
+///   space or newline, removes whitespace-only text nodes in insensitive contexts).
+///   Matches the Go compiler's `compact: true` behavior.
+/// - `Jsx`: removes all whitespace-only text nodes and strips leading/trailing
+///   whitespace from text content. Similar to how JSX transformers handle whitespace.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CompactMode {
+    /// No whitespace modification (default).
+    #[default]
+    Disabled,
+    /// HTML-aware whitespace collapsing (Go compiler `compact: true` behavior).
+    Html,
+    /// Strip all whitespace-only text nodes and leading/trailing whitespace.
+    Jsx,
 }
 
 /// Scoped style strategy for CSS scoping.
@@ -66,11 +86,12 @@ pub struct TransformOptions {
     /// Defaults to `"https://astro.build"`.
     pub astro_global_args: Option<String>,
 
-    /// Whether to collapse whitespace in the HTML output.
+    /// Controls how whitespace is collapsed in the HTML output.
     ///
-    /// **Stub**: compact mode is not yet implemented; this field is accepted
-    /// for API compatibility.
-    pub compact: bool,
+    /// - `Disabled` (default): no whitespace modification.
+    /// - `Html`: HTML-aware collapsing following browser whitespace rules.
+    /// - `Jsx`: strip all whitespace-only text nodes and leading/trailing whitespace.
+    pub compact: CompactMode,
 
     /// Enable scoped slot result handling.
     ///
@@ -149,7 +170,7 @@ impl Default for TransformOptions {
             internal_url: None,
             sourcemap: SourcemapOption::default(),
             astro_global_args: None,
-            compact: false,
+            compact: CompactMode::Disabled,
             result_scoped_slot: false,
             scoped_style_strategy: ScopedStyleStrategy::default(),
             transitions_animation_url: None,
@@ -226,9 +247,13 @@ impl TransformOptions {
         self
     }
 
-    /// Enable or disable compact mode (stub).
+    /// Set the compact whitespace collapsing mode.
+    ///
+    /// - `CompactMode::Disabled`: no whitespace modification (default).
+    /// - `CompactMode::Html`: HTML-aware collapsing (Go compiler behavior).
+    /// - `CompactMode::Jsx`: strip all whitespace-only text nodes.
     #[must_use]
-    pub fn with_compact(mut self, compact: bool) -> Self {
+    pub fn with_compact(mut self, compact: CompactMode) -> Self {
         self.compact = compact;
         self
     }

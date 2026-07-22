@@ -2,7 +2,7 @@
 source: crates/astro_codegen/tests/snapshots.rs
 input_file: crates/astro_codegen/tests/fixtures/font_component.astro
 ---
-import { Fragment, render as $$render, createAstro as $$createAstro, createComponent as $$createComponent, renderComponent as $$renderComponent, renderHead as $$renderHead, maybeRenderHead as $$maybeRenderHead, unescapeHTML as $$unescapeHTML, renderSlot as $$renderSlot, mergeSlots as $$mergeSlots, addAttribute as $$addAttribute, spreadAttributes as $$spreadAttributes, defineStyleVars as $$defineStyleVars, defineScriptVars as $$defineScriptVars, renderTransition as $$renderTransition, createTransitionScope as $$createTransitionScope, renderScript as $$renderScript, createMetadata as $$createMetadata } from "http://localhost:3000/";
+import { render as $$render, createAstro as $$createAstro, createComponent as $$createComponent, unescapeHTML as $$unescapeHTML, addAttribute as $$addAttribute, createMetadata as $$createMetadata } from "http://localhost:3000/";
 import { componentDataByCssVariable } from "virtual:astro:assets/fonts/internal";
 import { filterPreloads } from "../dist/assets/fonts/core/filter-preloads.js";
 import { AstroError, AstroErrorData } from "../dist/core/errors/index.js";
@@ -47,7 +47,6 @@ const $$Component = $$createComponent(($$result, $$props, $$slots) => {
 	}
 	const filteredPreloadData = filterPreloads(data.preloads, preload);
 	return $$render`<style>${$$unescapeHTML(data.css)}</style>
-${filteredPreloadData?.map(({ url, type }) => $$render`<link rel="preload"${$$addAttribute(url, "href")} as="font"${$$addAttribute(`font/${type}`, "type")} crossorigin>`)}
-`;
+${filteredPreloadData?.map(({ url, type }) => $$render`<link rel="preload"${$$addAttribute(url, "href")} as="font"${$$addAttribute(`font/${type}`, "type")} crossorigin>`)}`;
 }, undefined, undefined);
 export default $$Component;

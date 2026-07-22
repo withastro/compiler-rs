@@ -1,0 +1,95 @@
+name: Issue Triage
+
+on:
+  issues:
+    types: [opened, reopened, closed]
+  issue_comment:
+    types: [created]
+
+permissions: {}
+
+concurrency:
+  # One triage run per issue at a time. Queue rather than cancel, so the bot
+  # posting its own comment does not kill an in-flight run.
+  group: issue-triage-${{ github.event.issue.number }}
+  cancel-in-progress: false
+
+jobs:
+  triage:
+    # Skip pull requests and the bot's own comments (which would self-trigger).
+    if: >-
+      github.repository_owner == 'withastro' &&
+      !github.event.issue.pull_request &&
+      (github.event.action != 'created' ||
+       (github.event.comment.user.login != 'astrobot-houston' &&
+        github.event.comment.user.login != 'github-actions[bot]'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read # Read the repo; branch pushes use FREDKBOT_GITHUB_TOKEN
+      issues: read # Read issue details for triage
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Configure Git identity
+        run: |
+          git config user.name "astrobot-houston"
+          git config user.email "fred+astrobot@astro.build"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            target/
+          key: issue-triage-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install cargo-insta
+        uses: taiki-e/install-action@v2
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          tool: cargo-insta
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: latest
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm run build:all
+
+      - name: Run triagebot
+        # Requires a triagebot-action release that supports `auto-pr-on-fix`.
+        # Bump this pin to that release (or its commit SHA) before enabling.
+        uses: withastro/triagebot-action@ed70e2ffafce37fb48482509422c8aa3860e7532
+        with:
+          read-token: ${{ secrets.GITHUB_TOKEN }}
+          write-token: ${{ secrets.FREDKBOT_GITHUB_TOKEN }}
+          cloudflare-api-key: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          cloudflare-account-id: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          triage-skill: .agents/skills/triage
+          pr-skill: .agents/skills/pr-writer
+          pr-skill-name: pr-writer
+          bot-logins: astrobot-houston
+          auto-pr-on-fix: true
+          triage-model: cloudflare/@cf/moonshotai/kimi-k2.6
+          verification-model: cloudflare/@cf/moonshotai/kimi-k2.6

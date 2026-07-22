@@ -2148,7 +2148,8 @@ fn test_sourcemap_inline_script_has_mappings() {
         "should have mapping for <script is:inline> opening tag at 1:0. Tokens: {tokens:?}"
     );
 
-    // The text content (console.log) should be mapped. It starts at col 18.
+    // The text content (console.log) starts at col 18 (end of opening tag)
+    // and should have its own precise mapping there.
     let has_text_content = tokens
         .iter()
         .any(|t| t.get_src_line() == 1 && t.get_src_col() == 18);

@@ -1,1 +1,1 @@
-export * from './dist/async.js';
+export * from './dist/async.mjs';

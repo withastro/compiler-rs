@@ -44,6 +44,19 @@ pub enum SourcemapOption {
     Both,
 }
 
+#[napi(string_enum)]
+pub enum CompactOptions {
+    #[napi(value = "none")]
+    /// No whitespace modification
+    None,
+    /// HTML-aware whitespace collapsing (default).
+    #[napi(value = "html")]
+    Html,
+    /// JSX-style whitespace removal.
+    #[napi(value = "jsx")]
+    Jsx,
+}
+
 /// Strategy for CSS scoping.
 ///
 /// Determines how Astro scopes CSS selectors to components.
@@ -90,11 +103,17 @@ pub struct CompileOptions {
     /// Defaults to `"https://astro.build"`.
     pub astro_global_args: Option<String>,
 
-    /// Whether to collapse whitespace in the HTML output.
-    /// **Stub**: not yet implemented.
+    /// Controls whitespace collapsing in the HTML output.
+    ///
+    /// - `none` (default): no whitespace modification.
+    /// - `html`: HTML-aware whitespace collapsing (collapses runs of whitespace,
+    ///   preserves significant whitespace, follows HTML whitespace rules).
+    /// - `"jsx"`: strips all whitespace-only text nodes and leading/trailing
+    ///   whitespace from text content (JSX-style whitespace removal).
     ///
     /// @default false
-    pub compact: Option<bool>,
+    #[napi(ts_type = "'none' | 'html' | 'jsx'")]
+    pub compact: Option<CompactOptions>,
 
     /// Enable scoped slot result handling.
     /// When `true`, slot callbacks receive the `$$result` render context parameter.
@@ -265,6 +284,15 @@ fn napi_to_codegen_sourcemap(s: &Option<SourcemapOption>) -> astro_codegen::Sour
     }
 }
 
+fn napi_to_codegen_compact(s: &Option<CompactOptions>) -> astro_codegen::CompactMode {
+    match s {
+        Some(CompactOptions::None) => astro_codegen::CompactMode::Disabled,
+        Some(CompactOptions::Html) => astro_codegen::CompactMode::Html,
+        Some(CompactOptions::Jsx) => astro_codegen::CompactMode::Jsx,
+        _ => astro_codegen::CompactMode::default(),
+    }
+}
+
 fn napi_to_codegen_strategy(s: &Option<ScopedStyleStrategy>) -> astro_codegen::ScopedStyleStrategy {
     match s {
         Some(ScopedStyleStrategy::Class) => astro_codegen::ScopedStyleStrategy::Class,
@@ -311,7 +339,7 @@ fn compile_astro_impl(source_text: &str, options: &CompileOptions) -> CompileRes
         internal_url: options.internal_url.clone(),
         sourcemap: napi_to_codegen_sourcemap(&options.sourcemap),
         astro_global_args: options.astro_global_args.clone(),
-        compact: options.compact.unwrap_or(false),
+        compact: napi_to_codegen_compact(&options.compact),
         result_scoped_slot: options.result_scoped_slot.unwrap_or(false),
         scoped_style_strategy: napi_to_codegen_strategy(&options.scoped_style_strategy),
         transitions_animation_url: options.transitions_animation_url.clone(),

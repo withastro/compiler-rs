@@ -1,0 +1,17 @@
+---
+source: crates/astro_codegen/tests/snapshots.rs
+input_file: crates/astro_codegen/tests/fixtures/whitespace_before_style_1003.astro
+---
+import { render as $$render, createComponent as $$createComponent, maybeRenderHead as $$maybeRenderHead, renderSlot as $$renderSlot, createMetadata as $$createMetadata } from "http://localhost:3000/";
+import "<stdin>?astro&type=style&index=0&lang.css";
+export const $$metadata = $$createMetadata(import.meta.url, {
+	modules: [],
+	hydratedComponents: [],
+	clientOnlyComponents: [],
+	hydrationDirectives: new Set([]),
+	hoisted: []
+});
+const $$Component = $$createComponent(($$result, $$props, $$slots) => {
+	return $$render`${$$maybeRenderHead($$result)}<a href="#" class="astro-rclqa6mz">${$$renderSlot($$result, $$slots["default"])}</a>`;
+}, undefined, undefined);
+export default $$Component;

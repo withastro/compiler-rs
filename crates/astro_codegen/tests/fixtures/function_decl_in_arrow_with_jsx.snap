@@ -1,0 +1,22 @@
+---
+source: crates/astro_codegen/tests/snapshots.rs
+input_file: crates/astro_codegen/tests/fixtures/function_decl_in_arrow_with_jsx.astro
+---
+import { render as $$render, createComponent as $$createComponent, renderComponent as $$renderComponent, createMetadata as $$createMetadata } from "http://localhost:3000/";
+export const $$metadata = $$createMetadata(import.meta.url, {
+	modules: [],
+	hydratedComponents: [],
+	clientOnlyComponents: [],
+	hydrationDirectives: new Set([]),
+	hoisted: []
+});
+const $$Component = $$createComponent(($$result, $$props, $$slots) => {
+	const type = "foo";
+	return $$render`${() => {
+		function render(type) {
+			return $$render`${$$renderComponent($$result, "Component", Component, {})}`;
+		}
+		return render(type);
+	}}`;
+}, undefined, undefined);
+export default $$Component;

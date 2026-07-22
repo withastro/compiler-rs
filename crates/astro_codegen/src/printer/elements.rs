@@ -6,12 +6,15 @@
 //! attributes, and element classification helpers (`is_void_element`,
 //! `is_head_element`).
 
-use super::escape::{escape_double_quotes, escape_html_attribute};
+use super::escape::{escape_double_quotes, escape_html_attribute, escape_template_literal};
 use super::runtime;
+use super::whitespace::{has_is_raw_attr, is_raw_element_name};
 use super::{AstroCodegen, expr_to_string};
 use crate::css_scoping;
-use crate::options::ScopedStyleStrategy;
-use crate::scanner::get_jsx_attribute_name;
+use crate::options::{CompactMode, ScopedStyleStrategy};
+use crate::scanner::{
+    get_jsx_attribute_name, is_equal_jsx_attribute_name, jsx_attribute_value_is_empty,
+};
 use oxc_ast::ast::*;
 
 /// Scope identifier for an element — either a CSS class or a data attribute,
@@ -88,6 +91,28 @@ pub(super) fn is_head_element(name: &str) -> bool {
 }
 
 impl<'a> AstroCodegen<'a> {
+    pub(super) fn add_transition_source_mapping(
+        &mut self,
+        transition_name: Option<oxc_span::Span>,
+        transition_animate: Option<oxc_span::Span>,
+    ) {
+        if let Some(span) = transition_name.or(transition_animate) {
+            self.add_source_mapping_for_span(span);
+        }
+    }
+
+    pub(super) fn scope_id_for(&self, name: &str) -> Option<ScopeId> {
+        if self.has_scoped_styles && css_scoping::should_scope_element(name) {
+            let hash = &self.source_hash;
+            match self.options.scoped_style_strategy() {
+                ScopedStyleStrategy::Attribute => Some(ScopeId::DataAttribute(hash.clone())),
+                _ => Some(ScopeId::Class(format!("astro-{hash}"))),
+            }
+        } else {
+            None
+        }
+    }
+
     /// Print an HTML (non-component) element.
     pub(super) fn print_html_element(&mut self, el: &JSXElement<'a>, name: &str) {
         self.add_source_mapping_for_span(el.opening_element.span);
@@ -98,8 +123,8 @@ impl<'a> AstroCodegen<'a> {
             return;
         }
 
-        // Check if this is a special element
         let is_head = name == "head";
+        let is_template = name == "template";
         let was_in_head = self.in_head;
 
         // Track non-hoistable context for nested style elements
@@ -114,6 +139,15 @@ impl<'a> AstroCodegen<'a> {
             self.has_explicit_head = true;
         }
 
+        // Track raw element depth for compact whitespace collapsing.
+        // Raw elements are those whose text content must never be modified:
+        // <pre>, <textarea>, <script>, <style>, etc., and any element with `is:raw`.
+        let is_raw = self.options.compact != CompactMode::Disabled
+            && (is_raw_element_name(name) || has_is_raw_attr(&el.opening_element.attributes));
+        if is_raw {
+            self.raw_element_depth += 1;
+        }
+
         // Insert $$maybeRenderHead before the first body HTML element
         self.maybe_insert_render_head(name);
 
@@ -121,17 +155,8 @@ impl<'a> AstroCodegen<'a> {
         let set_directive = Self::extract_set_directive(&el.opening_element.attributes);
 
         // Determine if this element should receive a scope identifier
-        let scope_id = if self.has_scoped_styles && css_scoping::should_scope_element(name) {
-            let hash = &self.source_hash;
-            match self.options.scoped_style_strategy() {
-                ScopedStyleStrategy::Attribute => Some(ScopeId::DataAttribute(hash.clone())),
-                _ => Some(ScopeId::Class(format!("astro-{hash}"))),
-            }
-        } else {
-            None
-        };
+        let scope_id = self.scope_id_for(name);
 
-        // Opening tag
         self.print("<");
         self.print(name);
 
@@ -145,48 +170,65 @@ impl<'a> AstroCodegen<'a> {
             inject_define_vars,
         );
 
-        // Close the opening tag and handle content
         self.print(">");
 
-        // Handle special head insertion
+        // Emit template depth tracking for HTML <template> elements
+        if is_template {
+            self.print_parts(["${", runtime::TEMPLATE_ENTER, "(", runtime::RESULT, ")}"]);
+        }
+
         if is_head {
-            // Children
-            for child in &el.children {
-                self.print_jsx_child(child);
-            }
-            // Insert renderHead before closing head tag
-            self.print(&format!(
-                "${{{}({})}}",
-                runtime::RENDER_HEAD,
-                runtime::RESULT
-            ));
+            self.print_jsx_children_compact(&el.children);
+            self.print_parts(["${", runtime::RENDER_HEAD, "(", runtime::RESULT, ")}"]);
             // Mark that head rendering is done — prevents $$maybeRenderHead from being inserted later.
             self.render_head_inserted = true;
         } else if let Some((directive_type, value, needs_unescape, is_raw_text, set_span)) =
             set_directive
         {
-            // set:html or set:text directive — inject the content
             self.add_source_mapping_for_span(set_span);
             if is_raw_text {
-                // set:text with string literal — inline raw text without ${}
-                self.print(&value);
+                // Escape template-literal syntax so a literal `${...}` isn't evaluated at render time.
+                self.print(&escape_template_literal(&value));
             } else if directive_type == "html" && needs_unescape {
                 // Only use $$unescapeHTML for non-literal expressions
-                self.print(&format!("${{{}({})}}", runtime::UNESCAPE_HTML, value));
+                self.print_parts(["${", runtime::UNESCAPE_HTML, "(", &value, ")}"]);
             } else {
                 // For literals (string/template) or set:text expression, just interpolate
-                self.print(&format!("${{{value}}}"));
+                self.print_parts(["${", &value, "}"]);
+            }
+        } else if name == "script"
+            && el
+                .children
+                .iter()
+                .any(|c| matches!(c, JSXChild::AstroScript(_)))
+        {
+            // The script content was parsed as JS by oxc (AstroScript child).
+            // For non-hoisted scripts (e.g. is:inline), emit the raw source text
+            // verbatim. The content lies between the opening tag end and closing
+            // tag start in the original source.
+            let content_start = el.opening_element.span.end as usize;
+            let content_end = el
+                .closing_element
+                .as_ref()
+                .map(|c| c.span.start as usize)
+                .unwrap_or(content_start);
+            if content_start < content_end {
+                let raw = &self.source_text[content_start..content_end];
+                self.add_source_mapping_for_span(oxc_span::Span::new(
+                    content_start as u32,
+                    content_end as u32,
+                ));
+                self.print(&escape_template_literal(raw));
             }
         } else {
-            // Regular children
-            for child in &el.children {
-                self.print_jsx_child(child);
-            }
+            self.print_jsx_children_compact(&el.children);
         }
 
-        // Closing tag (skip for void elements like <meta>, <input>, <br>, etc.)
+        if is_template {
+            self.print_parts(["${", runtime::TEMPLATE_EXIT, "(", runtime::RESULT, ")}"]);
+        }
+
         if !is_void_element(name) {
-            // Map closing tag to its source position so it appears in the sourcemap.
             if let Some(ref closing) = el.closing_element {
                 self.add_source_mapping_for_span(closing.span);
             }
@@ -195,6 +237,9 @@ impl<'a> AstroCodegen<'a> {
             self.print(">");
         }
 
+        if is_raw {
+            self.raw_element_depth -= 1;
+        }
         if is_head {
             self.in_head = was_in_head;
         }
@@ -209,7 +254,6 @@ impl<'a> AstroCodegen<'a> {
     /// - `<slot name="foo" />` → `$$renderSlot($$result, $$slots["foo"])`
     /// - `<slot><p>fallback</p></slot>` → `$$renderSlot($$result, $$slots["default"], $$render\`<p>fallback</p>\`)`
     fn print_slot_element(&mut self, el: &JSXElement<'a>) {
-        // Extract slot name from attributes (default is "default")
         let slot_name = Self::extract_slot_name(&el.opening_element.attributes);
 
         self.print("${");
@@ -220,18 +264,14 @@ impl<'a> AstroCodegen<'a> {
         self.print(&slot_name);
         self.print("\"]");
 
-        // Add fallback content if there are children
         if !el.children.is_empty() {
             self.print(",");
             self.print(runtime::RENDER);
             self.print("`");
-            for child in &el.children {
-                self.print_jsx_child(child);
-            }
+            self.print_jsx_children_compact(&el.children);
             self.print("`");
         }
 
-        // Map the closing </slot> tag to its source position (if present).
         if let Some(ref closing) = el.closing_element {
             self.add_source_mapping_for_span(closing.span);
         }
@@ -241,21 +281,19 @@ impl<'a> AstroCodegen<'a> {
     /// Extract the `name` attribute from a slot element, defaulting to `"default"`.
     fn extract_slot_name(attrs: &[JSXAttributeItem<'a>]) -> String {
         for attr in attrs {
-            if let JSXAttributeItem::Attribute(attr) = attr {
-                let attr_name = get_jsx_attribute_name(&attr.name);
-                if attr_name == "name" {
-                    if let Some(JSXAttributeValue::StringLiteral(lit)) = &attr.value {
-                        return lit.value.to_string();
-                    }
-                    if let Some(JSXAttributeValue::ExpressionContainer(expr)) = &attr.value {
-                        // Dynamic slot name
-                        let expr_str = expr
-                            .expression
-                            .as_expression()
-                            .map(expr_to_string)
-                            .unwrap_or_default();
-                        return format!("\" + {expr_str} + \"");
-                    }
+            if let JSXAttributeItem::Attribute(attr) = attr
+                && is_equal_jsx_attribute_name(&attr.name, "name")
+            {
+                if let Some(JSXAttributeValue::StringLiteral(lit)) = &attr.value {
+                    return lit.value.to_string();
+                }
+                if let Some(JSXAttributeValue::ExpressionContainer(expr)) = &attr.value {
+                    let expr_str = expr
+                        .expression
+                        .as_expression()
+                        .map(expr_to_string)
+                        .unwrap_or_default();
+                    return format!("\" + {expr_str} + \"");
                 }
             }
         }
@@ -265,11 +303,10 @@ impl<'a> AstroCodegen<'a> {
     /// Check if an element has the `is:inline` attribute.
     pub(super) fn has_is_inline_attribute(attrs: &[JSXAttributeItem<'a>]) -> bool {
         for attr in attrs {
-            if let JSXAttributeItem::Attribute(attr) = attr {
-                let name = get_jsx_attribute_name(&attr.name);
-                if name == "is:inline" {
-                    return true;
-                }
+            if let JSXAttributeItem::Attribute(attr) = attr
+                && is_equal_jsx_attribute_name(&attr.name, "is:inline")
+            {
+                return true;
             }
         }
         false
@@ -284,34 +321,33 @@ impl<'a> AstroCodegen<'a> {
     ) -> Option<(&'static str, String, bool, bool, oxc_span::Span)> {
         for attr in attrs {
             if let JSXAttributeItem::Attribute(attr) = attr {
-                let name = get_jsx_attribute_name(&attr.name);
-                if name == "set:html" || name == "set:text" {
-                    let directive_type = if name == "set:html" { "html" } else { "text" };
+                let is_html = is_equal_jsx_attribute_name(&attr.name, "set:html");
+                let is_text = is_equal_jsx_attribute_name(&attr.name, "set:text");
+                if is_html || is_text {
+                    let directive_type = if is_html { "html" } else { "text" };
                     let (value, needs_unescape, is_raw_text) = match &attr.value {
                         Some(JSXAttributeValue::StringLiteral(lit)) => {
-                            if directive_type == "text" {
+                            if is_text {
                                 // set:text with string literal: inline raw text without ${}
                                 (lit.value.as_str().to_string(), false, true)
                             } else {
-                                // set:html with string literal: use ${"content"}
+                                // set:html with string literal: needs $$unescapeHTML like any
+                                // other value — the user is asking for raw HTML injection.
                                 (
                                     format!("\"{}\"", escape_double_quotes(lit.value.as_str())),
-                                    false,
+                                    true,
                                     false,
                                 )
                             }
                         }
                         Some(JSXAttributeValue::ExpressionContainer(expr)) => {
                             let mut value_str = String::new();
-                            let mut is_literal = false;
                             if let Some(e) = expr.expression.as_expression() {
-                                is_literal = matches!(
-                                    e,
-                                    Expression::StringLiteral(_) | Expression::TemplateLiteral(_)
-                                );
                                 value_str = expr_to_string(e);
                             }
-                            let needs_unescape = directive_type == "html" && !is_literal;
+                            // set:html always needs $$unescapeHTML — its purpose is to inject
+                            // raw HTML, and $$render escapes by default.
+                            let needs_unescape = is_html;
                             (value_str, needs_unescape, false)
                         }
                         _ => ("void 0".to_string(), false, false),
@@ -344,14 +380,12 @@ impl<'a> AstroCodegen<'a> {
         scope_id: Option<&ScopeId>,
         inject_define_vars: bool,
     ) {
-        // Check for class + class:list combination that needs merging
         let mut static_class: Option<&str> = None;
         let mut class_list_expr: Option<&JSXExpressionContainer<'a>> = None;
 
-        // Check for transition attributes
-        let mut transition_name: Option<(String, oxc_span::Span)> = None;
-        let mut transition_animate: Option<(String, oxc_span::Span)> = None;
-        let mut transition_persist: Option<(String, oxc_span::Span)> = None;
+        let mut transition_name = None;
+        let mut transition_animate = None;
+        let mut transition_persist = None;
 
         for attr in attrs {
             if let JSXAttributeItem::Attribute(attr) = attr {
@@ -365,74 +399,78 @@ impl<'a> AstroCodegen<'a> {
                         class_list_expr = Some(expr);
                     }
                 } else if name == "transition:name" {
-                    transition_name = Some((Self::get_attr_value_string(attr), attr.span));
+                    transition_name = Some(attr);
                 } else if name == "transition:animate" {
-                    transition_animate = Some((Self::get_attr_value_string(attr), attr.span));
+                    transition_animate = Some(attr);
                 } else if name == "transition:persist" {
-                    transition_persist =
-                        Some((Self::get_attr_value_string_or_empty(attr), attr.span));
+                    transition_persist = Some(attr);
                 }
             }
         }
 
-        // If both class and class:list exist, merge them
         let has_merged_class = static_class.is_some() && class_list_expr.is_some();
 
-        // Handle transition:persist — if there's a transition:name, use that for persist value.
-        // Otherwise use $$createTransitionScope.
-        if let Some((ref _persist_val, persist_span)) = transition_persist {
-            self.add_source_mapping_for_span(persist_span);
-            if let Some((ref name_val, _)) = transition_name {
-                let clean_val = name_val.trim_matches('"');
-                self.print(&format!(" data-astro-transition-persist=\"{clean_val}\""));
+        // Persist ID priority: explicit persist value, else transition:name value, else a generated hash.
+        if let Some(persist_attr) = transition_persist {
+            if !jsx_attribute_value_is_empty(persist_attr) {
+                self.print_html_attribute_with_name(persist_attr, "data-astro-transition-persist");
+            } else if let Some(name_attr) = transition_name {
+                self.print_html_attribute_with_name(name_attr, "data-astro-transition-persist");
             } else {
+                self.add_source_mapping_for_span(persist_attr.span);
                 let hash = self.generate_transition_hash();
-                self.print(&format!(
-                    "${{{}({}({}, \"{}\"), \"data-astro-transition-persist\")}}",
+                self.print_parts([
+                    "${",
                     runtime::ADD_ATTRIBUTE,
+                    "(",
                     runtime::CREATE_TRANSITION_SCOPE,
+                    "(",
                     runtime::RESULT,
-                    hash
-                ));
+                    ", \"",
+                    &hash,
+                    "\"), \"data-astro-transition-persist\")}",
+                ]);
             }
         }
 
-        // Handle transition:name and transition:animate together
         if transition_name.is_some() || transition_animate.is_some() {
-            // Map to whichever transition attribute comes first
-            if let Some((_, span)) = &transition_name {
-                self.add_source_mapping_for_span(*span);
-            } else if let Some((_, span)) = &transition_animate {
-                self.add_source_mapping_for_span(*span);
-            }
-            let name_val = transition_name.map_or_else(|| "\"\"".to_string(), |(v, _)| v);
-            let animate_val = transition_animate.map_or_else(|| "\"\"".to_string(), |(v, _)| v);
+            self.add_transition_source_mapping(
+                transition_name.map(|a| a.span),
+                transition_animate.map(|a| a.span),
+            );
+            let name_val = transition_name
+                .map_or_else(|| "\"\"".to_string(), |a| Self::get_attr_value_string(a));
+            let animate_val = transition_animate
+                .map_or_else(|| "\"\"".to_string(), |a| Self::get_attr_value_string(a));
             let hash = self.generate_transition_hash();
-            self.print(&format!(
-                "${{{}({}({}, \"{}\", {}, {}), \"data-astro-transition-scope\")}}",
+            self.print_parts([
+                "${",
                 runtime::ADD_ATTRIBUTE,
+                "(",
                 runtime::RENDER_TRANSITION,
+                "(",
                 runtime::RESULT,
-                hash,
-                animate_val,
-                name_val
-            ));
+                ", \"",
+                &hash,
+                "\", ",
+                &animate_val,
+                ", ",
+                &name_val,
+                "), \"data-astro-transition-scope\")}",
+            ]);
         }
 
-        // Track whether the scope class was already injected into an existing class/class:list
         let mut scope_injected = false;
         let mut has_class_attr = false;
-        // Track whether $$definedVars style injection was already handled
         let mut define_vars_style_injected = false;
 
-        // Pre-scan for class/class:list attributes
         for attr in attrs {
-            if let JSXAttributeItem::Attribute(attr) = attr {
-                let name = get_jsx_attribute_name(&attr.name);
-                if name == "class" || name == "class:list" {
-                    has_class_attr = true;
-                    break;
-                }
+            if let JSXAttributeItem::Attribute(attr) = attr
+                && (is_equal_jsx_attribute_name(&attr.name, "class")
+                    || is_equal_jsx_attribute_name(&attr.name, "class:list"))
+            {
+                has_class_attr = true;
+                break;
             }
         }
 
@@ -469,36 +507,30 @@ impl<'a> AstroCodegen<'a> {
                     if has_merged_class && name == "class" {
                         continue;
                     }
-                    // Handle `style` attribute with define:vars injection
                     if name == "style" && inject_define_vars {
                         self.print_style_with_define_vars(attr);
                         define_vars_style_injected = true;
                         self.define_vars_injected = true;
                         continue;
                     }
-                    // Handle merged class:list (with scope class injection)
                     if has_merged_class && name == "class:list" {
                         if let (Some(static_val), Some(expr)) = (static_class, class_list_expr) {
                             self.add_source_mapping_for_span(attr.span);
-                            self.print(&format!("${{{}([", runtime::ADD_ATTRIBUTE));
-                            // Inject scope class into static_val if needed
+                            self.print_parts(["${", runtime::ADD_ATTRIBUTE, "(["]);
                             if let Some(sid) = scope_id {
                                 if sid.is_attribute_strategy() {
                                     // For attribute strategy, don't merge into class
-                                    self.print(&format!(
-                                        "\"{}\"",
-                                        escape_double_quotes(static_val)
-                                    ));
+                                    let escaped = escape_double_quotes(static_val);
+                                    self.print_parts(["\"", &escaped, "\""]);
                                 } else {
-                                    self.print(&format!(
-                                        "\"{} {}\"",
-                                        escape_double_quotes(static_val),
-                                        sid.class_value()
-                                    ));
+                                    let escaped = escape_double_quotes(static_val);
+                                    let class_val = sid.class_value();
+                                    self.print_parts(["\"", &escaped, " ", &class_val, "\""]);
                                     scope_injected = true;
                                 }
                             } else {
-                                self.print(&format!("\"{}\"", escape_double_quotes(static_val)));
+                                let escaped = escape_double_quotes(static_val);
+                                self.print_parts(["\"", &escaped, "\""]);
                             }
                             self.print(", ");
                             self.print_jsx_expression(&expr.expression);
@@ -506,7 +538,6 @@ impl<'a> AstroCodegen<'a> {
                         }
                         continue;
                     }
-                    // Handle class attribute with scope class injection
                     if let Some(sid) = scope_id
                         && !sid.is_attribute_strategy()
                         && name == "class"
@@ -515,7 +546,6 @@ impl<'a> AstroCodegen<'a> {
                         scope_injected = true;
                         continue;
                     }
-                    // Handle class:list attribute with scope class injection
                     if let Some(sid) = scope_id
                         && !sid.is_attribute_strategy()
                         && name == "class:list"
@@ -537,13 +567,11 @@ impl<'a> AstroCodegen<'a> {
                 }
                 JSXAttributeItem::SpreadAttribute(spread) => {
                     self.add_source_mapping_for_span(spread.span);
-                    // If we have a scope identifier and no explicit class/class:list,
-                    // pass it as the 3rd argument to $$spreadAttributes
                     if let Some(sid) = scope_id
                         && !has_class_attr
                         && !scope_injected
                     {
-                        self.print(&format!("${{{}(", runtime::SPREAD_ATTRIBUTES));
+                        self.print_parts(["${", runtime::SPREAD_ATTRIBUTES, "("]);
                         self.print_expression(&spread.argument);
                         // Always pass the class through $$spreadAttributes for runtime
                         // merging, regardless of scoped style strategy. The runtime's
@@ -552,7 +580,7 @@ impl<'a> AstroCodegen<'a> {
                         // For attribute strategy, the data-astro-cid-* attribute is
                         // added directly on the element by the fallback below.
                         let sc = sid.class_value();
-                        self.print(&format!(",undefined,{{\"class\":\"{sc}\"}})}}"));
+                        self.print_parts([",undefined,{\"class\":\"", &sc, "\"})}"]);
                         // Note: do NOT set scope_injected here for attribute strategy,
                         // so the data-astro-cid-* attribute is still added directly
                         // on the element by the fallback at the end of this function.
@@ -561,30 +589,27 @@ impl<'a> AstroCodegen<'a> {
                         }
                         continue;
                     }
-                    self.print(&format!("${{{}(", runtime::SPREAD_ATTRIBUTES));
+                    self.print_parts(["${", runtime::SPREAD_ATTRIBUTES, "("]);
                     self.print_expression(&spread.argument);
                     self.print(")}");
                 }
             }
         }
 
-        // If define:vars injection is needed but no `style` attribute existed, add one
         if inject_define_vars && !define_vars_style_injected {
-            self.print(&format!(
-                "${{{}($$definedVars, \"style\")}}",
-                runtime::ADD_ATTRIBUTE
-            ));
+            self.print_parts(["${", runtime::ADD_ATTRIBUTE, "($$definedVars, \"style\")}"]);
             self.define_vars_injected = true;
         }
 
-        // If scope wasn't injected into any existing attribute, add it
         if let Some(sid) = scope_id
             && !scope_injected
         {
             if sid.is_attribute_strategy() {
-                self.print(&format!(" {}", sid.data_attr_name()));
+                let attr_name = sid.data_attr_name();
+                self.print_parts([" ", &attr_name]);
             } else {
-                self.print(&format!(" class=\"{}\"", sid.class_value()));
+                let class_val = sid.class_value();
+                self.print_parts([" class=\"", &class_val, "\""]);
             }
         }
     }
@@ -612,20 +637,11 @@ impl<'a> AstroCodegen<'a> {
         }
     }
 
-    /// Get attribute value as a string, or empty string if no value (for boolean attrs).
-    pub(super) fn get_attr_value_string_or_empty(attr: &JSXAttribute<'a>) -> String {
-        match &attr.value {
-            None => String::new(),
-            _ => Self::get_attr_value_string(attr),
-        }
-    }
-
     /// Generate a hash for transition scope.
     pub(super) fn generate_transition_hash(&mut self) -> String {
         use std::collections::hash_map::DefaultHasher;
         use std::hash::{Hash, Hasher};
 
-        // Increment counter to get unique index
         let counter = self.transition_counter;
         self.transition_counter += 1;
 
@@ -634,83 +650,19 @@ impl<'a> AstroCodegen<'a> {
         format!("{}-{}", self.source_hash, counter).hash(&mut hasher);
         let hash = hasher.finish();
 
-        // Convert to base32-like lowercase string (8 chars)
         Self::to_base32_like(hash)
     }
 
-    /// Print a `style` attribute merged with `$$definedVars`.
+    /// Print a `style` attribute merged with `$$definedVars` on an HTML element.
     ///
-    /// Handles all attribute value types following the Go compiler's `injectDefineVars()` logic:
-    /// - Empty/boolean `style` → `${$$addAttribute($$definedVars, "style")}`
-    /// - Quoted `style="val"` → `` ${$$addAttribute(`${"val"}; ${$$definedVars}`, "style")} ``
-    /// - Expression `style={expr}` → if object `{...}` then `${$$addAttribute([{...},$$definedVars], "style")}`,
-    ///   else `` ${$$addAttribute(`${expr}; ${$$definedVars}`, "style")} ``
-    /// - Shorthand `{style}` → `` ${$$addAttribute(`${style}; ${$$definedVars}`, "style")} ``
-    /// - Template literal `` style=`val` `` → `` ${$$addAttribute(`${`val`}; ${$$definedVars}`, "style")} ``
+    /// The merged value is printed by [`AstroCodegen::print_define_vars_style_value`]
+    /// (shared with the custom-element props path) and wrapped here as
+    /// `${$$addAttribute(<value>, "style")}`.
     fn print_style_with_define_vars(&mut self, attr: &JSXAttribute<'a>) {
         self.add_source_mapping_for_span(attr.span);
-        match &attr.value {
-            None => {
-                // Empty/boolean style → $$definedVars
-                self.print(&format!(
-                    "${{{}($$definedVars, \"style\")}}",
-                    runtime::ADD_ATTRIBUTE
-                ));
-            }
-            Some(JSXAttributeValue::StringLiteral(lit)) => {
-                // Quoted style="val" → `${"val"}; ${$$definedVars}`
-                let val = lit.value.as_str();
-                self.print(&format!(
-                    "${{{}(`${{\"{}\"}}; ${{$$definedVars}}`, \"style\")}}",
-                    runtime::ADD_ATTRIBUTE,
-                    escape_double_quotes(val)
-                ));
-            }
-            Some(JSXAttributeValue::ExpressionContainer(expr)) => {
-                if let Some(e) = expr.expression.as_expression() {
-                    // Check if the expression is an ObjectExpression at the AST level
-                    // (rather than relying on the string representation, which may be
-                    // wrapped in parentheses by the codegen).
-                    let is_object = matches!(e, Expression::ObjectExpression(_));
-                    let expr_str = expr_to_string(e);
-                    if is_object {
-                        // Object expression: [{...},$$definedVars]
-                        // Strip parentheses if present (oxc wraps objects in parens
-                        // to avoid ambiguity with block statements).
-                        let obj_str = expr_str
-                            .trim()
-                            .strip_prefix('(')
-                            .and_then(|s| s.strip_suffix(')'))
-                            .unwrap_or(expr_str.trim());
-                        self.print(&format!(
-                            "${{{}([{},$$definedVars], \"style\")}}",
-                            runtime::ADD_ATTRIBUTE,
-                            obj_str
-                        ));
-                    } else {
-                        // Other expression: `${expr}; ${$$definedVars}`
-                        self.print(&format!(
-                            "${{{}(`${{{}}}; ${{$$definedVars}}`, \"style\")}}",
-                            runtime::ADD_ATTRIBUTE,
-                            expr_str
-                        ));
-                    }
-                } else {
-                    // Fallback: just $$definedVars
-                    self.print(&format!(
-                        "${{{}($$definedVars, \"style\")}}",
-                        runtime::ADD_ATTRIBUTE
-                    ));
-                }
-            }
-            _ => {
-                // Fallback: just $$definedVars
-                self.print(&format!(
-                    "${{{}($$definedVars, \"style\")}}",
-                    runtime::ADD_ATTRIBUTE
-                ));
-            }
-        }
+        self.print_parts(["${", runtime::ADD_ATTRIBUTE, "("]);
+        self.print_define_vars_style_value(attr);
+        self.print(", \"style\")}");
     }
 
     /// Print a class attribute with scope class appended.
@@ -718,31 +670,25 @@ impl<'a> AstroCodegen<'a> {
         self.add_source_mapping_for_span(attr.span);
         match &attr.value {
             None => {
-                // Empty class attribute → just the scope class
-                self.print(&format!(" class=\"{scope_class}\""));
+                self.print_parts([" class=\"", scope_class, "\""]);
             }
             Some(JSXAttributeValue::StringLiteral(lit)) => {
-                // Static class: append scope class
                 let val = lit.value.as_str();
                 if val.is_empty() {
-                    self.print(&format!(" class=\"{scope_class}\""));
+                    self.print_parts([" class=\"", scope_class, "\""]);
                 } else {
-                    self.print(&format!(
-                        " class=\"{} {scope_class}\"",
-                        escape_html_attribute(val)
-                    ));
+                    let escaped = escape_html_attribute(val);
+                    self.print_parts([" class=\"", &escaped, " ", scope_class, "\""]);
                 }
             }
             Some(JSXAttributeValue::ExpressionContainer(expr)) => {
-                // Dynamic class: expression + scope class
                 // Output: ${$$addAttribute((expr ?? "") + " astro-XXXX", "class")}
-                self.print(&format!("${{{}((", runtime::ADD_ATTRIBUTE));
+                self.print_parts(["${", runtime::ADD_ATTRIBUTE, "(("]);
                 self.print_jsx_expression(&expr.expression);
-                self.print(&format!(" ?? \"\") + \" {scope_class}\", \"class\")}}"));
+                self.print_parts([" ?? \"\") + \" ", scope_class, "\", \"class\")}"]);
             }
             _ => {
-                // Fallback: just output scope class
-                self.print(&format!(" class=\"{scope_class}\""));
+                self.print_parts([" class=\"", scope_class, "\""]);
             }
         }
     }
@@ -753,13 +699,12 @@ impl<'a> AstroCodegen<'a> {
         match &attr.value {
             Some(JSXAttributeValue::ExpressionContainer(expr)) => {
                 // class:list={expr} → ${$$addAttribute([expr, "astro-XXXX"], "class:list")}
-                self.print(&format!("${{{}([(", runtime::ADD_ATTRIBUTE));
+                self.print_parts(["${", runtime::ADD_ATTRIBUTE, "([("]);
                 self.print_jsx_expression(&expr.expression);
-                self.print(&format!("), \"{scope_class}\"], \"class:list\")}}"));
+                self.print_parts([")", ", \"", scope_class, "\"], \"class:list\")}"]);
             }
             _ => {
-                // Fallback: just output scope class
-                self.print(&format!(" class=\"{scope_class}\""));
+                self.print_parts([" class=\"", scope_class, "\""]);
             }
         }
     }
@@ -775,7 +720,6 @@ impl<'a> AstroCodegen<'a> {
         self.add_source_mapping_for_span(attr.span);
         match &attr.value {
             None => {
-                // Boolean attribute
                 self.print(" ");
                 self.print(name);
             }
@@ -788,15 +732,14 @@ impl<'a> AstroCodegen<'a> {
                     self.print("\"");
                 }
                 JSXAttributeValue::ExpressionContainer(expr) => {
-                    // Dynamic attribute
-                    self.print(&format!("${{{}(", runtime::ADD_ATTRIBUTE));
+                    self.print_parts(["${", runtime::ADD_ATTRIBUTE, "("]);
                     self.print_jsx_expression(&expr.expression);
                     self.print(", \"");
-                    self.print(name);
+                    // Shorthand names can be arbitrary expression text, so escape as a JS string key.
+                    self.print(&escape_double_quotes(name));
                     self.print("\")}");
                 }
                 JSXAttributeValue::Element(el) => {
-                    // JSX element as attribute value (rare)
                     self.print(" ");
                     self.print(name);
                     self.print("=\"");

@@ -31,13 +31,16 @@ export function mapOptions(
 		}
 	}
 
+	const compact =
+		(options.compact === true ? 'html' : options.compact === 'jsx' ? 'jsx' : undefined) ?? 'none';
+
 	return {
 		filename: options.filename,
 		normalizedFilename: options.normalizedFilename,
 		internalURL: options.internalURL,
 		sourcemap: options.sourcemap,
 		astroGlobalArgs: options.astroGlobalArgs,
-		compact: options.compact,
+		compact,
 		resultScopedSlot: options.resultScopedSlot,
 		scopedStyleStrategy: options.scopedStyleStrategy,
 		transitionsAnimationURL: options.transitionsAnimationURL,

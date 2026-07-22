@@ -1,1 +1,1 @@
-export type * from './dist/types.js';
+export type * from './dist/types.mjs';
