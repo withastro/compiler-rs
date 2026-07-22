@@ -82,12 +82,19 @@ libFuzzer will run the input once, report the crash, and exit.
 
 ## CI
 
-The fuzz workflow (`.github/workflows/fuzz.yml`) runs all three targets:
-- Nightly at 2am UTC (300 seconds per target)
-- On pushes/PRs that touch `fuzz/**`
-- Manually via `workflow_dispatch` with configurable `fuzz_time`
+Fuzzing in CI runs through [ClusterFuzzLite](https://google.github.io/clusterfuzzlite/)
+(`.clusterfuzzlite/` + the `cflite_*.yml` workflows):
 
-Crash artifacts are uploaded as GitHub Actions artifacts on failure.
+- **PR fuzzing** (`cflite_pr.yml`) — code-change mode on PRs touching compiler
+  code. Paired with continuous builds it suppresses pre-existing crashes, so
+  only bugs introduced by the PR fail the check.
+- **Continuous builds** (`cflite_build.yml`) — uploads a fuzzer build per push
+  to `main`; this is what PR fuzzing diffs crashes against.
+- **Batch fuzzing** (`cflite_batch.yml`) — nightly at 2am UTC, 1 hour, grows
+  the corpus. Reports all crashes, including known ones (informational).
+- **Corpus pruning + coverage** (`cflite_cron.yml`) — daily.
+
+Crash artifacts and corpora are uploaded as GitHub Actions artifacts.
 
 ## Known findings
 
