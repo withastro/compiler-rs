@@ -31,11 +31,14 @@ bench = false
 [dependencies]
 libfuzzer-sys = "0.4"
 astro_codegen = { path = "../crates/astro_codegen" }
-oxc_allocator = { git = "https://github.com/withastro/oxc", branch = "feat/astro" }
-oxc_parser = { git = "https://github.com/withastro/oxc", branch = "feat/astro", features = [
+# This is a separate workspace, so it cannot inherit oxc from the root Cargo.toml.
+# The `rev` MUST match the root Cargo.toml oxc pin exactly — a `branch`/`rev` mismatch
+# pulls two copies of oxc into the graph and the Allocator types stop unifying.
+oxc_allocator = { git = "https://github.com/withastro/oxc", rev = "287b923e9611c7d0a6b4bef51d1afbf233fdf785" }
+oxc_parser = { git = "https://github.com/withastro/oxc", rev = "287b923e9611c7d0a6b4bef51d1afbf233fdf785", features = [
   "regular_expression",
 ] }
-oxc_span = { git = "https://github.com/withastro/oxc", branch = "feat/astro" }
+oxc_span = { git = "https://github.com/withastro/oxc", rev = "287b923e9611c7d0a6b4bef51d1afbf233fdf785" }
 
 # Prevent this from being included in the normal workspace build.
 [workspace]

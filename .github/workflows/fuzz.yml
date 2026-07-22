@@ -30,6 +30,11 @@ jobs:
     name: Fuzz - ${{ matrix.target }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    # Non-gating: the targets currently rediscover known, still-open upstream
+    # crashes (withastro/oxc#4 OOM, parcel-bundler/lightningcss#1155 overflow),
+    # so a crash here is expected signal, not a reason to block the PR. Artifacts
+    # are still uploaded on failure. Regression-gating is handled separately.
+    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
