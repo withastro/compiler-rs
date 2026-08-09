@@ -25,6 +25,7 @@ use std::collections::HashMap;
 use crate::error::DiagnosticMessage;
 use astro_codegen::{Diagnostic, HoistedScriptType, TransformOptions, extract_styles, transform};
 use oxc_allocator::Allocator;
+use oxc_ast_visit::{VisitMut, utf8_to_utf16::Utf8ToUtf16};
 use oxc_estree::CompactTSSerializer;
 use oxc_estree::ESTree;
 use oxc_parser::{ParseOptions, Parser};
@@ -493,11 +494,20 @@ pub struct ParseResult {
     pub diagnostics: Vec<DiagnosticMessage>,
 }
 
-fn parse_astro_impl(source_text: &str) -> ParseResult {
+/// Options for `parseAstro` / `parseAstroSync`.
+#[napi(object)]
+#[derive(Default)]
+pub struct ParseAstroOptions {
+    /// Report `start`/`end` as UTF-16 code unit offsets, matching how JavaScript indexes
+    /// strings. Defaults to `false`, which reports UTF-8 byte offsets.
+    pub utf16_offsets: Option<bool>,
+}
+
+fn parse_astro_impl(source_text: &str, options: &ParseAstroOptions) -> ParseResult {
     let allocator = Allocator::default();
     let source_type = SourceType::astro();
 
-    let ret = Parser::new(&allocator, source_text, source_type)
+    let mut ret = Parser::new(&allocator, source_text, source_type)
         .with_options(ParseOptions::default())
         .parse_astro();
 
@@ -508,7 +518,17 @@ fn parse_astro_impl(source_text: &str) -> ParseResult {
         DiagnosticMessage::from_codegen_list(diags)
     };
 
-    let comments = ast_comments::collect(&ret.root, &ret.body_comments, source_text);
+    // Comment text must be sliced out before any offset conversion.
+    let mut comments = ast_comments::collect(&ret.root, &ret.body_comments, source_text);
+
+    if options.utf16_offsets.unwrap_or(false)
+        && let Some(mut converter) = Utf8ToUtf16::new(source_text).converter()
+    {
+        converter.visit_astro_root(&mut ret.root);
+        for comment in &mut comments {
+            converter.convert_span(comment.span_mut());
+        }
+    }
 
     // Serialize the AST to JSON using the ESTree serializer
     let mut serializer = CompactTSSerializer::new(false);
@@ -536,12 +556,13 @@ fn parse_astro_impl(source_text: &str) -> ParseResult {
 /// console.log(tree.type); // "AstroRoot"
 /// ```
 #[napi]
-pub fn parse_astro_sync(source_text: String) -> ParseResult {
-    parse_astro_impl(&source_text)
+pub fn parse_astro_sync(source_text: String, options: Option<ParseAstroOptions>) -> ParseResult {
+    parse_astro_impl(&source_text, &options.unwrap_or_default())
 }
 
 pub struct ParseTask {
     source_text: String,
+    options: ParseAstroOptions,
 }
 
 #[napi]
@@ -551,7 +572,7 @@ impl Task for ParseTask {
 
     fn compute(&mut self) -> napi::Result<Self::Output> {
         let source_text = mem::take(&mut self.source_text);
-        Ok(parse_astro_impl(&source_text))
+        Ok(parse_astro_impl(&source_text, &self.options))
     }
 
     fn resolve(&mut self, _: napi::Env, result: Self::Output) -> napi::Result<Self::JsValue> {
@@ -563,6 +584,9 @@ impl Task for ParseTask {
 ///
 /// Returns the oxc AST in ESTree-compatible JSON format.
 #[napi]
-pub fn parse_astro(source_text: String) -> AsyncTask<ParseTask> {
-    AsyncTask::new(ParseTask { source_text })
+pub fn parse_astro(
+    source_text: String,
+    options: Option<ParseAstroOptions>,
+) -> AsyncTask<ParseTask> {
+    AsyncTask::new(ParseTask { source_text, options: options.unwrap_or_default() })
 }
