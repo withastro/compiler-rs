@@ -1,5 +1,6 @@
 //! Astro file compilation to JavaScript.
 
+mod ast_comments;
 mod error;
 
 #[cfg(all(
@@ -507,9 +508,12 @@ fn parse_astro_impl(source_text: &str) -> ParseResult {
         DiagnosticMessage::from_codegen_list(diags)
     };
 
+    let comments = ast_comments::collect(&ret.root, &ret.body_comments, source_text);
+
     // Serialize the AST to JSON using the ESTree serializer
     let mut serializer = CompactTSSerializer::new(false);
-    ret.root.serialize(&mut serializer);
+    ast_comments::AstroRootWithComments { root: &ret.root, comments: &comments }
+        .serialize(&mut serializer);
     let ast = serializer.into_string();
 
     ParseResult { ast, diagnostics }
