@@ -3550,3 +3550,71 @@ fn test_extracted_style_in_pre_keeps_whitespace_verbatim() {
         );
     }
 }
+
+#[test]
+fn test_compact_drops_whitespace_before_trailing_comment() {
+    let source =
+        "---\nconst { href } = Astro.props\n---\n\n<a href={href}><slot /></a>\n\n<!--c-->\n";
+
+    for compact in [crate::CompactMode::Html, crate::CompactMode::Jsx] {
+        let output = compile_link_component(source, compact);
+        assert!(
+            output.contains("</a><!--c-->"),
+            "{compact:?}: a comment the reader cannot see must not leave a space behind: {output}"
+        );
+    }
+}
+
+#[test]
+fn test_compact_drops_same_line_space_before_trailing_comment() {
+    let source = "<a href=\"#\">link</a> <!--c-->";
+
+    for compact in [crate::CompactMode::Html, crate::CompactMode::Jsx] {
+        let output = compile_link_component(source, compact);
+        assert!(
+            output.contains("</a><!--c-->"),
+            "{compact:?}: same-line space before a trailing comment must not survive: {output}"
+        );
+    }
+}
+
+#[test]
+fn test_compact_keeps_whitespace_between_visible_elements_around_comment() {
+    let source = "<span>a</span> <!--c--> <span>b</span>";
+
+    for compact in [crate::CompactMode::Html, crate::CompactMode::Jsx] {
+        let output = compile_link_component(source, compact);
+        assert!(
+            output.contains("</span> <!--c--> <span>"),
+            "{compact:?}: a comment between two visible elements must not swallow their separating spaces: {output}"
+        );
+    }
+}
+
+#[test]
+fn test_comment_in_pre_keeps_whitespace_verbatim() {
+    let source = "<pre><code>x</code>\n  <!--c--></pre>";
+
+    for compact in [
+        crate::CompactMode::Html,
+        crate::CompactMode::Jsx,
+        crate::CompactMode::Disabled,
+    ] {
+        let output = compile_link_component(source, compact);
+        assert!(
+            output.contains("</code>\n  <!--c-->"),
+            "{compact:?}: whitespace inside <pre> is content and must survive: {output}"
+        );
+    }
+}
+
+#[test]
+fn test_non_compact_keeps_whitespace_before_trailing_comment() {
+    let source = "<a href=\"#\">link</a>\n\n<!--c-->";
+    let output = compile_link_component(source, crate::CompactMode::Disabled);
+
+    assert!(
+        output.contains("</a>\n\n<!--c-->"),
+        "non-compact output must be left alone: {output}"
+    );
+}

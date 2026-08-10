@@ -1357,10 +1357,15 @@ impl<'a> AstroCodegen<'a> {
             return;
         }
 
+        // A comment is emitted, but invisible, so space beside it separates nothing.
         let invisible: Vec<bool> = children
             .iter()
             .enumerate()
-            .map(|(i, &c)| extracted[i] || self.is_hoisted_script_child(c))
+            .map(|(i, &c)| {
+                extracted[i]
+                    || self.is_hoisted_script_child(c)
+                    || matches!(c, JSXChild::AstroComment(_))
+            })
             .collect();
 
         let visible_count = children
@@ -1572,32 +1577,33 @@ impl<'a> AstroCodegen<'a> {
 }
 
 /// Check if a whitespace-only text node at position `idx` is at the edge of
-/// visible content — i.e. there are no rendering, non-whitespace-only children
-/// between it and the start/end of the children list.
+/// visible content — i.e. there is nothing the reader can see, other than
+/// whitespace, between it and the start/end of the children list.
 ///
-/// `renders_nothing` flags the children that produce no visible output at their
-/// position (extracted `<style>` elements, hoisted `<script>` elements). This is
-/// used to remove the whitespace that trails or leads such a child, which would
-/// otherwise render as a spurious space in the HTML output.
-fn is_edge_whitespace(children: &[&JSXChild<'_>], renders_nothing: &[bool], idx: usize) -> bool {
+/// `invisible` flags the children the reader cannot see at their position, whether
+/// because nothing is emitted there (extracted `<style>`, hoisted `<script>`) or
+/// because what is emitted renders nothing (HTML comments). Whitespace that only
+/// separates such a child from an edge would show up as a spurious space, so the
+/// scan looks straight through them.
+fn is_edge_whitespace(children: &[&JSXChild<'_>], invisible: &[bool], idx: usize) -> bool {
     let is_ignorable = |i: usize, c: &JSXChild<'_>| -> bool {
-        renders_nothing[i]
+        invisible[i]
             || matches!(c, JSXChild::AstroScript(_) | JSXChild::AstroDoctype(_))
             || matches!(c, JSXChild::Text(t) if t.value.as_str().chars().all(|ch| ch.is_ascii_whitespace()))
     };
 
     // Check if this text node is at the leading edge: all children before it
-    // are ignorable, AND at least one of them renders nothing.
+    // are ignorable, AND at least one of them is invisible.
     let before = &children[..idx];
     let at_leading_edge = !before.is_empty()
         && before.iter().enumerate().all(|(i, c)| is_ignorable(i, c))
-        && before.iter().enumerate().any(|(i, _)| renders_nothing[i]);
+        && before.iter().enumerate().any(|(i, _)| invisible[i]);
     if at_leading_edge {
         return true;
     }
 
     // Check if this text node is at the trailing edge: all children after it
-    // are ignorable, AND at least one of them renders nothing.
+    // are ignorable, AND at least one of them is invisible.
     let after = &children[idx + 1..];
     !after.is_empty()
         && after
@@ -1607,7 +1613,7 @@ fn is_edge_whitespace(children: &[&JSXChild<'_>], renders_nothing: &[bool], idx:
         && after
             .iter()
             .enumerate()
-            .any(|(j, _)| renders_nothing[idx + 1 + j])
+            .any(|(j, _)| invisible[idx + 1 + j])
 }
 
 /// Check if an import specifier refers to a CSS file.
