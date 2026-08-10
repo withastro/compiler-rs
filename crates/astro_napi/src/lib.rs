@@ -1,5 +1,6 @@
 //! Astro file compilation to JavaScript.
 
+mod ast_comments;
 mod error;
 
 #[cfg(all(
@@ -24,6 +25,7 @@ use std::collections::HashMap;
 use crate::error::DiagnosticMessage;
 use astro_codegen::{Diagnostic, HoistedScriptType, TransformOptions, extract_styles, transform};
 use oxc_allocator::Allocator;
+use oxc_ast_visit::{VisitMut, utf8_to_utf16::Utf8ToUtf16};
 use oxc_estree::CompactTSSerializer;
 use oxc_estree::ESTree;
 use oxc_parser::{ParseOptions, Parser};
@@ -496,7 +498,7 @@ fn parse_astro_impl(source_text: &str) -> ParseResult {
     let allocator = Allocator::default();
     let source_type = SourceType::astro();
 
-    let ret = Parser::new(&allocator, source_text, source_type)
+    let mut ret = Parser::new(&allocator, source_text, source_type)
         .with_options(ParseOptions::default())
         .parse_astro();
 
@@ -507,9 +509,23 @@ fn parse_astro_impl(source_text: &str) -> ParseResult {
         DiagnosticMessage::from_codegen_list(diags)
     };
 
+    // Comment text must be sliced out before any offset conversion.
+    let mut comments = ast_comments::collect(&ret.root, &ret.body_comments, source_text);
+
+    if let Some(mut converter) = Utf8ToUtf16::new(source_text).converter() {
+        converter.visit_astro_root(&mut ret.root);
+        for comment in &mut comments {
+            converter.convert_span(comment.span_mut());
+        }
+    }
+
     // Serialize the AST to JSON using the ESTree serializer
     let mut serializer = CompactTSSerializer::new(false);
-    ret.root.serialize(&mut serializer);
+    ast_comments::AstroRootWithComments {
+        root: &ret.root,
+        comments: &comments,
+    }
+    .serialize(&mut serializer);
     let ast = serializer.into_string();
 
     ParseResult { ast, diagnostics }

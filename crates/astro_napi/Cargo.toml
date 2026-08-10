@@ -18,6 +18,7 @@ doctest = false
 astro_codegen = { workspace = true }
 oxc_allocator = { workspace = true }
 oxc_ast = { workspace = true, features = ["serialize"] }
+oxc_ast_visit = { workspace = true, features = ["serialize"] }
 oxc_diagnostics = { workspace = true }
 oxc_estree = { workspace = true, features = ["serialize"] }
 oxc_parser = { workspace = true, features = ["astro"] }
