@@ -3324,6 +3324,30 @@ fn test_shorthand_attribute_name_is_escaped_on_element() {
     }
 }
 
+#[test]
+fn test_backtick_in_attribute_name_is_escaped() {
+    let allocator = Allocator::default();
+    for (source, expected) in [
+        ("<p `>x</p>", r"<p \`>"),
+        (r#"<p a`b="c">x</p>"#, r#"<p a\`b="c">"#),
+        (r#"<p a="b" `>x</p>"#, r#"<p a="b" \`>"#),
+    ] {
+        let output = compile_astro(source);
+
+        assert!(
+            output.contains(expected),
+            "Backtick in attribute name should be escaped for `{source}`, got:\n{output}"
+        );
+
+        let parsed = Parser::new(&allocator, &output, SourceType::mjs()).parse();
+        assert!(
+            parsed.errors.is_empty(),
+            "Generated module is not valid JS for `{source}`: {:?}",
+            parsed.errors
+        );
+    }
+}
+
 // Unquoted hex-color attributes (`#` + digit) must not error — the JS lexer's
 // "Invalid Character" from pre-lexing `#18b218` as a private name is dropped.
 #[test]

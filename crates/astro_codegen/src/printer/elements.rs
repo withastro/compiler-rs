@@ -718,15 +718,16 @@ impl<'a> AstroCodegen<'a> {
     /// Print a single HTML attribute using the given output name (for key renames).
     fn print_html_attribute_with_name(&mut self, attr: &JSXAttribute<'a>, name: &str) {
         self.add_source_mapping_for_span(attr.span);
+        let escaped_name = escape_template_literal(name);
         match &attr.value {
             None => {
                 self.print(" ");
-                self.print(name);
+                self.print(&escaped_name);
             }
             Some(value) => match value {
                 JSXAttributeValue::StringLiteral(lit) => {
                     self.print(" ");
-                    self.print(name);
+                    self.print(&escaped_name);
                     self.print("=\"");
                     self.print(&escape_html_attribute(lit.value.as_str()));
                     self.print("\"");
@@ -741,14 +742,14 @@ impl<'a> AstroCodegen<'a> {
                 }
                 JSXAttributeValue::Element(el) => {
                     self.print(" ");
-                    self.print(name);
+                    self.print(&escaped_name);
                     self.print("=\"");
                     self.print_jsx_element(el);
                     self.print("\"");
                 }
                 JSXAttributeValue::Fragment(frag) => {
                     self.print(" ");
-                    self.print(name);
+                    self.print(&escaped_name);
                     self.print("=\"");
                     self.print_jsx_fragment(frag);
                     self.print("\"");
