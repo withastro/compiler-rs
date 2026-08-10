@@ -48,6 +48,78 @@ pub fn escape_double_quotes(s: &str) -> std::borrow::Cow<'_, str> {
     std::borrow::Cow::Owned(s.cow_replace('\r', "\\r").into_owned())
 }
 
+/// Interpret the JavaScript escape sequences spelled out in an attribute value.
+///
+/// Sequences JavaScript leaves undefined (`\.`, `\U`) keep their backslash instead of dropping it.
+pub fn decode_js_escapes(s: &str) -> std::borrow::Cow<'_, str> {
+    if !s.contains('\\') {
+        return std::borrow::Cow::Borrowed(s);
+    }
+
+    let mut result = String::with_capacity(s.len());
+    let mut rest = s;
+
+    while let Some(i) = rest.find('\\') {
+        result.push_str(&rest[..i]);
+        let after_backslash = &rest[i + 1..];
+        match decode_escape(after_backslash) {
+            Some((decoded, len)) => {
+                result.push(decoded);
+                rest = &after_backslash[len..];
+            }
+            None => {
+                result.push('\\');
+                rest = after_backslash;
+            }
+        }
+    }
+    result.push_str(rest);
+
+    std::borrow::Cow::Owned(result)
+}
+
+/// Decode the escape sequence introduced by a `\`, given the text following it.
+///
+/// Returns the character it denotes and how many bytes it spans, or `None` for
+/// anything JavaScript does not define as an escape.
+fn decode_escape(s: &str) -> Option<(char, usize)> {
+    let c = s.chars().next()?;
+    let decoded = match c {
+        'n' => '\n',
+        'r' => '\r',
+        't' => '\t',
+        'b' => '\u{8}',
+        'f' => '\u{c}',
+        'v' => '\u{b}',
+        '\\' | '\'' | '"' | '`' => c,
+        'x' => return decode_hex(&s[1..], 2).map(|decoded| (decoded, 3)),
+        'u' => return decode_unicode_escape(&s[1..]).map(|(decoded, len)| (decoded, len + 1)),
+        _ => return None,
+    };
+    Some((decoded, 1))
+}
+
+/// Decode a `\u` escape, given the text following the `u`.
+///
+/// Handles both `\uHHHH` and `\u{H...}`. Returns the character and how many
+/// bytes follow the `u`.
+fn decode_unicode_escape(s: &str) -> Option<(char, usize)> {
+    let Some(braced) = s.strip_prefix('{') else {
+        return decode_hex(s, 4).map(|decoded| (decoded, 4));
+    };
+    let end = braced.find('}')?;
+    decode_hex(braced, end).map(|decoded| (decoded, end + 2))
+}
+
+/// Decode `digits` hex digits from the start of `s` into a character.
+fn decode_hex(s: &str, digits: usize) -> Option<char> {
+    let hex = s.get(..digits)?;
+    if hex.is_empty() || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    char::from_u32(u32::from_str_radix(hex, 16).ok()?)
+}
+
 /// Escape single quotes for embedding inside a `'...'` string.
 ///
 /// Only escapes `'` — see [`escape_double_quotes`] for rationale on
@@ -322,6 +394,68 @@ mod tests {
             escape_double_quotes("some-class\n  another-class"),
             "some-class\\n  another-class"
         );
+    }
+
+    // ---- decode_js_escapes ----
+
+    #[test]
+    fn js_escapes_no_backslash() {
+        let result = decode_js_escapes("hello world");
+        assert_eq!(&*result, "hello world");
+        assert!(matches!(result, std::borrow::Cow::Borrowed(_)));
+    }
+
+    #[test]
+    fn js_escapes_control_characters() {
+        assert_eq!(&*decode_js_escapes("a\\nb"), "a\nb");
+        assert_eq!(&*decode_js_escapes("a\\rb"), "a\rb");
+        assert_eq!(&*decode_js_escapes("a\\tb"), "a\tb");
+        assert_eq!(&*decode_js_escapes("a\\bb"), "a\u{8}b");
+        assert_eq!(&*decode_js_escapes("a\\fb"), "a\u{c}b");
+        assert_eq!(&*decode_js_escapes("a\\vb"), "a\u{b}b");
+    }
+
+    #[test]
+    fn js_escapes_quotes_and_backslash() {
+        assert_eq!(&*decode_js_escapes("a\\\\b"), "a\\b");
+        assert_eq!(&*decode_js_escapes("a\\'b"), "a'b");
+        assert_eq!(&*decode_js_escapes("a\\\"b"), "a\"b");
+        assert_eq!(&*decode_js_escapes("a\\`b"), "a`b");
+    }
+
+    #[test]
+    fn js_escapes_hex_and_unicode() {
+        assert_eq!(&*decode_js_escapes("\\x41"), "A");
+        assert_eq!(&*decode_js_escapes("\\u0041"), "A");
+        assert_eq!(&*decode_js_escapes("\\u{1F600}"), "\u{1F600}");
+        assert_eq!(&*decode_js_escapes("\\u00a0"), "\u{a0}");
+    }
+
+    #[test]
+    fn js_escapes_undefined_sequences_keep_backslash() {
+        assert_eq!(&*decode_js_escapes("^example\\.com$"), "^example\\.com$");
+        assert_eq!(&*decode_js_escapes("a\\"), "a\\");
+        assert_eq!(&*decode_js_escapes("\\x4"), "\\x4");
+        assert_eq!(&*decode_js_escapes("\\xZZ"), "\\xZZ");
+        assert_eq!(&*decode_js_escapes("\\u12"), "\\u12");
+        assert_eq!(&*decode_js_escapes("\\u{}"), "\\u{}");
+        assert_eq!(&*decode_js_escapes("\\u{110000}"), "\\u{110000}");
+    }
+
+    #[test]
+    fn js_escapes_windows_path_survives_only_where_the_next_character_is_not_an_escape() {
+        assert_eq!(&*decode_js_escapes("C:\\Users\\me"), "C:\\Users\\me");
+        assert_eq!(&*decode_js_escapes("C:\\temp"), "C:\temp");
+        assert_eq!(&*decode_js_escapes("C:\\new"), "C:\new");
+        assert_eq!(&*decode_js_escapes("C:\\bin"), "C:\u{8}in");
+    }
+
+    #[test]
+    fn js_escapes_consecutive_and_multibyte() {
+        assert_eq!(&*decode_js_escapes("\\n\\n"), "\n\n");
+        // an escaped backslash must not turn its neighbour into an escape
+        assert_eq!(&*decode_js_escapes("a\\\\nb"), "a\\nb");
+        assert_eq!(&*decode_js_escapes("héllo\\né"), "héllo\né");
     }
 
     // ---- escape_single_quote ----

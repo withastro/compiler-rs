@@ -870,6 +870,25 @@ import Comp from './Comp.astro';
 }
 
 #[test]
+fn test_component_static_class_escapes_decoded_before_scope_merge() {
+    let source = r#"---
+import Comp from './Comp.astro';
+---
+<Comp class="a\nb" />
+<style>div { color: red; }</style>"#;
+    let output = compile_astro(source);
+
+    assert!(
+        output.contains(r#""a\nb astro-"#),
+        "Escape sequences in a static class should be interpreted before the scope class is merged: {output}"
+    );
+    assert!(
+        !output.contains(r#""a\\nb"#),
+        "Static class should not keep a literal backslash: {output}"
+    );
+}
+
+#[test]
 fn test_component_dynamic_class_merged_with_scope() {
     // When a component has a dynamic class={expr} and scoped styles are active,
     // the scope class should be merged: "class":(((expr) ?? "") + " astro-HASH")
