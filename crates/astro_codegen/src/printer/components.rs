@@ -10,7 +10,6 @@ use super::escape::{decode_html_entities, escape_double_quotes, escape_template_
 use super::expr_to_string;
 use super::runtime;
 use super::whitespace::has_is_raw_attr;
-use crate::options::CompactMode;
 use crate::scanner::{
     get_jsx_attribute_name, is_custom_element, is_equal_jsx_attribute_name,
     jsx_attribute_value_is_empty,
@@ -105,10 +104,8 @@ impl<'a> AstroCodegen<'a> {
         // Check if this is a custom element (has dash in name)
         let is_custom = is_custom_element(name);
 
-        // Track raw element depth for compact whitespace collapsing.
         // A component with `is:raw` has its slot children treated as raw text.
-        let is_raw = self.options.compact != CompactMode::Disabled
-            && has_is_raw_attr(&el.opening_element.attributes);
+        let is_raw = has_is_raw_attr(&el.opening_element.attributes);
         if is_raw {
             self.raw_element_depth += 1;
         }

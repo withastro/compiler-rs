@@ -3533,3 +3533,20 @@ fn test_compact_hoisted_script_in_pre_keeps_whitespace_verbatim() {
         );
     }
 }
+
+#[test]
+fn test_extracted_style_in_pre_keeps_whitespace_verbatim() {
+    let source = "<pre><code>x</code>\n  <style>\n  a { color: red; }\n</style></pre>";
+
+    for compact in [
+        crate::CompactMode::Html,
+        crate::CompactMode::Jsx,
+        crate::CompactMode::Disabled,
+    ] {
+        let output = compile_link_component(source, compact);
+        assert!(
+            output.contains("</code>\n  </pre>"),
+            "{compact:?}: whitespace inside <pre> is content and must survive: {output}"
+        );
+    }
+}

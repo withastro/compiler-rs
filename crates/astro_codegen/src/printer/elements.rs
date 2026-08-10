@@ -11,7 +11,7 @@ use super::runtime;
 use super::whitespace::{has_is_raw_attr, is_raw_element_name};
 use super::{AstroCodegen, expr_to_string};
 use crate::css_scoping;
-use crate::options::{CompactMode, ScopedStyleStrategy};
+use crate::options::ScopedStyleStrategy;
 use crate::scanner::{
     get_jsx_attribute_name, is_equal_jsx_attribute_name, jsx_attribute_value_is_empty,
 };
@@ -139,11 +139,9 @@ impl<'a> AstroCodegen<'a> {
             self.has_explicit_head = true;
         }
 
-        // Track raw element depth for compact whitespace collapsing.
         // Raw elements are those whose text content must never be modified:
         // <pre>, <textarea>, <script>, <style>, etc., and any element with `is:raw`.
-        let is_raw = self.options.compact != CompactMode::Disabled
-            && (is_raw_element_name(name) || has_is_raw_attr(&el.opening_element.attributes));
+        let is_raw = is_raw_element_name(name) || has_is_raw_attr(&el.opening_element.attributes);
         if is_raw {
             self.raw_element_depth += 1;
         }

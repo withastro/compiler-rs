@@ -1342,10 +1342,10 @@ impl<'a> AstroCodegen<'a> {
         if compact == CompactMode::Disabled {
             for (i, child) in children.iter().enumerate() {
                 if let JSXChild::Text(text) = *child {
-                    // In non-compact mode, skip whitespace-only text nodes
-                    // that are at the edge of visible content (adjacent only
-                    // to extracted elements like <style>).
-                    if text.value.as_str().chars().all(|c| c.is_ascii_whitespace())
+                    // Skip whitespace-only text nodes at the edge of visible content,
+                    // but never inside <pre> and friends, where every byte is significant.
+                    if self.raw_element_depth == 0
+                        && text.value.as_str().chars().all(|c| c.is_ascii_whitespace())
                         && is_edge_whitespace(children, &extracted, i)
                     {
                         continue;
