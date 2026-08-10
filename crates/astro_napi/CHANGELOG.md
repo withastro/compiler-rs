@@ -1,5 +1,16 @@
 # @astrojs/compiler-binding
 
+## 0.4.0
+
+### Minor Changes
+
+- bc10d43: Adds a `comments` array to the AST returned by `parse()`, covering comments in the frontmatter, in `<script>` blocks, and in the template.
+- bc10d43: `parse()` now reports node and comment positions as UTF-16 offsets, so they line up with JavaScript string indices. Previously they were UTF-8 byte offsets, which drifted on any source containing non-ASCII characters.
+
+### Patch Changes
+
+- 90af674: Fixes an issue where a `<script define:vars={...}>` element lost all of its other attributes (such as `data-astro-rerun`, `id`, or `nonce`) in the compiled output.
+
 ## 0.3.2
 
 ### Patch Changes
