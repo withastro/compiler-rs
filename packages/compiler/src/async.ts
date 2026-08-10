@@ -15,7 +15,13 @@ export type { AsyncTransformOptions as TransformOptions } from './types.js';
 import { compileAstro, parseAstro } from '@astrojs/compiler-binding';
 import { mapOptions, mapParseResult, mapResult } from './shared.js';
 export { preprocessStyles } from './shared.js';
-import type { AsyncTransformOptions, Component, ParseResult, TransformResult } from './types.js';
+import type {
+	AsyncTransformOptions,
+	Component,
+	ParseOptions,
+	ParseResult,
+	TransformResult,
+} from './types.js';
 
 export async function transform(
 	input: string,
@@ -53,8 +59,8 @@ export async function transform(
 	return result;
 }
 
-export async function parse(input: string): Promise<ParseResult> {
-	return mapParseResult(await parseAstro(input));
+export async function parse(input: string, options?: ParseOptions): Promise<ParseResult> {
+	return mapParseResult(await parseAstro(input, options));
 }
 
 export async function convertToTSX(_input: string): Promise<never> {

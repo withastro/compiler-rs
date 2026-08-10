@@ -132,3 +132,48 @@ describe('parse: empty file', () => {
 		assert.equal(diagnostics.length, 0);
 	});
 });
+
+describe('parse: comments', () => {
+	it('collects frontmatter, template and script comments in source order', async () => {
+		const { ast } = await parse('---\n// front\n---\n{/* tpl */}\n<script>\n// scr\n</script>\n');
+		assert.deepEqual(
+			ast.comments.map((c: any) => c.value),
+			[' front', ' tpl ', ' scr'],
+		);
+	});
+
+	it('does not report a script comment twice', async () => {
+		const { ast } = await parse('<script>\n// once\n</script>');
+		assert.equal(ast.comments.length, 1);
+	});
+});
+
+describe('parse: utf16Offsets', () => {
+	const source = '<p>héllo 😀</p>';
+
+	it('reports utf-8 byte offsets by default', async () => {
+		const { ast } = await parse(source);
+		const text = findText(ast);
+		assert.notEqual(source.slice(text.start, text.end), 'héllo 😀');
+	});
+
+	it('reports utf-16 offsets that match JavaScript string indices', async () => {
+		const { ast } = await parse(source, { utf16Offsets: true });
+		const text = findText(ast);
+		assert.equal(source.slice(text.start, text.end), 'héllo 😀');
+	});
+
+	it('converts comment spans too', async () => {
+		const withComment = '<p>😀</p>\n{/* c */}';
+		const { ast } = await parse(withComment, { utf16Offsets: true });
+		assert.equal(
+			withComment.slice(ast.comments[0].start, ast.comments[0].end),
+			'{/* c */}'.slice(1, -1),
+		);
+	});
+
+	function findText(ast: any) {
+		const p = ast.body.find((n: any) => n.type === 'JSXElement');
+		return p.children.find((c: any) => c.type === 'JSXText');
+	}
+});

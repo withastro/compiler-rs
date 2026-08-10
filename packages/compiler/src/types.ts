@@ -41,6 +41,11 @@ export interface PreprocessedStyles {
 
 export interface ParseOptions {
 	position?: boolean;
+	/**
+	 * Report `start`/`end` as UTF-16 code unit offsets, matching how JavaScript indexes
+	 * strings. Defaults to `false`, which reports UTF-8 byte offsets.
+	 */
+	utf16Offsets?: boolean;
 }
 
 /**
