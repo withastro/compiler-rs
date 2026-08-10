@@ -3417,3 +3417,119 @@ fn test_component_transition_persist_expression_uses_add_attribute_value() {
         "component transition:persist expression must be emitted verbatim: {output}"
     );
 }
+
+fn compile_link_component(source: &str, compact: crate::CompactMode) -> String {
+    compile_astro_with_options(
+        source,
+        TransformOptions::new()
+            .with_internal_url("http://localhost:3000/")
+            .with_filename("/src/components/Link.astro")
+            .with_compact(compact),
+    )
+    .code
+}
+
+#[test]
+fn test_compact_no_space_between_element_and_hoisted_script() {
+    // From https://github.com/withastro/compiler-rs/issues/112
+    let source = "---\nconst { href } = Astro.props\n---\n\n<a href={href}><slot /></a>\n\n<script>\n  console.log('mounted')\n</script>\n";
+
+    for compact in [crate::CompactMode::Html, crate::CompactMode::Jsx] {
+        let output = compile_link_component(source, compact);
+        assert!(
+            output.contains("</a>${$$renderScript("),
+            "{compact:?}: no space belongs between </a> and the hoisted script: {output}"
+        );
+    }
+}
+
+#[test]
+fn test_compact_hoisted_script_keeps_whitespace_between_visible_siblings() {
+    let source = "<a href=\"#\">one</a>\n<script>\n  console.log('mounted')\n</script>\n<a href=\"#\">two</a>";
+    let output = compile_link_component(source, crate::CompactMode::Html);
+
+    assert!(
+        output.contains("</a> ${$$renderScript("),
+        "space between the two links must survive: {output}"
+    );
+}
+
+#[test]
+fn test_compact_punctuation_stays_flush_after_component() {
+    let source = "---\nimport Link from './Link.astro'\n---\n<p>Read our <Link href=\"/fees\">fees page</Link>.</p>";
+    let output = compile_link_component(source, crate::CompactMode::Html);
+
+    assert!(
+        output.contains("})}.</p>"),
+        "punctuation must stay flush against the component: {output}"
+    );
+}
+
+#[test]
+fn test_compact_single_space_after_component_preserved() {
+    let source = "---\nimport Link from './Link.astro'\n---\n<p>Read our <Link href=\"/fees\">fees</Link> page.</p>";
+    let output = compile_link_component(source, crate::CompactMode::Html);
+
+    assert!(
+        output.contains("})} page.</p>"),
+        "authored space after the component must collapse to one space, not vanish: {output}"
+    );
+}
+
+#[test]
+fn test_compact_hoisted_script_does_not_hide_trailing_content() {
+    let source = "<a href=\"#\">link</a>\n<script>\n  console.log('mounted')\n</script>\ntrailing";
+    let output = compile_link_component(source, crate::CompactMode::Html);
+
+    assert!(
+        output.contains("$$renderScript("),
+        "the hoisted script must still be emitted: {output}"
+    );
+    assert!(
+        output.contains("trailing"),
+        "content after the hoisted script must still be emitted: {output}"
+    );
+}
+
+#[test]
+fn test_compact_nested_hoisted_script_drops_adjacent_whitespace() {
+    let source =
+        "<div><a href=\"#\">link</a>\n  <script>\n  console.log('mounted')\n</script></div>";
+
+    for compact in [crate::CompactMode::Html, crate::CompactMode::Jsx] {
+        let output = compile_link_component(source, compact);
+        assert!(
+            output.contains("</a>${$$renderScript("),
+            "{compact:?}: whitespace before a nested hoisted script must not survive: {output}"
+        );
+    }
+}
+
+#[test]
+fn test_compact_jsx_drops_same_line_spaces_before_hoisted_script() {
+    // Jsx mode otherwise treats same-line spaces between elements as significant.
+    let source = "<a href=\"#\">link</a>  <script>\n  console.log('mounted')\n</script>";
+    let output = compile_link_component(source, crate::CompactMode::Jsx);
+
+    assert!(
+        output.contains("</a>${$$renderScript("),
+        "same-line spaces before a hoisted script must not survive: {output}"
+    );
+}
+
+#[test]
+fn test_compact_hoisted_script_in_pre_keeps_whitespace_verbatim() {
+    let source = "<pre><code>x</code>\n  <script>\n  console.log('mounted')\n</script></pre>";
+
+    for compact in [
+        crate::CompactMode::Html,
+        crate::CompactMode::Jsx,
+        crate::CompactMode::Disabled,
+    ] {
+        let output = compile_link_component(source, compact);
+        assert!(
+            output.contains("</code>\n  ${$$renderScript("),
+            "{compact:?}: whitespace inside <pre> is content and must survive: {output}"
+        );
+    }
+}

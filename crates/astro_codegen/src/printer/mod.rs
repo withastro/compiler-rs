@@ -1158,11 +1158,8 @@ impl<'a> AstroCodegen<'a> {
             None => return, // all whitespace / doctypes
         };
 
-        // Also skip trailing whitespace-only text nodes at the template root
-        // level (matching Go compiler's TrimTrailingSpace behaviour).
-        // Extracted elements (e.g. <style>, hoisted <script>) are also
-        // skipped so that whitespace between the last real element and an
-        // extracted element doesn't leak into the output.
+        // Trailing whitespace at the template root is not content, and neither is
+        // the whitespace that trails the last real element before an extracted one.
         let last_real_idx = remaining
             .iter()
             .rposition(|c| match c {
@@ -1174,20 +1171,19 @@ impl<'a> AstroCodegen<'a> {
             .unwrap_or(remaining.len());
         let remaining = &remaining[..last_real_idx];
 
-        // Print all but the last child normally, then trim trailing whitespace
-        // from the last text node — matching Go compiler's TrimTrailingSpace
-        // behaviour (the source file may end with a newline after real content).
-        if let Some((last, rest)) = remaining.split_last() {
-            self.print_jsx_children_compact(rest);
-            if let JSXChild::Text(text) = last {
+        // The newline a source file usually ends with must not reach the template.
+        match remaining.split_last() {
+            Some((JSXChild::Text(text), rest)) => {
+                self.print_jsx_children_compact(rest);
                 let trimmed = text.value.trim_end();
                 if !trimmed.is_empty() {
                     self.add_source_mapping_for_span(text.span);
                     self.print(&escape_template_literal(trimmed));
                 }
-            } else {
-                self.print_jsx_children_compact(std::slice::from_ref(last));
             }
+            // One slice: the last child must stay a sibling of the whitespace before it.
+            Some(_) => self.print_jsx_children_compact(remaining),
+            None => {}
         }
     }
 
@@ -1361,26 +1357,27 @@ impl<'a> AstroCodegen<'a> {
             return;
         }
 
-        // Count non-ignored siblings for lone-child detection.
-        // A text node is "lone" if it's the only visible child.
-        // Exclude extracted elements (e.g. <style>) from the count so that
-        // whitespace between real content and an extracted element is not
-        // preserved as a spurious space.
+        let invisible: Vec<bool> = children
+            .iter()
+            .enumerate()
+            .map(|(i, &c)| extracted[i] || self.is_hoisted_script_child(c))
+            .collect();
+
         let visible_count = children
             .iter()
             .enumerate()
             .filter(|(i, c)| {
-                !matches!(c, JSXChild::AstroScript(_) | JSXChild::AstroDoctype(_)) && !extracted[*i]
+                !matches!(c, JSXChild::AstroScript(_) | JSXChild::AstroDoctype(_)) && !invisible[*i]
             })
             .count();
 
         for (i, child) in children.iter().enumerate() {
             if let JSXChild::Text(text) = *child {
-                // Skip whitespace-only text nodes at the edge of visible
-                // content (e.g. between the last real element and an
-                // extracted <style>).
-                if text.value.as_str().chars().all(|c| c.is_ascii_whitespace())
-                    && is_edge_whitespace(children, &extracted, i)
+                // Skip whitespace-only text nodes at the edge of visible content,
+                // but never inside <pre> and friends, where every byte is significant.
+                if self.raw_element_depth == 0
+                    && text.value.as_str().chars().all(|c| c.is_ascii_whitespace())
+                    && is_edge_whitespace(children, &invisible, i)
                 {
                     continue;
                 }
@@ -1393,6 +1390,18 @@ impl<'a> AstroCodegen<'a> {
                 self.print_jsx_child(child);
             }
         }
+    }
+
+    /// Check if a JSX child is a `<script>` hoisted into the bundle. Its
+    /// `$$renderScript` call renders no visible HTML, and nothing at all once the
+    /// script has been deduplicated across component instances.
+    fn is_hoisted_script_child(&self, child: &JSXChild<'a>) -> bool {
+        let JSXChild::Element(el) = child else {
+            return false;
+        };
+        get_jsx_element_name(&el.opening_element.name) == "script"
+            && !self.in_non_hoistable
+            && is_extracted_hoisted_script(el)
     }
 
     /// Check if a JSX child will be completely removed from output (extracted).
@@ -1563,31 +1572,32 @@ impl<'a> AstroCodegen<'a> {
 }
 
 /// Check if a whitespace-only text node at position `idx` is at the edge of
-/// visible content — i.e. there are no non-extracted, non-whitespace-only
-/// children between it and the start/end of the children list.
+/// visible content — i.e. there are no rendering, non-whitespace-only children
+/// between it and the start/end of the children list.
 ///
-/// This is used to remove trailing whitespace before extracted `<style>`
-/// elements (and leading whitespace after them), which would otherwise
-/// render as a spurious space in the HTML output.
-fn is_edge_whitespace(children: &[&JSXChild<'_>], extracted: &[bool], idx: usize) -> bool {
+/// `renders_nothing` flags the children that produce no visible output at their
+/// position (extracted `<style>` elements, hoisted `<script>` elements). This is
+/// used to remove the whitespace that trails or leads such a child, which would
+/// otherwise render as a spurious space in the HTML output.
+fn is_edge_whitespace(children: &[&JSXChild<'_>], renders_nothing: &[bool], idx: usize) -> bool {
     let is_ignorable = |i: usize, c: &JSXChild<'_>| -> bool {
-        extracted[i]
+        renders_nothing[i]
             || matches!(c, JSXChild::AstroScript(_) | JSXChild::AstroDoctype(_))
             || matches!(c, JSXChild::Text(t) if t.value.as_str().chars().all(|ch| ch.is_ascii_whitespace()))
     };
 
     // Check if this text node is at the leading edge: all children before it
-    // are ignorable, AND at least one of them is an extracted element.
+    // are ignorable, AND at least one of them renders nothing.
     let before = &children[..idx];
     let at_leading_edge = !before.is_empty()
         && before.iter().enumerate().all(|(i, c)| is_ignorable(i, c))
-        && before.iter().enumerate().any(|(i, _)| extracted[i]);
+        && before.iter().enumerate().any(|(i, _)| renders_nothing[i]);
     if at_leading_edge {
         return true;
     }
 
     // Check if this text node is at the trailing edge: all children after it
-    // are ignorable, AND at least one of them is an extracted element.
+    // are ignorable, AND at least one of them renders nothing.
     let after = &children[idx + 1..];
     !after.is_empty()
         && after
@@ -1597,7 +1607,7 @@ fn is_edge_whitespace(children: &[&JSXChild<'_>], extracted: &[bool], idx: usize
         && after
             .iter()
             .enumerate()
-            .any(|(j, _)| extracted[idx + 1 + j])
+            .any(|(j, _)| renders_nothing[idx + 1 + j])
 }
 
 /// Check if an import specifier refers to a CSS file.
