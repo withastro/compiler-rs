@@ -148,28 +148,25 @@ describe('parse: comments', () => {
 	});
 });
 
-describe('parse: utf16Offsets', () => {
-	const source = '<p>héllo 😀</p>';
-
-	it('reports utf-8 byte offsets by default', async () => {
+describe('parse: offsets', () => {
+	it('reports offsets that match JavaScript string indices', async () => {
+		const source = '<p>héllo 😀</p>';
 		const { ast } = await parse(source);
-		const text = findText(ast);
-		assert.notEqual(source.slice(text.start, text.end), 'héllo 😀');
-	});
-
-	it('reports utf-16 offsets that match JavaScript string indices', async () => {
-		const { ast } = await parse(source, { utf16Offsets: true });
 		const text = findText(ast);
 		assert.equal(source.slice(text.start, text.end), 'héllo 😀');
 	});
 
-	it('converts comment spans too', async () => {
-		const withComment = '<p>😀</p>\n{/* c */}';
-		const { ast } = await parse(withComment, { utf16Offsets: true });
-		assert.equal(
-			withComment.slice(ast.comments[0].start, ast.comments[0].end),
-			'{/* c */}'.slice(1, -1),
-		);
+	it('reports comment spans in the same units', async () => {
+		const source = '<p>😀</p>\n{/* c */}';
+		const { ast } = await parse(source);
+		assert.equal(source.slice(ast.comments[0].start, ast.comments[0].end), '/* c */');
+	});
+
+	it('leaves ascii-only sources unchanged', async () => {
+		const source = '<p>plain</p>';
+		const { ast } = await parse(source);
+		const text = findText(ast);
+		assert.equal(source.slice(text.start, text.end), 'plain');
 	});
 
 	function findText(ast: any) {

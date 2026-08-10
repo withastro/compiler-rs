@@ -257,16 +257,7 @@ export interface HoistedScript {
  *
  * Returns the oxc AST in ESTree-compatible JSON format.
  */
-export declare function parseAstro(sourceText: string, options?: ParseAstroOptions | undefined | null): Promise<ParseResult>
-
-/** Options for `parseAstro` / `parseAstroSync`. */
-export interface ParseAstroOptions {
-  /**
-   * Report `start`/`end` as UTF-16 code unit offsets, matching how JavaScript indexes
-   * strings. Defaults to `false`, which reports UTF-8 byte offsets.
-   */
-  utf16Offsets?: boolean
-}
+export declare function parseAstro(sourceText: string): Promise<ParseResult>
 
 /**
  * Parse an Astro file into an AST synchronously.
@@ -286,7 +277,7 @@ export interface ParseAstroOptions {
  * console.log(tree.type); // "AstroRoot"
  * ```
  */
-export declare function parseAstroSync(sourceText: string, options?: ParseAstroOptions | undefined | null): ParseResult
+export declare function parseAstroSync(sourceText: string): ParseResult
 
 /** Result of parsing an Astro file into an AST. */
 export interface ParseResult {

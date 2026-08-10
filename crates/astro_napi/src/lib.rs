@@ -494,16 +494,7 @@ pub struct ParseResult {
     pub diagnostics: Vec<DiagnosticMessage>,
 }
 
-/// Options for `parseAstro` / `parseAstroSync`.
-#[napi(object)]
-#[derive(Default)]
-pub struct ParseAstroOptions {
-    /// Report `start`/`end` as UTF-16 code unit offsets, matching how JavaScript indexes
-    /// strings. Defaults to `false`, which reports UTF-8 byte offsets.
-    pub utf16_offsets: Option<bool>,
-}
-
-fn parse_astro_impl(source_text: &str, options: &ParseAstroOptions) -> ParseResult {
+fn parse_astro_impl(source_text: &str) -> ParseResult {
     let allocator = Allocator::default();
     let source_type = SourceType::astro();
 
@@ -521,9 +512,7 @@ fn parse_astro_impl(source_text: &str, options: &ParseAstroOptions) -> ParseResu
     // Comment text must be sliced out before any offset conversion.
     let mut comments = ast_comments::collect(&ret.root, &ret.body_comments, source_text);
 
-    if options.utf16_offsets.unwrap_or(false)
-        && let Some(mut converter) = Utf8ToUtf16::new(source_text).converter()
-    {
+    if let Some(mut converter) = Utf8ToUtf16::new(source_text).converter() {
         converter.visit_astro_root(&mut ret.root);
         for comment in &mut comments {
             converter.convert_span(comment.span_mut());
@@ -559,13 +548,12 @@ fn parse_astro_impl(source_text: &str, options: &ParseAstroOptions) -> ParseResu
 /// console.log(tree.type); // "AstroRoot"
 /// ```
 #[napi]
-pub fn parse_astro_sync(source_text: String, options: Option<ParseAstroOptions>) -> ParseResult {
-    parse_astro_impl(&source_text, &options.unwrap_or_default())
+pub fn parse_astro_sync(source_text: String) -> ParseResult {
+    parse_astro_impl(&source_text)
 }
 
 pub struct ParseTask {
     source_text: String,
-    options: ParseAstroOptions,
 }
 
 #[napi]
@@ -575,7 +563,7 @@ impl Task for ParseTask {
 
     fn compute(&mut self) -> napi::Result<Self::Output> {
         let source_text = mem::take(&mut self.source_text);
-        Ok(parse_astro_impl(&source_text, &self.options))
+        Ok(parse_astro_impl(&source_text))
     }
 
     fn resolve(&mut self, _: napi::Env, result: Self::Output) -> napi::Result<Self::JsValue> {
@@ -587,12 +575,6 @@ impl Task for ParseTask {
 ///
 /// Returns the oxc AST in ESTree-compatible JSON format.
 #[napi]
-pub fn parse_astro(
-    source_text: String,
-    options: Option<ParseAstroOptions>,
-) -> AsyncTask<ParseTask> {
-    AsyncTask::new(ParseTask {
-        source_text,
-        options: options.unwrap_or_default(),
-    })
+pub fn parse_astro(source_text: String) -> AsyncTask<ParseTask> {
+    AsyncTask::new(ParseTask { source_text })
 }

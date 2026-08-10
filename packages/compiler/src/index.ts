@@ -18,7 +18,6 @@ export { preprocessStyles } from './shared.js';
 import type {
 	Component,
 	ConvertToTSXOptions,
-	ParseOptions,
 	ParseResult,
 	TransformOptions,
 	TransformResult,
@@ -57,8 +56,8 @@ export function transform(input: string, options?: TransformOptions): TransformR
 	return result;
 }
 
-export function parse(input: string, options?: ParseOptions): ParseResult {
-	return mapParseResult(parseAstroSync(input, options));
+export function parse(input: string): ParseResult {
+	return mapParseResult(parseAstroSync(input));
 }
 
 export function convertToTSX(_input: string, _options: ConvertToTSXOptions): never {
