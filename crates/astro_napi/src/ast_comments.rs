@@ -83,11 +83,18 @@ pub fn collect<'s>(
     body_comments: &[Comment],
     source_text: &'s str,
 ) -> Vec<SerializedComment<'s>> {
-    let mut collector = ProgramCommentCollector { source_text, comments: Vec::new() };
+    let mut collector = ProgramCommentCollector {
+        source_text,
+        comments: Vec::new(),
+    };
     collector.visit_astro_root(root);
 
     let mut comments = collector.comments;
-    comments.extend(body_comments.iter().map(|comment| to_serialized(comment, source_text)));
+    comments.extend(
+        body_comments
+            .iter()
+            .map(|comment| to_serialized(comment, source_text)),
+    );
     comments.sort_unstable_by_key(|comment| (comment.span.start, comment.span.end));
     // `<script>` contents are lexed twice — once as body trivia, once by the script re-parse.
     comments.dedup_by_key(|comment| comment.span);

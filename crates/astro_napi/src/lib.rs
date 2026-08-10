@@ -532,8 +532,11 @@ fn parse_astro_impl(source_text: &str, options: &ParseAstroOptions) -> ParseResu
 
     // Serialize the AST to JSON using the ESTree serializer
     let mut serializer = CompactTSSerializer::new(false);
-    ast_comments::AstroRootWithComments { root: &ret.root, comments: &comments }
-        .serialize(&mut serializer);
+    ast_comments::AstroRootWithComments {
+        root: &ret.root,
+        comments: &comments,
+    }
+    .serialize(&mut serializer);
     let ast = serializer.into_string();
 
     ParseResult { ast, diagnostics }
@@ -588,5 +591,8 @@ pub fn parse_astro(
     source_text: String,
     options: Option<ParseAstroOptions>,
 ) -> AsyncTask<ParseTask> {
-    AsyncTask::new(ParseTask { source_text, options: options.unwrap_or_default() })
+    AsyncTask::new(ParseTask {
+        source_text,
+        options: options.unwrap_or_default(),
+    })
 }
