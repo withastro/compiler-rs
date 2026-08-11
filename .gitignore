@@ -11,6 +11,7 @@ crates/astro_napi/npm
 
 # Rust
 /target
+Cargo.lock
 .idea/
 
 # insta pending snapshots
