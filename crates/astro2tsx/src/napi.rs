@@ -101,7 +101,11 @@ pub fn convert_to_tsx(source: String, options: Option<ConvertToTsxOptions>) -> C
             .into_iter()
             .map(extracted_tag_to_napi)
             .collect(),
-        styles: result.styles.into_iter().map(extracted_tag_to_napi).collect(),
+        styles: result
+            .styles
+            .into_iter()
+            .map(extracted_tag_to_napi)
+            .collect(),
         has_parse_errors: result.has_parse_errors,
     }
 }

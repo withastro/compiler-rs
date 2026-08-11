@@ -9,9 +9,7 @@ test('emits the TSX prefix and a Fragment-wrapped body', () => {
 });
 
 test('rewrites top-level returns to throws', () => {
-	const result = convertToTsx(
-		"---\nif (cond) {\n\treturn Astro.redirect('/x');\n}\n---\n",
-	);
+	const result = convertToTsx("---\nif (cond) {\n\treturn Astro.redirect('/x');\n}\n---\n");
 	assert.match(result.code, /throw\s+Astro\.redirect/);
 	assert.doesNotMatch(result.code, /return Astro\.redirect/);
 });
@@ -33,13 +31,10 @@ test('reports parse errors but still produces output', () => {
 });
 
 test('records frontmatter and body byte ranges', () => {
-	const result = convertToTsx("---\nlet x = 1;\n---\n<p></p>");
+	const result = convertToTsx('---\nlet x = 1;\n---\n<p></p>');
 	assert.ok(result.frontmatter.end > result.frontmatter.start);
 	assert.ok(result.body.end > result.body.start);
-	const frontmatterSlice = result.code.slice(
-		result.frontmatter.start,
-		result.frontmatter.end,
-	);
+	const frontmatterSlice = result.code.slice(result.frontmatter.start, result.frontmatter.end);
 	assert.match(frontmatterSlice, /let x = 1;/);
 });
 

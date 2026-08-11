@@ -19,6 +19,7 @@
 #![deny(clippy::use_self)]
 
 mod frontmatter;
+#[cfg(not(test))]
 mod napi;
 mod printer;
 mod props;
