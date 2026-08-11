@@ -167,7 +167,18 @@ fn spread_object_entries_are_comma_separated_without_a_leading_comma() {
         actual.contains("{...{\"@click\":true,\"@other\":true}}"),
         "{actual}"
     );
-    assert!(!actual.contains("{...{,"), "leading comma in:\n{actual}");
+
+    // A dotted directive reaches the spread but emits no entry of its own.
+    for input in [
+        "<div client:load.foo @z={} />",
+        "<div @z={} client:load.foo />",
+    ] {
+        let actual = convert(input);
+        assert!(
+            actual.contains("{...{\"@z\":true}}"),
+            "stray separator for {input:?}:\n{actual}"
+        );
+    }
 }
 
 #[test]
