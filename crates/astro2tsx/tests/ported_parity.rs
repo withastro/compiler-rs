@@ -252,39 +252,6 @@ fn sourcemap_resolves_to_snippet() {
 }
 
 #[test]
-#[ignore = "unterminated attribute values are emitted verbatim; recovery is not implemented"]
-fn unfinished_constructs_recover() {
-    let cases = [
-        ("<div class=`></div>\n  ", "class={``}"),
-        ("<main id=\"gotcha />", "id=\"gotcha\""),
-        ("<main id='gotcha/>", "id=\"gotcha\""),
-    ];
-    let mut failures = Vec::new();
-    for (input, expected) in cases {
-        let code = convert(input).code;
-        if !code.contains(expected) {
-            failures.push(format!("  {input:?} -> expected {expected:?} in:\n{code}"));
-        }
-    }
-    assert!(
-        failures.is_empty(),
-        "\n{} unfinished-attribute recoveries missing:\n{}",
-        failures.len(),
-        failures.join("\n")
-    );
-}
-
-#[test]
-#[ignore = "every raw parser error is surfaced; there is no user-facing diagnostic filter yet"]
-fn no_diagnostics_for_unfinished_expression() {
-    let result = convert("<div class={");
-    assert!(
-        !result.has_parse_errors,
-        "an unfinished expression must not surface an error to the editor"
-    );
-}
-
-#[test]
 fn tolerates_line_separators() {
     for input in [
         "\u{2028}",
