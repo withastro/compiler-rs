@@ -11,9 +11,9 @@
 
 use biome_js_parser::{JsParserOptions, parse};
 use biome_js_syntax::{
-    AnyJsRoot, JsFileSource, JsLanguage, JsSyntaxKind, TsInterfaceDeclaration,
-    TsTypeAliasDeclaration,
+    AnyJsRoot, JsLanguage, JsSyntaxKind, TsInterfaceDeclaration, TsTypeAliasDeclaration,
 };
+use biome_languages::JsFileSource;
 use biome_rowan::{AstNode, AstNodeList, SyntaxNode};
 
 type JsNode = SyntaxNode<JsLanguage>;

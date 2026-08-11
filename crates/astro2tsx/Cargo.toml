@@ -14,17 +14,13 @@ crate-type = ["cdylib", "lib"]
 test       = true
 doctest    = false
 
-# Path deps into a sibling Biome checkout. Cargo follows the path into
-# Biome's own workspace, so the `workspace = true` deps inside each
-# Biome crate resolve from `../../../biome/Cargo.toml`. Switch to git
-# deps once the Astro-specific lexer changes (template-literal attribute
-# values) land in a published Biome version.
 [dependencies]
-biome_html_parser = { path = "../../../biome/crates/biome_html_parser" }
-biome_html_syntax = { path = "../../../biome/crates/biome_html_syntax" }
-biome_js_parser   = { path = "../../../biome/crates/biome_js_parser" }
-biome_js_syntax   = { path = "../../../biome/crates/biome_js_syntax" }
-biome_rowan       = { path = "../../../biome/crates/biome_rowan" }
+biome_html_parser = { git = "https://github.com/Princesseuh/biome", branch = "fix/astro" }
+biome_html_syntax = { git = "https://github.com/Princesseuh/biome", branch = "fix/astro" }
+biome_js_parser   = { git = "https://github.com/Princesseuh/biome", branch = "fix/astro" }
+biome_js_syntax   = { git = "https://github.com/Princesseuh/biome", branch = "fix/astro" }
+biome_languages   = { git = "https://github.com/Princesseuh/biome", branch = "fix/astro" }
+biome_rowan       = { git = "https://github.com/Princesseuh/biome", branch = "fix/astro" }
 
 napi        = { workspace = true }
 napi-derive = { workspace = true }

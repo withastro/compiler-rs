@@ -28,7 +28,7 @@ pub mod sourcemap;
 mod utils;
 
 use biome_html_parser::parse_html;
-use biome_html_syntax::HtmlFileSource;
+use biome_languages::HtmlFileSource;
 
 pub use crate::sourcemap::{ExtractedKind, ExtractedTag, GeneratedRange, Mapping};
 
