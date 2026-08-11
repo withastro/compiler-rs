@@ -103,12 +103,7 @@ impl Printer {
         });
     }
 
-    pub(crate) fn add_style_block(
-        &mut self,
-        range: GeneratedRange,
-        content: String,
-        lang: String,
-    ) {
+    pub(crate) fn add_style_block(&mut self, range: GeneratedRange, content: String, lang: String) {
         self.styles.push(ExtractedTag {
             range,
             kind: ExtractedKind::Style,
@@ -117,11 +112,7 @@ impl Printer {
         });
     }
 
-    pub(crate) fn add_event_attribute(
-        &mut self,
-        range: GeneratedRange,
-        content: String,
-    ) {
+    pub(crate) fn add_event_attribute(&mut self, range: GeneratedRange, content: String) {
         self.scripts.push(ExtractedTag {
             range,
             kind: ExtractedKind::EventAttribute,
@@ -130,11 +121,7 @@ impl Printer {
         });
     }
 
-    pub(crate) fn add_style_attribute(
-        &mut self,
-        range: GeneratedRange,
-        content: String,
-    ) {
+    pub(crate) fn add_style_attribute(&mut self, range: GeneratedRange, content: String) {
         self.styles.push(ExtractedTag {
             range,
             kind: ExtractedKind::StyleAttribute,

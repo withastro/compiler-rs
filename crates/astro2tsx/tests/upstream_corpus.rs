@@ -125,8 +125,7 @@ fn report_parity_with_upstream() {
     let corpus = load_corpus();
     assert!(!corpus.is_empty(), "corpus is empty — regenerate it");
 
-    let mut by_file: BTreeMap<String, (usize, usize, Vec<String>, Vec<String>)> =
-        BTreeMap::new();
+    let mut by_file: BTreeMap<String, (usize, usize, Vec<String>, Vec<String>)> = BTreeMap::new();
 
     for record in &corpus {
         let actual = convert_to_tsx(

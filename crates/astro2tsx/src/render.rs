@@ -175,7 +175,9 @@ fn emit_default_export(printer: &mut Printer, component: &str, analysis: &PropsA
         printer.write(
             "type ASTRO__ArrayElement<ArrayType extends readonly unknown[]> = ArrayType extends readonly (infer ElementType)[] ? ElementType : never;\n",
         );
-        printer.write("type ASTRO__Flattened<T> = T extends Array<infer U> ? ASTRO__Flattened<U> : T;\n");
+        printer.write(
+            "type ASTRO__Flattened<T> = T extends Array<infer U> ? ASTRO__Flattened<U> : T;\n",
+        );
         printer.write("type ASTRO__InferredGetStaticPath = ASTRO__Flattened<ASTRO__ArrayElement<Awaited<ReturnType<typeof getStaticPaths>>>>;\n");
         printer.write("type ASTRO__MergeUnion<T, K extends PropertyKey = T extends unknown ? keyof T : never> = T extends unknown ? T & { [P in Exclude<K, keyof T>]?: never } extends infer O ? { [P in keyof O]: O[P] } : never : never;\n");
         printer.write("type ASTRO__Get<T, K> = T extends undefined ? undefined : K extends keyof T ? T[K] : never;\n");
@@ -358,16 +360,10 @@ fn render_single_text_expression(printer: &mut Printer, node: HtmlSingleTextExpr
             printer.write_with_mapping(&raw[..jsx_start], original_start);
             printer.map_nil();
             printer.write("<Fragment>");
-            printer.write_with_mapping(
-                &raw[jsx_start..jsx_end],
-                original_start + jsx_start as u32,
-            );
+            printer.write_with_mapping(&raw[jsx_start..jsx_end], original_start + jsx_start as u32);
             printer.map_nil();
             printer.write("</Fragment>");
-            printer.write_with_mapping(
-                &raw[jsx_end..],
-                original_start + jsx_end as u32,
-            );
+            printer.write_with_mapping(&raw[jsx_end..], original_start + jsx_end as u32);
         } else {
             printer.write_with_mapping(raw, original_start);
         }
@@ -662,7 +658,9 @@ fn attributes_to_iter(node: &HtmlElement) -> Vec<AnyHtmlAttribute> {
 
 fn classify_script_label(attrs: &[AnyHtmlAttribute]) -> &'static str {
     let type_value = find_attr_value(attrs, "type");
-    let is_raw = attrs.iter().any(|a| attribute_key(a).as_deref() == Some("is:raw"));
+    let is_raw = attrs
+        .iter()
+        .any(|a| attribute_key(a).as_deref() == Some("is:raw"));
     if is_raw {
         return "raw";
     }
@@ -877,7 +875,10 @@ fn render_fragment_shorthand(printer: &mut Printer, node: &HtmlElement) {
 /// Position immediately after the last attribute (or the tag name when
 /// there are no attributes). Used to detect whether there's whitespace
 /// between the attributes and the closing `>`/`/>` of the open tag.
-fn open_tag_attrs_end(name: &AnyHtmlTagName, attributes: &biome_html_syntax::HtmlAttributeList) -> u32 {
+fn open_tag_attrs_end(
+    name: &AnyHtmlTagName,
+    attributes: &biome_html_syntax::HtmlAttributeList,
+) -> u32 {
     let attrs: Vec<_> = attributes.iter().collect();
     if let Some(last) = attrs.last() {
         return u32::from(last.range().end());
@@ -1304,7 +1305,11 @@ fn inner_range(node: &HtmlElement) -> Option<(u32, u32)> {
     let closing = node.closing_element().ok()?;
     let start = u32::from(opening.r_angle_token().ok()?.text_trimmed_range().end());
     let end = u32::from(closing.l_angle_token().ok()?.text_trimmed_range().start());
-    if start <= end { Some((start, end)) } else { None }
+    if start <= end {
+        Some((start, end))
+    } else {
+        None
+    }
 }
 
 /// Copies `source[from..to]` into the output, attaching per-byte source

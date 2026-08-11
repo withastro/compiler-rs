@@ -84,7 +84,8 @@ pub(crate) fn analyze(source: &str) -> PropsAnalysis {
     if !analysis.has_props {
         text_scan_props_binding(source, &mut analysis);
     }
-    if !analysis.has_get_static_paths && source.contains("getStaticPaths")
+    if !analysis.has_get_static_paths
+        && source.contains("getStaticPaths")
         && source.contains("export")
     {
         analysis.has_get_static_paths = true;
@@ -173,10 +174,8 @@ fn collect_top_level_arg_names(inside: &str) -> String {
                 _ => {}
             }
         }
-        let outermost = depth_angle == 0
-            && depth_curly == 0
-            && depth_paren == 0
-            && depth_square == 0;
+        let outermost =
+            depth_angle == 0 && depth_curly == 0 && depth_paren == 0 && depth_square == 0;
         if b == b',' && outermost {
             let segment = &inside[start..i];
             if let Some(name) = leading_identifier(segment) {
@@ -199,7 +198,11 @@ fn leading_identifier(segment: &str) -> Option<&str> {
     while end < bytes.len() && is_ident_byte(bytes[end]) {
         end += 1;
     }
-    if end == 0 { None } else { Some(&trimmed[..end]) }
+    if end == 0 {
+        None
+    } else {
+        Some(&trimmed[..end])
+    }
 }
 
 /// Last-resort text scan for `interface Props` / `type Props` when the JS
@@ -229,8 +232,7 @@ fn text_scan_props_binding(source: &str, analysis: &mut PropsAnalysis) {
             }
             if i + "Props".len() <= bytes.len()
                 && &bytes[i..i + "Props".len()] == b"Props"
-                && (i + "Props".len() == bytes.len()
-                    || !is_ident_byte(bytes[i + "Props".len()]))
+                && (i + "Props".len() == bytes.len() || !is_ident_byte(bytes[i + "Props".len()]))
             {
                 analysis.has_props = true;
                 let mut j = i + "Props".len();
@@ -270,9 +272,11 @@ fn text_scan_props_binding(source: &str, analysis: &mut PropsAnalysis) {
 fn module_items(root: &AnyJsRoot) -> Vec<JsNode> {
     match root {
         AnyJsRoot::JsModule(module) => module.items().iter().map(|i| i.into_syntax()).collect(),
-        AnyJsRoot::JsScript(script) => {
-            script.statements().iter().map(|s| s.into_syntax()).collect()
-        }
+        AnyJsRoot::JsScript(script) => script
+            .statements()
+            .iter()
+            .map(|s| s.into_syntax())
+            .collect(),
         AnyJsRoot::TsDeclarationModule(decl) => {
             decl.items().iter().map(|i| i.into_syntax()).collect()
         }

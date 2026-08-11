@@ -34,12 +34,12 @@ pub(crate) fn find_top_level_returns(source: &str) -> Vec<u32> {
             WalkEvent::Enter(node) => {
                 if is_function_like(node.kind()) {
                     function_depth += 1;
-                } else if function_depth == 0 && node.kind() == JsSyntaxKind::JS_RETURN_STATEMENT {
-                    if let Some(stmt) = JsReturnStatement::cast(node)
-                        && let Ok(token) = stmt.return_token()
-                    {
-                        offsets.push(u32::from(token.text_trimmed_range().start()));
-                    }
+                } else if function_depth == 0
+                    && node.kind() == JsSyntaxKind::JS_RETURN_STATEMENT
+                    && let Some(stmt) = JsReturnStatement::cast(node)
+                    && let Ok(token) = stmt.return_token()
+                {
+                    offsets.push(u32::from(token.text_trimmed_range().start()));
                 }
             }
             WalkEvent::Leave(node) => {
