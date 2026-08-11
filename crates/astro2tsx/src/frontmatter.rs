@@ -3,10 +3,7 @@
 //! inside an implicit function at runtime, so top-level returns are valid
 //! Astro syntax — but TS rejects them at the module level.
 //!
-//! The upstream Go printer keeps the byte count stable by emitting `throw `
-//! (with an extra trailing space) in place of `return` (six chars). We do
-//! the same so source-mapping into the modified frontmatter remains
-//! aligned with the original file.
+//! `throw ` is six bytes like `return`, keeping source mapping aligned.
 
 use biome_js_parser::{JsParserOptions, parse};
 use biome_js_syntax::{AnyJsRoot, JsReturnStatement, JsSyntaxKind};
@@ -17,9 +14,6 @@ use biome_rowan::{AstNode, WalkEvent};
 /// keyword that sits at module scope. Offsets address the start of the
 /// keyword, ready for substitution.
 pub(crate) fn find_top_level_returns(source: &str) -> Vec<u32> {
-    // Use the Astro embedding kind so top-level `return` keywords are
-    // accepted as valid syntax (Astro frontmatter runs inside a generated
-    // function at runtime).
     let parse = parse(source, JsFileSource::astro(), JsParserOptions::default());
     let root: AnyJsRoot = parse.tree();
     let syntax = root.syntax().clone();
@@ -27,9 +21,6 @@ pub(crate) fn find_top_level_returns(source: &str) -> Vec<u32> {
     let mut offsets = Vec::new();
     let mut function_depth: u32 = 0;
 
-    // Walk pre-order, incrementing on entering a function-like body and
-    // decrementing on leaving it. Top-level returns are nodes encountered
-    // at function_depth == 0.
     for event in syntax.preorder() {
         match event {
             WalkEvent::Enter(node) => {
@@ -69,9 +60,7 @@ fn is_function_like(kind: JsSyntaxKind) -> bool {
     )
 }
 
-/// Rewrites the frontmatter source: at every offset returned by
-/// `find_top_level_returns`, replaces the six-byte keyword `return` with
-/// `throw ` (padded with a trailing space). Leaves the rest untouched.
+/// Replaces the keyword `return` with `throw ` at every top-level return.
 pub(crate) fn rewrite_top_level_returns(source: &str) -> String {
     let offsets = find_top_level_returns(source);
     if offsets.is_empty() {

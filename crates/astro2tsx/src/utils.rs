@@ -1,6 +1,4 @@
-//! Text-escaping helpers, ported from `internal/printer/utils.go` in the
-//! upstream Astro compiler. These reproduce the exact transformations applied
-//! to text and attribute payloads when emitting TSX.
+//! Text-escaping helpers for text and attribute payloads emitted as TSX.
 
 /// Escapes embedded backslashes, then `${`, then backticks. Used inside
 /// `<script>` / `<style>` text-node bodies that are wrapped in
@@ -10,9 +8,7 @@ pub(crate) fn escape_text(src: &str) -> String {
 }
 
 /// Escapes braces and `${` so a comment body can be embedded in a JSX
-/// `{/* ... */}` comment without being interpreted as an expression. The
-/// upstream printer doubles each backslash on entry, hence the
-/// `escape_existing_escapes` step.
+/// `{/* ... */}` comment without being interpreted as an expression.
 pub(crate) fn escape_braces(src: &str) -> String {
     escape_star_slash(&escape_tsx_expressions(&escape_existing_escapes(src)))
 }
@@ -37,19 +33,15 @@ fn escape_backticks(src: &str) -> String {
     src.replace('`', "\\`")
 }
 
-/// Encodes literal `"` as `&quot;` so the value is safe to embed inside a
-/// double-quoted JSX attribute.
 pub(crate) fn encode_double_quote(src: &str) -> String {
     src.replace('"', "&quot;")
 }
 
 /// Returns the synthetic component identifier emitted as the default export.
 ///
-/// Mirrors Go's `getTSXComponentName`: empty / `<stdin>` filenames produce
-/// the bare placeholder, and anything else gets the camel-cased basename
-/// prefix when it is a valid identifier. We approximate the upstream
-/// `IsIdentifier` check with an ASCII-only test, which is enough for every
-/// fixture we mirror.
+/// Empty and `<stdin>` filenames produce the bare placeholder; anything else
+/// gets the camel-cased basename prefix when it is a valid identifier.
+/// Identifier validity is tested ASCII-only.
 pub(crate) fn tsx_component_name(filename: Option<&str>) -> String {
     const PLACEHOLDER: &str = "__AstroComponent_";
     let Some(filename) = filename else {
@@ -101,8 +93,7 @@ fn is_ascii_identifier(input: &str) -> bool {
 }
 
 /// HTML attribute names that map to DOM event handlers — the printer treats
-/// their values as inline scripts so consumers can lint them. Mirrors the
-/// upstream `htmlEvents` table.
+/// their values as inline scripts so consumers can lint them.
 pub(crate) fn is_html_event_attribute(name: &str) -> bool {
     matches!(
         name,
@@ -194,35 +185,11 @@ pub(crate) fn is_html_event_attribute(name: &str) -> bool {
     )
 }
 
-/// HTML void elements that never have a closing tag. Used to print `/>`
-/// instead of an explicit `</tag>` when the source omitted children.
-pub(crate) fn is_void_element(name: &str) -> bool {
-    matches!(
-        name,
-        "area"
-            | "base"
-            | "br"
-            | "col"
-            | "embed"
-            | "hr"
-            | "img"
-            | "input"
-            | "keygen"
-            | "link"
-            | "meta"
-            | "param"
-            | "source"
-            | "track"
-            | "wbr"
-    )
-}
-
 /// Validates an attribute name for direct emission into JSX.
 ///
 /// JSX accepts `[a-zA-Z_$][a-zA-Z0-9_$]*` plus `:` (namespace) and `-`
 /// (custom attributes). Anything else — `@click`, `:class`, `x-on:k.s.e` —
-/// must be wrapped in a spread object literal. Mirrors
-/// `isValidTSXAttribute` from the Go printer.
+/// must be wrapped in a spread object literal.
 pub(crate) fn is_valid_tsx_attribute_name(name: &str) -> bool {
     let mut chars = name.chars();
     let Some(first) = chars.next() else {
@@ -238,14 +205,13 @@ fn is_valid_first_ident_char(ch: char) -> bool {
     ch == '$' || ch == '_' || ch.is_alphabetic()
 }
 
-/// Detects the script `type` attribute family. The upstream printer wraps
-/// inline / json / unknown payloads in `{\`...\`}` so they parse as TSX
-/// template strings, while real module / classic scripts are emitted as
-/// `{() => { ... }}` arrow bodies.
+/// Detects the script `type` attribute family. Inline, json and unknown
+/// payloads are wrapped in `{\`...\`}` so they parse as TSX template strings,
+/// while module and classic scripts are emitted as `{() => { ... }}` bodies.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ScriptKind {
-    /// `type="module"` or no `type` and no recognized override — printed as
-    /// `{() => { ... }}` so the body is type-checked as JS.
+    /// `type="module"`, or no `type` at all — printed as `{() => { ... }}` so
+    /// the body is type-checked as JS.
     Script,
     /// JSON-like type — printed as `{\`...\`}`.
     Json,
