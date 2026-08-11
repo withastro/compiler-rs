@@ -1,6 +1,5 @@
-//! Runs every test case in `tests/corpus/tsx.jsonl` (extracted from the
-//! upstream Astro compiler) through `convert_to_tsx` and reports parity
-//! with the Go reference output.
+//! Runs every test case in `tests/corpus/tsx.jsonl` through `convert_to_tsx`
+//! and asserts the output matches, except for listed divergences.
 //!
 //! The corpus is regenerated from
 //! `packages/compiler/test/extract-corpus.mjs` in the upstream repo. Each
@@ -10,15 +9,7 @@ use astro2tsx::{ConvertOptions, convert_to_tsx};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 
-/// Test cases where we deliberately diverge from the Go printer because
-/// its recovery synthesises constructs that don't help intellisense:
-///
-/// - `<div>\n<div\n</div>` → upstream emits `<div div {...{"<":true}}>`
-///   which fabricates phantom `<` and `div` attributes. We round-trip
-///   the source instead.
-/// - `<Button      >` (unclosed open) → upstream emits a synthetic
-///   `</Button>` to balance JSX. tsserver parses unbalanced JSX just
-///   fine, so we leave it unbalanced and avoid the synthetic span.
+// Recovery would invent phantom attributes and tags; TypeScript errors on the raw output but recovers.
 // Occurrence disambiguates basic.ts's two same-named "preserves spaces in tag" cases.
 const INTENTIONAL_DIVERGENCES: &[&str] = &[
     "escape.ts::does not escape tag opening unnecessarily II [1]",
