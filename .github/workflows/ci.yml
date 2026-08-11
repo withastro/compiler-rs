@@ -107,6 +107,13 @@ jobs:
         run: pnpm test
         working-directory: crates/astro_napi
 
+      - name: Build astro2tsx binding
+        run: pnpm --filter ./crates/astro2tsx run build-dev
+
+      - name: Test astro2tsx binding
+        run: pnpm test
+        working-directory: crates/astro2tsx
+
       - name: Build compiler package
         run: pnpm run build:compiler
 
