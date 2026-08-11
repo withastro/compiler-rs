@@ -64,7 +64,7 @@ pub(crate) fn analyze(source: &str) -> PropsAnalysis {
             }
             _ => {}
         }
-        if !analysis.has_get_static_paths && declares_get_static_paths(&top) {
+        if !analysis.has_get_static_paths && exports_get_static_paths(&top) {
             analysis.has_get_static_paths = true;
         }
     }
@@ -73,12 +73,6 @@ pub(crate) fn analyze(source: &str) -> PropsAnalysis {
     // `Props<T extends string ? {...}: never>`.
     if !analysis.has_props {
         text_scan_props_binding(source, &mut analysis);
-    }
-    if !analysis.has_get_static_paths
-        && source.contains("getStaticPaths")
-        && source.contains("export")
-    {
-        analysis.has_get_static_paths = true;
     }
 
     analysis
@@ -347,10 +341,40 @@ fn is_ident_byte(b: u8) -> bool {
     b.is_ascii_alphanumeric() || b == b'_' || b == b'$'
 }
 
-fn declares_get_static_paths(node: &JsNode) -> bool {
-    let text = node.text_trimmed().to_string();
-    if !text.contains("getStaticPaths") {
+/// Detects an `export` binding `getStaticPaths`, including `export { x as getStaticPaths }`.
+fn exports_get_static_paths(node: &JsNode) -> bool {
+    if node.kind() != JsSyntaxKind::JS_EXPORT {
         return false;
     }
-    text.contains("export")
+    node.descendants().any(|candidate| {
+        if candidate.text_trimmed() != "getStaticPaths" {
+            return false;
+        }
+        match candidate.kind() {
+            JsSyntaxKind::JS_IDENTIFIER_BINDING => !is_nested_in_body(&candidate, node),
+            JsSyntaxKind::JS_LITERAL_EXPORT_NAME => true,
+            JsSyntaxKind::JS_REFERENCE_IDENTIFIER => candidate
+                .parent()
+                .is_some_and(|p| p.kind() == JsSyntaxKind::JS_EXPORT_NAMED_SHORTHAND_SPECIFIER),
+            _ => false,
+        }
+    })
+}
+
+/// Separates an exported binding from a local one inside the exported value's body.
+fn is_nested_in_body(node: &JsNode, export: &JsNode) -> bool {
+    let mut current = node.parent();
+    while let Some(parent) = current {
+        if &parent == export {
+            return false;
+        }
+        if matches!(
+            parent.kind(),
+            JsSyntaxKind::JS_FUNCTION_BODY | JsSyntaxKind::JS_BLOCK_STATEMENT
+        ) {
+            return true;
+        }
+        current = parent.parent();
+    }
+    false
 }

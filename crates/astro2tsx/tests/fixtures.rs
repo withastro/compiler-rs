@@ -182,6 +182,37 @@ fn spread_object_entries_are_comma_separated_without_a_leading_comma() {
 }
 
 #[test]
+fn get_static_paths_needs_a_real_export() {
+    let mentioned = convert("---\n// see getStaticPaths in the docs\nexport const x = 1;\n---\n");
+    assert!(
+        !mentioned.contains("ASTRO__InferredGetStaticPath"),
+        "a mention injected the inferred-props machinery:\n{mentioned}"
+    );
+    assert!(
+        mentioned.contains("_props: Record<string, any>"),
+        "a mention changed the _props type:\n{mentioned}"
+    );
+
+    let referenced = convert("---\nexport const handler = getStaticPaths;\n---\n");
+    assert!(
+        !referenced.contains("ASTRO__InferredGetStaticPath"),
+        "a reference is not an export:\n{referenced}"
+    );
+
+    for input in [
+        "---\nexport const getStaticPaths = async () => [];\n---\n",
+        "---\nexport async function getStaticPaths() { return []; }\n---\n",
+        "---\nconst paths = async () => [];\nexport { paths as getStaticPaths };\n---\n",
+    ] {
+        let actual = convert(input);
+        assert!(
+            actual.contains("ASTRO__InferredGetStaticPath"),
+            "missed a real export for {input:?}:\n{actual}"
+        );
+    }
+}
+
+#[test]
 fn extracted_ranges_are_generated_offsets() {
     let styled = convert_to_tsx("<div style=\"color:red\"></div>", ConvertOptions::default());
     let range = styled.styles[0].range;
