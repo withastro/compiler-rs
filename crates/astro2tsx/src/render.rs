@@ -1,6 +1,4 @@
-//! Walks the Biome HTML CST for an Astro file and emits TSX. Designed to
-//! mirror the upstream printer (`internal/printer/print-to-tsx.go`) closely
-//! enough that the same `.astro` input produces byte-equivalent output.
+//! Walks the Biome HTML CST for an Astro file and emits TSX.
 
 use biome_html_syntax::{
     AnyAstroDirective, AnyAstroFrontmatterElement, AnyHtmlAttribute, AnyHtmlAttributeInitializer,
@@ -17,7 +15,7 @@ use crate::props::{PropsAnalysis, analyze as analyze_props};
 use crate::sourcemap::GeneratedRange;
 use crate::utils::{
     ScriptKind, classify_script_type, encode_double_quote, escape_braces, escape_text,
-    is_html_event_attribute, is_valid_tsx_attribute_name, is_void_element, tsx_component_name,
+    is_html_event_attribute, is_valid_tsx_attribute_name, tsx_component_name,
 };
 
 const TSX_PREFIX: &str = "/* @jsxImportSource astro */\n\n";
@@ -29,9 +27,6 @@ pub(crate) fn render_root(printer: &mut Printer, root: HtmlRoot, options: &Conve
     let frontmatter = root.frontmatter();
     let body = root.html();
 
-    // Inspect the frontmatter for a `Props` binding and `getStaticPaths`
-    // export. This drives the synthetic `export default function`
-    // signature and the trailing Astro-global declaration.
     let props_analysis = frontmatter
         .as_ref()
         .and_then(extract_frontmatter_text)
@@ -44,7 +39,7 @@ pub(crate) fn render_root(printer: &mut Printer, root: HtmlRoot, options: &Conve
 
     // The body is non-empty whenever there's a parsed child OR the source
     // contains a top-level HTML comment that the parser stashed as trivia.
-    let body_text_start = body_text_start_offset(&root, &frontmatter);
+    let body_text_start = body_text_start_offset(&frontmatter);
     let body_text_end = printer.source.len() as u32;
     let has_body_children = body.iter().next().is_some()
         || slice_has_html_comment(&printer.source, body_text_start, body_text_end);
@@ -52,11 +47,8 @@ pub(crate) fn render_root(printer: &mut Printer, root: HtmlRoot, options: &Conve
 
     if has_body_children {
         if frontmatter.is_some() {
-            // The frontmatter may not end with a `;`, which would let the
-            // body's `<Fragment>` be parsed as a continuation expression
-            // (e.g. `Astro.props < Fragment >`). Mirror the upstream
-            // workaround: emit `{};` whenever the trailing non-space
-            // character isn't already `;`.
+            // Without a `;`, the body's `<Fragment>` parses as a continuation
+            // of the frontmatter's last expression (`Astro.props < Fragment >`).
             if needs_trailing_separator(&printer.output) {
                 printer.map_nil();
                 printer.write("{};");
@@ -79,16 +71,11 @@ pub(crate) fn render_root(printer: &mut Printer, root: HtmlRoot, options: &Conve
         }
 
         if body_only_has_comments {
-            // The "body" is purely top-level HTML comments — emit them by
-            // translating the source between the frontmatter and EOF.
             emit_source_gap(printer, body_text_start, printer.source.len() as u32);
         } else if let Some(prev) = prev_end {
-            // Trailing whitespace / comments between the last child and
-            // EOF need translation too.
             emit_source_gap(printer, prev, printer.source.len() as u32);
         }
-        // Map a "trailing" position so consumers can still trace whitespace
-        // at the end of the source.
+        // One byte past EOF, so trailing whitespace still has a mapping.
         printer.map_to_offset(printer.source.len() as u32);
         printer.write("\n");
 
@@ -98,9 +85,7 @@ pub(crate) fn render_root(printer: &mut Printer, root: HtmlRoot, options: &Conve
         printer.map_nil();
         printer.write("</Fragment>\n");
     } else {
-        // The Go printer always adds an extra blank line before the
-        // synthetic export when there's no body, mirroring the trailing
-        // newline that a body would have provided.
+        // Stands in for the trailing newline a body would have provided.
         if frontmatter.is_some() {
             printer.map_nil();
             printer.write("\n");
@@ -115,16 +100,12 @@ pub(crate) fn render_root(printer: &mut Printer, root: HtmlRoot, options: &Conve
 /// Returns the byte offset where body content begins. With a frontmatter
 /// present, this is the byte just after the closing `---` fence; without
 /// it, this is the start of the source.
-fn body_text_start_offset(
-    root: &HtmlRoot,
-    frontmatter: &Option<AnyAstroFrontmatterElement>,
-) -> u32 {
+fn body_text_start_offset(frontmatter: &Option<AnyAstroFrontmatterElement>) -> u32 {
     if let Some(AnyAstroFrontmatterElement::AstroFrontmatterElement(node)) = frontmatter
         && let Ok(r_fence) = node.r_fence_token()
     {
         return u32::from(r_fence.text_trimmed_range().end());
     }
-    let _ = root;
     0
 }
 
@@ -139,9 +120,7 @@ fn extract_frontmatter_text(node: &AnyAstroFrontmatterElement) -> Option<String>
 }
 
 fn emit_default_export(printer: &mut Printer, component: &str, analysis: &PropsAnalysis) {
-    // The function's `_props` annotation uses the parameterised form
-    // `Props<T>`. The Astro global only needs the bare type ident, so we
-    // track them separately.
+    // `_props` takes the parameterised `Props<T>`; the Astro global takes the bare ident.
     let (props_param, props_global) = if analysis.has_props {
         if analysis.generics_args.is_empty() {
             ("Props".to_string(), "Props".to_string())
@@ -213,8 +192,7 @@ fn emit_frontmatter(printer: &mut Printer, frontmatter: &AnyAstroFrontmatterElem
             emit_frontmatter_element(printer, node);
         }
         AnyAstroFrontmatterElement::AstroBogusFrontmatter(_) => {
-            // Recovery node — nothing semantic we can reproduce. Pass through
-            // as-is so the byte ranges still line up.
+            // Recovery node: every byte maps to offset 0, not to its own position.
             printer.map_to_offset(0);
             printer.write(frontmatter.syntax().text_trimmed().to_string().as_str());
         }
@@ -229,23 +207,14 @@ fn emit_frontmatter_element(printer: &mut Printer, node: &AstroFrontmatterElemen
     if let Ok(content) = node.content()
         && let Some(content_token) = content.content_token()
     {
-        // Use the full text range (including the leading newline in the
-        // Astro convention `---\n...code...---`) so the emitted frontmatter
-        // mirrors the source's whitespace.
         let range = content_token.text_range();
         let text = slice_source(&printer.source, range);
         if !text.is_empty() {
-            // Top-level `return` statements are valid in Astro frontmatter
-            // (the body runs inside a generated function) but TS rejects
-            // them at module scope. Rewrite them to `throw ` so the
-            // generated TSX type-checks; the substitution preserves byte
-            // counts so source-mapping stays aligned.
             let rewritten = rewrite_top_level_returns(&text);
             printer.write_with_mapping(&rewritten, range_start(range));
         }
     }
-    // The Go printer drops a final newline so the frontmatter section ends
-    // with a clean break before the body.
+    // Separates the frontmatter from the body that follows.
     printer.map_nil();
     printer.write("\n");
 }
@@ -286,8 +255,6 @@ fn render_content(printer: &mut Printer, content: AnyHtmlContent) {
             printer.write_jsx_text_with_mapping(text, range_start(range));
         }
         AnyHtmlContent::HtmlEmbeddedContent(node) => {
-            // Inside <script>/<style>: emit the raw payload as a TSX template
-            // literal. Mirrors the `RawText`/`StyleText` branch.
             let Ok(token) = node.value_token() else {
                 return;
             };
@@ -347,14 +314,10 @@ fn render_single_text_expression(printer: &mut Printer, node: HtmlSingleTextExpr
     printer.write("{");
 
     if expression.html_literal_token().is_ok() {
-        // The Biome HTML parser doesn't recurse into `{...}` bodies — it
-        // stores the entire content as a single `HTML_LITERAL` token. So
-        // we manually scan for embedded JSX and, if present, splice in
-        // `<Fragment>...</Fragment>` around it: TS needs a single
-        // expression, and bare JSX inside a JS expression is interpreted
-        // as a comparison without that wrapper.
-        // Whitespace touching `{` is trivia, which the literal token drops.
+        // The parser stores a `{...}` body as one token, so embedded JSX has to
+        // be found by hand; bare JSX in a JS expression parses as a comparison.
         let original_start = u32::from(l_curly_range.end());
+        // Whitespace touching `{` is trivia, which the literal token drops.
         let body = slice_source(
             &printer.source,
             TextRange::new(l_curly_range.end(), r_curly_range.start()),
@@ -384,15 +347,14 @@ fn render_single_text_expression(printer: &mut Printer, node: HtmlSingleTextExpr
     printer.write("}");
 }
 
-/// Locates the first JSX tag in an expression body and returns its byte
-/// span in the input slice. Honours JS line / block comments so a `<` in
-/// `// look <here>` doesn't trigger a false positive.
+/// Locates the first JSX tag in an expression body and returns its byte span in
+/// the input slice. JS line and block comments are skipped; string and template
+/// literals are not, so a tag inside a quoted value is treated as JSX.
 fn scan_jsx_span(text: &str) -> Option<(usize, usize)> {
     let bytes = text.as_bytes();
     let len = bytes.len();
     let mut i = 0;
     while i < len {
-        // Skip JS comments.
         if i + 1 < len && bytes[i] == b'/' && bytes[i + 1] == b'/' {
             while i < len && bytes[i] != b'\n' {
                 i += 1;
@@ -408,8 +370,6 @@ fn scan_jsx_span(text: &str) -> Option<(usize, usize)> {
             continue;
         }
         if bytes[i] == b'<' && i + 1 < len && (bytes[i + 1].is_ascii_alphabetic()) {
-            // Found candidate JSX. Find its end by walking through the
-            // tag, tracking nested depth via opening / closing tags.
             return jsx_end_offset(bytes, i).map(|end| (i, end));
         }
         i += 1;
@@ -425,9 +385,7 @@ fn jsx_end_offset(bytes: &[u8], start: usize) -> Option<usize> {
     let mut depth = 0i32;
     while i < len {
         if bytes[i] == b'<' {
-            // Distinguish opening vs closing.
             if i + 1 < len && bytes[i + 1] == b'/' {
-                // Closing tag: find `>` and decrement depth.
                 while i < len && bytes[i] != b'>' {
                     i += 1;
                 }
@@ -440,8 +398,6 @@ fn jsx_end_offset(bytes: &[u8], start: usize) -> Option<usize> {
                     return Some(i);
                 }
             } else {
-                // Opening tag: find `>` (or `/>` for self-closing).
-                let tag_start = i;
                 let mut self_closing = false;
                 while i < len && bytes[i] != b'>' {
                     if bytes[i] == b'/' && i + 1 < len && bytes[i + 1] == b'>' {
@@ -472,7 +428,6 @@ fn jsx_end_offset(bytes: &[u8], start: usize) -> Option<usize> {
                     depth += 1;
                     i += 1;
                 }
-                let _ = tag_start;
             }
         } else {
             i += 1;
@@ -486,9 +441,7 @@ fn render_html_element(printer: &mut Printer, node: HtmlElement) {
         return;
     };
     if opening.name().is_err() {
-        // Fragment shorthand: `<>...</>`. JSX accepts this as `Fragment`,
-        // so we just round-trip the literal source — including the empty
-        // angle brackets on both ends.
+        // Fragment shorthand: `<>...</>`, which JSX accepts as `Fragment`.
         render_fragment_shorthand(printer, &node);
         return;
     }
@@ -500,11 +453,8 @@ fn render_html_element(printer: &mut Printer, node: HtmlElement) {
     };
     let open_r_angle = opening.r_angle_token().ok();
 
-    // If the open tag has no closing `>` we round-trip the element's
-    // source verbatim instead of synthesising recovery shims. The result
-    // is invalid TSX inside that exact span, but the surrounding code
-    // still parses, so tsserver can deliver intellisense for everything
-    // around the broken span.
+    // An open tag with no `>` is round-tripped verbatim rather than shimmed;
+    // the result is invalid TSX within that span alone.
     if open_r_angle.is_none() {
         let range = node.syntax().text_trimmed_range();
         let text = slice_source(&printer.source, range);
@@ -530,7 +480,6 @@ fn render_html_element(printer: &mut Printer, node: HtmlElement) {
     printer.map_to_offset(r_angle_start);
     printer.write(">");
 
-    // Children
     let is_script = tag_name.eq_ignore_ascii_case("script");
     let is_style = tag_name.eq_ignore_ascii_case("style");
 
@@ -547,10 +496,7 @@ fn render_html_element(printer: &mut Printer, node: HtmlElement) {
     } else {
         None
     };
-    // `<script is:raw>` is special: the script body is still treated as
-    // executable JS in the upstream printer (wrapped in `{() => {...}}`),
-    // not as opaque text. So `is:raw` only triggers template wrapping on
-    // *non-script* elements.
+    // `<script is:raw>` stays executable JS, so `is:raw` only wraps non-scripts.
     let wrap_children_as_template = (element_is_raw && !is_script)
         || matches!(script_label, Some("json" | "unknown"))
         || is_style;
@@ -562,11 +508,9 @@ fn render_html_element(printer: &mut Printer, node: HtmlElement) {
         .map(|t| u32::from(t.text_trimmed_range().start()));
 
     if wrap_children_as_template {
-        // Treat the entire child range as raw text and emit it inside a
-        // single `{`...`}`. Mirrors the upstream printer's `is:raw` /
-        // style / json-script handling.
+        // Unclosed raw-text content runs to the end of the node the parser built.
         let inner_start = opening_end;
-        let inner_end = closing_inner_start.unwrap_or(inner_start);
+        let inner_end = closing_inner_start.unwrap_or_else(|| u32::from(node.range().end()));
         if inner_end > inner_start {
             let raw = printer.source[inner_start as usize..inner_end as usize].to_string();
             let escaped = escape_text(&raw);
@@ -622,7 +566,6 @@ fn render_html_element(printer: &mut Printer, node: HtmlElement) {
 
     if let Ok(closing) = node.closing_element() {
         let l_angle = closing.l_angle_token().ok();
-        let slash = closing.slash_token().ok();
         let r_angle = closing.r_angle_token().ok();
         let closing_name = closing.name().ok();
 
@@ -646,15 +589,8 @@ fn render_html_element(printer: &mut Printer, node: HtmlElement) {
             printer.map_nil();
         }
         printer.write(">");
-
-        // Reference unused locals so clippy is happy without disabling lints.
-        let _ = slash;
     }
-    // Intentionally no synthetic `</tag>` when the source has no closing.
-    // tsserver handles unbalanced JSX gracefully — completions, hovers,
-    // and type-checking still work — and fabricating a closing tag would
-    // (a) add a span the user can't see and (b) double up with any inner
-    // element whose round-tripped source already includes a `</…>`.
+    // Unclosed tags are unsupported, so no synthetic `</tag>` is emitted.
 }
 
 fn attributes_to_iter(node: &HtmlElement) -> Vec<AnyHtmlAttribute> {
@@ -729,7 +665,6 @@ fn attribute_key(attr: &AnyHtmlAttribute) -> Option<String> {
         }
         AnyHtmlAttribute::AnyAstroDirective(directive) => {
             // Reconstruct the `kind:name` form (`is:raw`, `client:load`).
-            // Useful for `is:raw` detection on the element.
             let prefix = match directive {
                 AnyAstroDirective::AstroIsDirective(_) => "is",
                 AnyAstroDirective::AstroClientDirective(_) => "client",
@@ -762,7 +697,7 @@ fn render_script_child(printer: &mut Printer, child: AnyHtmlElement) {
     if let AnyHtmlElement::AnyHtmlContent(AnyHtmlContent::HtmlEmbeddedContent(node)) = &child
         && let Ok(token) = node.value_token()
     {
-        // Emit script bodies as `{() => { ... }}` so TSX type-checks them.
+        // Wrapped in an arrow body so TSX type-checks the script.
         let original_start = u32::from(token.text_trimmed_range().start());
         let raw = token.text_trimmed().to_string();
         printer.map_nil();
@@ -815,7 +750,6 @@ fn render_self_closing_element(printer: &mut Printer, node: HtmlSelfClosingEleme
     }
     printer.map_to_offset(r_angle_start);
     printer.write("/>");
-    let _ = is_void_element; // Quiet unused warnings when the path is dead.
 }
 
 /// Renders an `HtmlElement` whose tag name is missing — JSX's Fragment
@@ -894,10 +828,8 @@ fn open_tag_attrs_end(
     u32::from(name.range().end())
 }
 
-/// Emits a single space when the source has whitespace between two
-/// positions in a tag header. JSX collapses multiple spaces to one, so
-/// `<Foo   >` becomes `<Foo >` rather than round-tripping every byte —
-/// matches the upstream printer.
+/// Emits a single space when the source has whitespace between two positions
+/// in a tag header. JSX collapses runs of spaces, so `<Foo   >` becomes `<Foo >`.
 fn emit_intra_tag_space(printer: &mut Printer, from: u32, to: u32) {
     if from >= to {
         return;
@@ -944,11 +876,8 @@ fn emit_open_tag<I>(
 
     for attr in &attrs {
         if matches!(attr, AnyHtmlAttribute::HtmlBogusAttribute(_)) {
-            // Bogus attributes are usually `:foo="..."` or `@foo="..."`
-            // tokens that the parser misclassified as Vue directives in
-            // Astro mode. Recover the source text and route them through
-            // the `{...{...}}` spread block so JSX-illegal names don't
-            // break tsserver.
+            // In Astro mode the parser misclassifies `:foo=""` / `@foo=""` as Vue
+            // directives, so their source text has to be recovered by hand.
             if let Some(rec) = recover_bogus_attribute(&printer.source, attr) {
                 invalid.push(rec);
             }
@@ -966,16 +895,20 @@ fn emit_open_tag<I>(
     if !invalid.is_empty() {
         printer.map_nil();
         printer.write(" {...{");
-        for (i, attr) in invalid.iter().enumerate() {
-            if i > 0 {
-                printer.map_nil();
-                printer.write(",");
-            }
+        let mut wrote_entry = false;
+        for attr in invalid.iter() {
             match attr {
-                InvalidAttr::Node(node) => emit_invalid_attribute(printer, node),
+                InvalidAttr::Node(node) => {
+                    wrote_entry |= emit_invalid_attribute(printer, node, wrote_entry);
+                }
                 InvalidAttr::Recovered { key, value } => {
+                    if wrote_entry {
+                        printer.map_nil();
+                        printer.write(",");
+                    }
                     printer.map_nil();
                     printer.write(&format!("{key}:{value}"));
+                    wrote_entry = true;
                 }
             }
         }
@@ -1006,7 +939,6 @@ fn recover_bogus_attribute(source: &str, attr: &AnyHtmlAttribute) -> Option<Inva
             let raw_value = text[idx + 1..].trim();
             let key = format!("\"{}\"", raw_key.replace('"', "\\\""));
             let value = if raw_value.starts_with('"') || raw_value.starts_with('\'') {
-                // Already quoted — keep as-is.
                 raw_value.to_string()
             } else if raw_value.starts_with('{') && raw_value.ends_with('}') {
                 // Expression form: `{foo}` becomes `(foo)` so the spread
@@ -1018,7 +950,6 @@ fn recover_bogus_attribute(source: &str, attr: &AnyHtmlAttribute) -> Option<Inva
             (key, value)
         }
         None => {
-            // Empty / no value — emit `true`.
             let key = format!("\"{}\"", text.trim().replace('"', "\\\""));
             (key, "true".to_string())
         }
@@ -1031,8 +962,7 @@ fn emit_attribute(printer: &mut Printer, attr: &AnyHtmlAttribute) {
         AnyHtmlAttribute::HtmlAttribute(attr_node) => emit_html_attribute(printer, attr_node),
         AnyHtmlAttribute::HtmlSpreadAttribute(spread) => emit_spread_attribute(printer, spread),
         AnyHtmlAttribute::HtmlAttributeSingleTextExpression(node) => {
-            // Astro shorthand attribute: `<Foo {bar} />`. Expand to
-            // `bar={bar}` so the JSX shape is preserved.
+            // Astro shorthand attribute: `<Foo {bar} />`.
             if let Ok(expression) = node.expression()
                 && let Ok(token) = expression.html_literal_token()
             {
@@ -1059,9 +989,7 @@ fn emit_attribute(printer: &mut Printer, attr: &AnyHtmlAttribute) {
         | AnyHtmlAttribute::HtmlAttributeDoubleTextExpression(_)
         | AnyHtmlAttribute::HtmlBogusAttribute(_)
         | AnyHtmlAttribute::SvelteAttachAttribute(_) => {
-            // Foreign or recovery — emit nothing rather than producing
-            // invalid TSX. A future revision could pass these through as
-            // raw text inside `{...{ "key": value }}`.
+            // Foreign or recovery kinds; emitting them would produce invalid TSX.
         }
     }
 }
@@ -1135,19 +1063,21 @@ fn emit_html_attribute(printer: &mut Printer, attr_node: &HtmlAttribute) {
             printer.write("=");
             printer.map_to_offset(value_start - 1);
             printer.write("\"");
+            let generated_start = printer.position();
             printer.write_with_mapping(&encoded, value_start);
+            let generated_end = printer.position();
             printer.map_to_offset(inner_end);
             printer.write("\"");
 
             if is_html_event_attribute(&key_text) {
                 printer.add_event_attribute(
-                    GeneratedRange::new(value_start, inner_end),
+                    GeneratedRange::new(generated_start, generated_end),
                     inner.to_string(),
                 );
             }
             if key_text == "style" {
                 printer.add_style_attribute(
-                    GeneratedRange::new(value_start, inner_end),
+                    GeneratedRange::new(generated_start, generated_end),
                     inner.to_string(),
                 );
             }
@@ -1199,9 +1129,7 @@ fn emit_spread_attribute(printer: &mut Printer, spread: &HtmlSpreadAttribute) {
 }
 
 fn emit_astro_directive(printer: &mut Printer, directive: &AnyAstroDirective) {
-    // Astro directives (`client:load`, `class:list={x}`, etc.) are valid TSX
-    // attributes because JSX supports `:` namespaces. Emit them by slicing
-    // the directive's source range — the parser already vetted the shape.
+    // Astro directives are valid TSX attributes because JSX supports `:` namespaces.
     let range = directive.range();
     let text = slice_source(&printer.source, range);
     printer.map_nil();
@@ -1209,19 +1137,28 @@ fn emit_astro_directive(printer: &mut Printer, directive: &AnyAstroDirective) {
     printer.write_with_mapping(&text, range_start(range));
 }
 
-fn emit_invalid_attribute(printer: &mut Printer, attr: &AnyHtmlAttribute) {
+/// Returns whether an entry was written; a skipped entry must not be separated.
+fn emit_invalid_attribute(
+    printer: &mut Printer,
+    attr: &AnyHtmlAttribute,
+    needs_separator: bool,
+) -> bool {
     let AnyHtmlAttribute::HtmlAttribute(attr_node) = attr else {
-        return;
+        return false;
     };
     let Ok(name) = attr_node.name() else {
-        return;
+        return false;
     };
     let Ok(name_token) = name.value_token() else {
-        return;
+        return false;
     };
     let key_text = name_token.text_trimmed().to_string();
     let key_start = u32::from(name_token.text_trimmed_range().start());
 
+    if needs_separator {
+        printer.map_nil();
+        printer.write(",");
+    }
     printer.map_to_offset(key_start);
     printer.write(&format!("\"{key_text}\""));
 
@@ -1235,7 +1172,9 @@ fn emit_invalid_attribute(printer: &mut Printer, attr: &AnyHtmlAttribute) {
         Some(initializer) => match initializer.value() {
             Ok(AnyHtmlAttributeInitializer::HtmlString(s)) => {
                 let Ok(value_token) = s.value_token() else {
-                    return;
+                    printer.map_nil();
+                    printer.write(":true");
+                    return true;
                 };
                 let raw = value_token.text_trimmed().to_string();
                 let inner = if (raw.starts_with('"') && raw.ends_with('"'))
@@ -1252,10 +1191,14 @@ fn emit_invalid_attribute(printer: &mut Printer, attr: &AnyHtmlAttribute) {
             }
             Ok(AnyHtmlAttributeInitializer::HtmlAttributeSingleTextExpression(expr)) => {
                 let Ok(text) = expr.expression() else {
-                    return;
+                    printer.map_nil();
+                    printer.write(":true");
+                    return true;
                 };
                 let Ok(literal) = text.html_literal_token() else {
-                    return;
+                    printer.map_nil();
+                    printer.write(":true");
+                    return true;
                 };
                 let value = literal.text_trimmed().to_string();
                 let value_start = u32::from(literal.text_trimmed_range().start());
@@ -1271,6 +1214,7 @@ fn emit_invalid_attribute(printer: &mut Printer, attr: &AnyHtmlAttribute) {
             }
         },
     }
+    true
 }
 
 fn tag_name_text(name: &AnyHtmlTagName) -> String {
@@ -1314,9 +1258,15 @@ fn member_name_text(node: &biome_html_syntax::HtmlMemberName) -> String {
 
 fn inner_range(node: &HtmlElement) -> Option<(u32, u32)> {
     let opening = node.opening_element().ok()?;
-    let closing = node.closing_element().ok()?;
     let start = u32::from(opening.r_angle_token().ok()?.text_trimmed_range().end());
-    let end = u32::from(closing.l_angle_token().ok()?.text_trimmed_range().start());
+    let end = match node
+        .closing_element()
+        .ok()
+        .and_then(|c| c.l_angle_token().ok())
+    {
+        Some(l_angle) => u32::from(l_angle.text_trimmed_range().start()),
+        None => u32::from(node.range().end()),
+    };
     if start <= end {
         Some((start, end))
     } else {
@@ -1324,10 +1274,8 @@ fn inner_range(node: &HtmlElement) -> Option<(u32, u32)> {
     }
 }
 
-/// Copies `source[from..to]` into the output, attaching per-byte source
-/// mappings. Translates any embedded HTML comments (`<!-- ... -->`) into
-/// JSX comments (`{/** ... */}`) along the way so the gap stays valid
-/// TSX. Used to preserve whitespace and trivia between sibling elements.
+/// Copies `source[from..to]` into the output with per-byte mappings, turning
+/// embedded `<!-- ... -->` into `{/** ... */}` so the gap stays valid TSX.
 fn emit_source_gap(printer: &mut Printer, from: u32, to: u32) {
     if to <= from {
         return;
@@ -1341,23 +1289,18 @@ fn emit_source_gap(printer: &mut Printer, from: u32, to: u32) {
     emit_with_comment_translation(printer, &slice, from);
 }
 
-/// Emits `slice` (originating at `base_offset` in the source) into the
-/// printer, translating `<!-- ... -->` runs into JSX `{/** ... */}`
-/// comments. Plain text outside comments is mapped per-byte.
 fn emit_with_comment_translation(printer: &mut Printer, slice: &str, base_offset: u32) {
     let bytes = slice.as_bytes();
     let mut i = 0usize;
     while i < bytes.len() {
         if i + 4 <= bytes.len() && &bytes[i..i + 4] == b"<!--" {
-            // Find the closing `-->`.
             let body_start = i + 4;
             let mut end = body_start;
             while end + 3 <= bytes.len() && &bytes[end..end + 3] != b"-->" {
                 end += 1;
             }
             if end + 3 > bytes.len() {
-                // Unterminated comment — fall through and emit the rest as
-                // plain text so we don't drop content.
+                // Emitted as plain text so no content is dropped.
                 let chunk = &slice[i..];
                 printer.write_with_mapping(chunk, base_offset + i as u32);
                 return;
@@ -1383,9 +1326,7 @@ fn emit_with_comment_translation(printer: &mut Printer, slice: &str, base_offset
 fn emit_html_comment(printer: &mut Printer, body: &str, original_offset: u32) {
     printer.map_nil();
     printer.write("{/**");
-    // Mirror the upstream behavior: insert a leading space when the
-    // comment body doesn't already start with whitespace, so the comment
-    // parses as `{/**  ... */}` rather than `{/**...*/}`.
+    // Without a space, `{/**/}` would close the comment immediately.
     let needs_leading_space = body.chars().next().is_none_or(|c| !c.is_whitespace());
     if needs_leading_space {
         printer.write(" ");
@@ -1397,8 +1338,7 @@ fn emit_html_comment(printer: &mut Printer, body: &str, original_offset: u32) {
 }
 
 /// Returns true when the source between `from` and `to` contains an HTML
-/// comment that the parser stored as token trivia. Used to keep the body
-/// emission active when the only content is a top-level comment.
+/// comment that the parser stored as token trivia.
 fn slice_has_html_comment(source: &str, from: u32, to: u32) -> bool {
     let from_usize = from as usize;
     let to_usize = (to as usize).min(source.len());

@@ -1,9 +1,4 @@
-//! Snapshot tests against the upstream Astro compiler's `convertToTSX`
-//! reference output. Each fixture pairs a `.astro` source string with the
-//! exact TSX bytes produced by the Go printer (copied from
-//! `packages/compiler/test/tsx/*.ts`). When ports diverge, `cargo insta
-//! review` is the preferred workflow — but inline `assert_eq!` is used here
-//! so divergences are visible directly in test output.
+//! Assertions over `convert_to_tsx` output for a spread of Astro inputs.
 
 use astro2tsx::{ConvertOptions, convert_to_tsx};
 
@@ -39,9 +34,7 @@ fn frontmatter_followed_by_body() {
     let actual = convert(input);
     assert!(actual.contains("let value = 'world';"));
     assert!(actual.contains("<Fragment>"));
-    // The text-content emitter preserves the original byte ranges, so the
-    // payload appears as "Hello " + "{value}" — JSX renders it the same
-    // way as the upstream printer's "Hello {value}".
+    // Text and expression are emitted as separate spans.
     assert!(actual.contains("Hello "));
     assert!(actual.contains("{value}"));
     assert!(actual.contains("</Fragment>"));
@@ -54,17 +47,12 @@ fn frontmatter_only_no_body() {
     let actual = convert(input);
     assert!(actual.starts_with(PREFIX));
     assert!(actual.contains("function DoTheThing(Props) {}"));
-    // No body, so no <Fragment> wrapper.
     assert!(!actual.contains("<Fragment>"));
     assert!(actual.contains("export default function __AstroComponent_"));
 }
 
 #[test]
 fn template_literal_attribute_passes_through_braces() {
-    // `<div class=\`x\`>` → the Go printer rewrites this to `class={\`x\`}`.
-    // Our parser exposes template literal attribute payloads as
-    // `HtmlString`; we currently emit a quoted form, so this test pins
-    // current behavior.
     let input = "<div class=\"hello\"></div>";
     let actual = convert(input);
     assert!(actual.contains("<div class=\"hello\">"));
@@ -74,8 +62,6 @@ fn template_literal_attribute_passes_through_braces() {
 fn invalid_attribute_collected_in_spread_object() {
     let input = "<div @click={() => {}} name=\"value\"></div>";
     let actual = convert(input);
-    // The exact ordering matches Go: valid attrs stay inline, invalids are
-    // siphoned into a `{...{...}}` spread.
     assert!(actual.contains("name=\"value\""));
     assert!(actual.contains("{...{"));
     assert!(actual.contains("\"@click\""));
@@ -92,9 +78,6 @@ fn named_export_uses_filename_basename() {
 fn comment_emits_jsx_comment_with_leading_space() {
     let input = "<!--/<div>Error?<div/>-->";
     let actual = convert(input);
-    // The Go printer emits `{/** /<div>...*/}`. Our walker doesn't yet
-    // handle HTML comments inside the body, so this test pins absence of a
-    // panic and that the surrounding scaffold still emits cleanly.
     assert!(actual.starts_with(PREFIX));
 }
 
@@ -102,7 +85,6 @@ fn comment_emits_jsx_comment_with_leading_space() {
 fn unclosed_tag_passes_through() {
     let input = "<components.";
     let actual = convert(input);
-    // We at least round-trip the input into the body without crashing.
     assert!(actual.contains("<Fragment>"));
     assert!(actual.contains("</Fragment>"));
 }
@@ -143,6 +125,72 @@ fn parser_errors_surface_but_do_not_block_emission() {
 fn shorthand_attribute_expands_to_named_form() {
     let input = "<Foo {bar} />";
     let actual = convert(input);
-    // `<Foo bar={bar} />` is what the Go printer emits.
     assert!(actual.contains("bar={bar}"));
+}
+
+#[test]
+fn unclosed_raw_text_element_keeps_content_and_siblings() {
+    for (input, retained) in [
+        ("<style>.a{color:red}\n<div>after</div>", ".a{color:red}"),
+        ("<div is:raw>lost\n<p>after</p>", "lost"),
+        ("<script type=\"application/json\">{\"a\":1}", "{\"a\":1}"),
+    ] {
+        let actual = convert(input);
+        assert!(
+            actual.contains(retained),
+            "lost content for {input:?}:\n{actual}"
+        );
+        assert!(
+            actual.contains("after") || input.starts_with("<script"),
+            "lost following siblings for {input:?}:\n{actual}"
+        );
+    }
+}
+
+#[test]
+fn unclosed_style_still_extracts_its_css() {
+    let result = convert_to_tsx("<style>.a{color:red}", ConvertOptions::default());
+    assert_eq!(result.styles.len(), 1);
+    assert!(result.styles[0].content.contains(".a{color:red}"));
+}
+
+#[test]
+fn valueless_expression_attribute_keeps_a_value() {
+    let actual = convert("<div @click={} />");
+    assert!(actual.contains("{...{\"@click\":true}}"), "{actual}");
+}
+
+#[test]
+fn spread_object_entries_are_comma_separated_without_a_leading_comma() {
+    let actual = convert("<div @click={} @other={} />");
+    assert!(
+        actual.contains("{...{\"@click\":true,\"@other\":true}}"),
+        "{actual}"
+    );
+    assert!(!actual.contains("{...{,"), "leading comma in:\n{actual}");
+}
+
+#[test]
+fn extracted_ranges_are_generated_offsets() {
+    let styled = convert_to_tsx("<div style=\"color:red\"></div>", ConvertOptions::default());
+    let range = styled.styles[0].range;
+    assert_eq!(
+        &styled.code[range.start as usize..range.end as usize],
+        "color:red"
+    );
+
+    let scripted = convert_to_tsx("<div onclick=\"go()\"></div>", ConvertOptions::default());
+    let range = scripted.scripts[0].range;
+    assert_eq!(
+        &scripted.code[range.start as usize..range.end as usize],
+        "go()"
+    );
+
+    let tag = convert_to_tsx("<style>.a{color:red}</style>", ConvertOptions::default());
+    let range = tag.styles[0].range;
+    assert!(
+        tag.code
+            .get(range.start as usize..range.end as usize)
+            .is_some()
+    );
 }
