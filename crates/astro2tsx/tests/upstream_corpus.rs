@@ -1,15 +1,13 @@
 //! Runs every test case in `tests/corpus/tsx.jsonl` through `convert_to_tsx`
 //! and asserts the output matches, except for listed divergences.
 //!
-//! The corpus is regenerated from
-//! `packages/compiler/test/extract-corpus.mjs` in the upstream repo. Each
-//! entry is `{ file, name, input, options, expected, static_expected }`.
+//! Each entry is `{ file, name, input, options, expected }`.
 
 use astro2tsx::{ConvertOptions, convert_to_tsx};
 use serde::Deserialize;
 use std::collections::BTreeMap;
 
-// Recovery would invent phantom attributes and tags; TypeScript errors on the raw output but recovers.
+// Unclosed tags are unsupported, and recovering the rest would invent phantom attributes.
 // Occurrence disambiguates basic.ts's two same-named "preserves spaces in tag" cases.
 const INTENTIONAL_DIVERGENCES: &[&str] = &[
     "escape.ts::does not escape tag opening unnecessarily II [1]",
@@ -38,10 +36,7 @@ struct Options {
     filename: Option<String>,
 }
 
-/// Drops the inline sourcemap comment that the upstream printer appends
-/// when `sourcemap: 'inline'`. Our port doesn't yet emit sourcemaps, and
-/// the assertion in the underlying test files (`assert.ok(code.includes(
-/// ...))`) doesn't depend on the sourcemap.
+/// Drops the trailing inline sourcemap comment, which is not compared.
 fn strip_inline_sourcemap(code: &str) -> &str {
     if let Some(idx) = code.rfind("\n//# sourceMappingURL=") {
         &code[..idx]

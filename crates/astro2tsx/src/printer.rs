@@ -48,9 +48,7 @@ impl Printer {
     }
 
     /// Emits `text` while attaching a per-character mapping back to the
-    /// source range starting at `original_start`. UTF-8 byte boundaries are
-    /// honored so the mappings align with what tools like trace-mapping
-    /// expect.
+    /// source range starting at `original_start`.
     pub(crate) fn write_with_mapping(&mut self, text: &str, original_start: u32) {
         let mut original = original_start;
         for ch in text.chars() {
@@ -61,8 +59,7 @@ impl Printer {
     }
 
     /// JSX cannot contain raw `>` or `}`, so emit them inside `{\`...\`}`
-    /// when they show up in text content. Mirrors
-    /// `printEscapedJSXTextWithSourcemap`.
+    /// when they show up in text content.
     pub(crate) fn write_jsx_text_with_mapping(&mut self, text: &str, original_start: u32) {
         let mut original = original_start;
         for ch in text.chars() {
@@ -131,7 +128,6 @@ impl Printer {
     }
 }
 
-/// Helper: returns the byte offset of the start of `range` in the source.
 pub(crate) fn range_start(range: TextRange) -> u32 {
     u32::from(range.start())
 }

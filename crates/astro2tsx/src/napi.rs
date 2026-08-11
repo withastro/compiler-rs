@@ -1,14 +1,11 @@
-//! Node.js bindings for `astro2tsx`. These are exposed only when the
-//! crate is built as a `cdylib`; the pure-Rust API in `lib.rs` is
-//! unaffected and still available via `crate-type = ["lib"]`.
+//! Node.js bindings for `astro2tsx`. Excluded from `cfg(test)` builds, where
+//! napi-derive emits no registration and every item here looks dead.
 
 use napi_derive::napi;
 
 use crate::{ConvertOptions, ExtractedKind, convert_to_tsx as convert_rs};
 
-/// Per-byte source-position mapping. JS consumers can iterate this list
-/// to build a VLQ-encoded sourcemap or to translate offsets between the
-/// emitted TSX and the original `.astro` source.
+/// Per-byte source-position mapping between the emitted TSX and the source.
 #[napi(object)]
 pub struct Mapping {
     /// Byte offset into the generated TSX.
@@ -18,8 +15,7 @@ pub struct Mapping {
     pub original: Option<u32>,
 }
 
-/// Byte range inside the generated TSX. Used to mark the frontmatter
-/// section, the body section, and each extracted script / style block.
+/// Byte range inside the generated TSX.
 #[napi(object)]
 pub struct GeneratedRange {
     pub start: u32,
@@ -42,7 +38,6 @@ pub struct ExtractedTag {
     pub lang: Option<String>,
 }
 
-/// Options recognised by `convertToTsx`.
 #[napi(object)]
 #[derive(Default)]
 pub struct ConvertToTsxOptions {
@@ -51,7 +46,6 @@ pub struct ConvertToTsxOptions {
     pub filename: Option<String>,
 }
 
-/// Result of converting an Astro source to TSX.
 #[napi(object)]
 pub struct ConvertToTsxResult {
     pub code: String,

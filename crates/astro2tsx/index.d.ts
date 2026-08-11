@@ -9,7 +9,6 @@
  */
 export declare function convertToTsx(source: string, options?: ConvertToTsxOptions | undefined | null): ConvertToTsxResult
 
-/** Options recognised by `convertToTsx`. */
 export interface ConvertToTsxOptions {
   /**
    * Filename used to derive the default-exported component identifier
@@ -18,7 +17,6 @@ export interface ConvertToTsxOptions {
   filename?: string
 }
 
-/** Result of converting an Astro source to TSX. */
 export interface ConvertToTsxResult {
   code: string
   mappings: Array<Mapping>
@@ -43,20 +41,13 @@ export declare const enum ExtractedTagKind {
   EventAttribute = 'EventAttribute'
 }
 
-/**
- * Byte range inside the generated TSX. Used to mark the frontmatter
- * section, the body section, and each extracted script / style block.
- */
+/** Byte range inside the generated TSX. */
 export interface GeneratedRange {
   start: number
   end: number
 }
 
-/**
- * Per-byte source-position mapping. JS consumers can iterate this list
- * to build a VLQ-encoded sourcemap or to translate offsets between the
- * emitted TSX and the original `.astro` source.
- */
+/** Per-byte source-position mapping between the emitted TSX and the source. */
 export interface Mapping {
   /** Byte offset into the generated TSX. */
   generated: number

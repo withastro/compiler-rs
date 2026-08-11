@@ -1,13 +1,5 @@
-//! Detects the `Props` type binding and the `getStaticPaths` export in
-//! Astro frontmatter so the synthetic `export default function`'s
-//! signature mirrors the upstream Go printer's `GetPropsType` /
-//! `HasGetStaticPaths` analysis.
-//!
-//! The actual upstream printer also tracks how the type appears (interface
-//! vs type alias vs import) and reuses the source text for generics. We
-//! do the same: when `Props` has type parameters we emit the full
-//! parameter list at the function declaration and the bare names at the
-//! call site (`function NAME<T extends X>(_props: Props<T>)`).
+//! Detects the `Props` type binding and the `getStaticPaths` export in Astro
+//! frontmatter, shaping the synthetic `export default function` signature.
 
 use biome_js_parser::{JsParserOptions, parse};
 use biome_js_syntax::{
@@ -77,10 +69,8 @@ pub(crate) fn analyze(source: &str) -> PropsAnalysis {
         }
     }
 
-    // The Biome JS parser bails on certain inputs that the upstream Go
-    // scanner would accept (e.g. `Props<T extends string ? {...}: never>`
-    // — invalid TS but written in real-world fixtures). Fall back to a
-    // text scan that just recognizes `interface Props` / `type Props`.
+    // The JS parser rejects generic forms real fixtures use, e.g.
+    // `Props<T extends string ? {...}: never>`.
     if !analysis.has_props {
         text_scan_props_binding(source, &mut analysis);
     }
@@ -95,9 +85,7 @@ pub(crate) fn analyze(source: &str) -> PropsAnalysis {
 }
 
 /// Brace-balanced extraction of the `<...>` immediately following a
-/// keyword + `Props` pair. Mirrors the upstream Go scanner: the JS parser
-/// rejects pathological generic forms but the text-level scan is happy
-/// to copy whatever is between the matching angle brackets.
+/// keyword + `Props` pair.
 fn fill_generics_textually(analysis: &mut PropsAnalysis, source: &str, top: &JsNode) {
     let trimmed_range = top.text_trimmed_range();
     let start = u32::from(trimmed_range.start()) as usize;
@@ -111,7 +99,6 @@ fn fill_generics_textually(analysis: &mut PropsAnalysis, source: &str, top: &JsN
     };
     let after_props = props_idx + "Props".len();
     let mut iter = slice[after_props..].bytes().enumerate();
-    // Find the first non-whitespace byte after `Props`.
     let mut first_after = None;
     for (i, b) in iter.by_ref() {
         if !(b as char).is_whitespace() {
@@ -205,9 +192,8 @@ fn leading_identifier(segment: &str) -> Option<&str> {
     }
 }
 
-/// Last-resort text scan for `interface Props` / `type Props` when the JS
-/// parser couldn't produce a tree. Records generics if a recognisable
-/// `<...>` follows the binding name.
+/// Last-resort text scan for `interface Props` / `type Props`, used whenever
+/// the tree walk found no binding. Records generics if a `<...>` follows.
 fn text_scan_props_binding(source: &str, analysis: &mut PropsAnalysis) {
     for keyword in ["interface", "type"] {
         let mut search_from = 0usize;
@@ -325,9 +311,7 @@ fn scan_props_import(text: &str) -> bool {
                 b' '
             };
             if !is_ident_byte(before) && !is_ident_byte(after) {
-                // Skip cases where this `Props` is the source side of an
-                // `as` rename (`{ Props as Other }` binds `Other`, not
-                // `Props`). The next non-whitespace tokens decide.
+                // `{ Props as Other }` binds `Other`, not `Props`.
                 let after_pos = i + needle.len();
                 if !next_token_is_as(bytes, after_pos) {
                     return true;
