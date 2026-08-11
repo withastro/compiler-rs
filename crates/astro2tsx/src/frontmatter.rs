@@ -9,7 +9,8 @@
 //! aligned with the original file.
 
 use biome_js_parser::{JsParserOptions, parse};
-use biome_js_syntax::{AnyJsRoot, JsFileSource, JsReturnStatement, JsSyntaxKind};
+use biome_js_syntax::{AnyJsRoot, JsReturnStatement, JsSyntaxKind};
+use biome_languages::JsFileSource;
 use biome_rowan::{AstNode, WalkEvent};
 
 /// Returns the byte offsets (relative to `source`) of every `return`

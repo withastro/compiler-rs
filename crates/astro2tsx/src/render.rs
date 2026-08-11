@@ -257,11 +257,14 @@ fn render_element(printer: &mut Printer, element: AnyHtmlElement) {
         AnyHtmlElement::HtmlSelfClosingElement(node) => {
             render_self_closing_element(printer, node);
         }
-        AnyHtmlElement::HtmlCdataSection(_) | AnyHtmlElement::HtmlBogusElement(_) => {
-            // CDATA and bogus nodes are passed through verbatim. They occur
-            // rarely in `.astro` and produce JSX-illegal output regardless,
-            // so the safest action is to preserve the original text and let
-            // downstream tooling surface diagnostics.
+        AnyHtmlElement::HtmlCdataSection(_)
+        | AnyHtmlElement::HtmlProcessingInstruction(_)
+        | AnyHtmlElement::HtmlBogusElement(_) => {
+            // CDATA, processing instructions, and bogus nodes are passed
+            // through verbatim. They occur rarely in `.astro` and produce
+            // JSX-illegal output regardless, so the safest action is to
+            // preserve the original text and let downstream tooling surface
+            // diagnostics.
             let range = element.range();
             let text = slice_source(&printer.source, range);
             printer.write_with_mapping(&text, range_start(range));
@@ -343,15 +346,20 @@ fn render_single_text_expression(printer: &mut Printer, node: HtmlSingleTextExpr
     printer.map_to_offset(range_start(l_curly_range));
     printer.write("{");
 
-    if let Ok(literal) = expression.html_literal_token() {
+    if expression.html_literal_token().is_ok() {
         // The Biome HTML parser doesn't recurse into `{...}` bodies — it
         // stores the entire content as a single `HTML_LITERAL` token. So
         // we manually scan for embedded JSX and, if present, splice in
         // `<Fragment>...</Fragment>` around it: TS needs a single
         // expression, and bare JSX inside a JS expression is interpreted
         // as a comparison without that wrapper.
-        let raw = literal.text_trimmed();
-        let original_start = u32::from(literal.text_trimmed_range().start());
+        // Whitespace touching `{` is trivia, which the literal token drops.
+        let original_start = u32::from(l_curly_range.end());
+        let body = slice_source(
+            &printer.source,
+            TextRange::new(l_curly_range.end(), r_curly_range.start()),
+        );
+        let raw = body.as_str();
         if raw.is_empty() {
             printer.map_nil();
             printer.write("(void 0)");
@@ -1043,7 +1051,10 @@ fn emit_attribute(printer: &mut Printer, attr: &AnyHtmlAttribute) {
             }
         }
         AnyHtmlAttribute::AnyAstroDirective(directive) => emit_astro_directive(printer, directive),
-        AnyHtmlAttribute::AnySvelteDirective(_)
+        AnyHtmlAttribute::AnyAngularBinding(_)
+        | AnyHtmlAttribute::AngularStructuralDirective(_)
+        | AnyHtmlAttribute::AngularTemplateRefVariable(_)
+        | AnyHtmlAttribute::AnySvelteDirective(_)
         | AnyHtmlAttribute::AnyVueDirective(_)
         | AnyHtmlAttribute::HtmlAttributeDoubleTextExpression(_)
         | AnyHtmlAttribute::HtmlBogusAttribute(_)
@@ -1161,7 +1172,8 @@ fn emit_html_attribute(printer: &mut Printer, attr_node: &HtmlAttribute) {
             printer.map_nil();
             printer.write("}");
         }
-        AnyHtmlAttributeInitializer::VueVForValue(_) => {
+        AnyHtmlAttributeInitializer::SvelteTemplateAttributeValue(_)
+        | AnyHtmlAttributeInitializer::VueVForValue(_) => {
             // Not applicable in Astro mode.
         }
     }
