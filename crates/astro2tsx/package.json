@@ -1,6 +1,7 @@
 {
   "name": "@astrojs/astro2tsx",
   "version": "0.1.0",
+  "private": true,
   "description": "Convert .astro files to TSX for tsserver intellisense",
   "keywords": [
     "astro",
