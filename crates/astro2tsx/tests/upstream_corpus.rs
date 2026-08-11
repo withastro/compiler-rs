@@ -19,16 +19,20 @@ use std::collections::BTreeMap;
 /// - `<Button      >` (unclosed open) → upstream emits a synthetic
 ///   `</Button>` to balance JSX. tsserver parses unbalanced JSX just
 ///   fine, so we leave it unbalanced and avoid the synthetic span.
+// Occurrence disambiguates basic.ts's two same-named "preserves spaces in tag" cases.
 const INTENTIONAL_DIVERGENCES: &[&str] = &[
-    "does not escape tag opening unnecessarily II",
-    "does not escape tag opening unnecessarily III",
-    "preserves spaces in tag",
-    "preserves line returns in tag by transforming to space",
+    "escape.ts::does not escape tag opening unnecessarily II [1]",
+    "escape.ts::does not escape tag opening unnecessarily III [1]",
+    "basic.ts::preserves spaces in tag [2]",
+    "basic.ts::preserves line returns in tag by transforming to space [1]",
 ];
+
+fn record_key(record: &Record, occurrence: usize) -> String {
+    format!("{}::{} [{occurrence}]", record.file, record.name)
+}
 
 #[derive(Debug, Deserialize)]
 struct Record {
-    #[allow(dead_code)]
     file: String,
     name: String,
     input: String,
@@ -121,13 +125,23 @@ fn dump_first_diff_per_file() {
 }
 
 #[test]
-fn report_parity_with_upstream() {
+fn corpus_parity() {
     let corpus = load_corpus();
     assert!(!corpus.is_empty(), "corpus is empty — regenerate it");
 
-    let mut by_file: BTreeMap<String, (usize, usize, Vec<String>, Vec<String>)> = BTreeMap::new();
+    let mut occurrences: BTreeMap<(String, String), usize> = BTreeMap::new();
+    let mut keys: Vec<String> = Vec::new();
+    let mut regressions: Vec<String> = Vec::new();
+    let mut resolved: Vec<String> = Vec::new();
 
     for record in &corpus {
+        let occurrence = occurrences
+            .entry((record.file.clone(), record.name.clone()))
+            .or_insert(0);
+        *occurrence += 1;
+        let key = record_key(record, *occurrence);
+        keys.push(key.clone());
+
         let actual = convert_to_tsx(
             &record.input,
             ConvertOptions {
@@ -136,38 +150,48 @@ fn report_parity_with_upstream() {
         )
         .code;
 
-        let entry = by_file
-            .entry(record.file.clone())
-            .or_insert((0, 0, Vec::new(), Vec::new()));
-        entry.1 += 1;
-        let expected_trimmed = strip_inline_sourcemap(&record.expected);
-        let actual_trimmed = strip_inline_sourcemap(&actual);
-        if actual_trimmed == expected_trimmed {
-            entry.0 += 1;
-        } else if INTENTIONAL_DIVERGENCES.contains(&record.name.as_str()) {
-            entry.3.push(record.name.clone());
-        } else {
-            entry.2.push(record.name.clone());
+        let matched = strip_inline_sourcemap(&actual) == strip_inline_sourcemap(&record.expected);
+        let allowed = INTENTIONAL_DIVERGENCES.contains(&key.as_str());
+
+        match (matched, allowed) {
+            (false, false) => regressions.push(format!(
+                "  {key}\n    input:    {:?}\n    expected: {:?}\n    actual:   {:?}",
+                record.input,
+                strip_inline_sourcemap(&record.expected),
+                strip_inline_sourcemap(&actual),
+            )),
+            (true, true) => resolved.push(key),
+            _ => {}
         }
     }
 
-    let mut total_pass = 0;
-    let mut total_diverge = 0;
-    let mut total_count = 0;
-    eprintln!("\n== upstream tsx test parity ==");
-    for (file, (pass, total, failing, divergent)) in &by_file {
-        total_pass += pass;
-        total_diverge += divergent.len();
-        total_count += total;
-        eprintln!("  {file}: {pass}/{total}");
-        for name in failing {
-            eprintln!("    - FAIL: {name}");
-        }
-        for name in divergent {
-            eprintln!("    - DIVERGE (intentional): {name}");
-        }
+    let unmatched: Vec<&str> = INTENTIONAL_DIVERGENCES
+        .iter()
+        .copied()
+        .filter(|listed| !keys.iter().any(|key| key == listed))
+        .collect();
+
+    let mut failure = String::new();
+    if !regressions.is_empty() {
+        failure.push_str(&format!(
+            "{} case(s) diverge but are not listed in INTENTIONAL_DIVERGENCES:\n{}\n",
+            regressions.len(),
+            regressions.join("\n"),
+        ));
     }
-    eprintln!(
-        "---\n  total: {total_pass}/{total_count} (+ {total_diverge} intentional divergences)\n"
-    );
+    if !resolved.is_empty() {
+        failure.push_str(&format!(
+            "{} listed divergence(s) now match and must be removed from the list:\n  {}\n",
+            resolved.len(),
+            resolved.join("\n  "),
+        ));
+    }
+    if !unmatched.is_empty() {
+        failure.push_str(&format!(
+            "{} listed divergence(s) match no corpus record:\n  {}\n",
+            unmatched.len(),
+            unmatched.join("\n  "),
+        ));
+    }
+    assert!(failure.is_empty(), "\n{failure}");
 }
