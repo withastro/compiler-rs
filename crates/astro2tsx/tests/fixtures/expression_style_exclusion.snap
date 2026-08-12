@@ -2,6 +2,10 @@
 source: crates/astro2tsx/tests/snapshots.rs
 info:
   has_parse_errors: false
+  frontmatter_status: DoesntExist
+  frontmatter_source:
+    start: 0
+    end: 0
   frontmatter:
     start: 0
     end: 0
@@ -15,6 +19,9 @@ info:
       generated:
         start: 57
         end: 57
+      source:
+        start: 16
+        end: 29
       content: ".a{color:red}"
 input_file: crates/astro2tsx/tests/fixtures/expression_style_exclusion.astro
 ---

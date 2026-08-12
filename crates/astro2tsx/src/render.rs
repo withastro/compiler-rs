@@ -16,7 +16,9 @@ use crate::expression::emit_expression_tree;
 use crate::frontmatter::rewrite_top_level_returns;
 use crate::printer::{Printer, range_start};
 use crate::props::{PropsAnalysis, analyze as analyze_props};
-use crate::sourcemap::GeneratedRange;
+use crate::sourcemap::{
+    Diagnostic, DiagnosticSeverity, FrontmatterInfo, FrontmatterStatus, GeneratedRange, SourceRange,
+};
 use crate::utils::{
     ScriptKind, classify_script_type, comment_needs_leading_space, encode_double_quote,
     is_html_event_attribute, is_valid_tsx_attribute_name, tsx_component_name,
@@ -48,6 +50,7 @@ pub(crate) fn render_root(printer: &mut Printer, root: HtmlRoot, options: &Conve
         emit_frontmatter(printer, node, rewritten.as_ref());
     }
 
+    printer.frontmatter_info = frontmatter_info(&frontmatter, printer.source.len() as u32);
     let body_text_start = body_text_start_offset(&frontmatter);
     // A childless body still needs its `<Fragment>` when comment trivia remains.
     let has_body_children = body.iter().next().is_some()
@@ -114,6 +117,35 @@ fn body_text_start_offset(frontmatter: &Option<AnyAstroFrontmatterElement>) -> u
         return u32::from(r_fence.text_trimmed_range().end());
     }
     0
+}
+
+fn frontmatter_info(
+    frontmatter: &Option<AnyAstroFrontmatterElement>,
+    source_len: u32,
+) -> FrontmatterInfo {
+    match frontmatter {
+        None => FrontmatterInfo::default(),
+        Some(AnyAstroFrontmatterElement::AstroBogusFrontmatter(node)) => FrontmatterInfo {
+            status: FrontmatterStatus::Open,
+            source: SourceRange::new(range_start(node.range()), source_len),
+        },
+        Some(AnyAstroFrontmatterElement::AstroFrontmatterElement(node)) => {
+            let start = node
+                .l_fence_token()
+                .map(|token| range_start(token.text_trimmed_range()))
+                .unwrap_or_else(|_| range_start(node.range()));
+            match node.r_fence_token() {
+                Ok(r_fence) => FrontmatterInfo {
+                    status: FrontmatterStatus::Closed,
+                    source: SourceRange::new(start, u32::from(r_fence.text_trimmed_range().end())),
+                },
+                Err(_) => FrontmatterInfo {
+                    status: FrontmatterStatus::Open,
+                    source: SourceRange::new(start, source_len),
+                },
+            }
+        }
+    }
 }
 
 /// The frontmatter's JS text (trivia included) and its source offset.
@@ -348,7 +380,27 @@ fn emit_expression_body(printer: &mut Printer, raw: &str, original_start: u32) {
         return;
     }
     printer.has_expression_errors = true;
+    for diagnostic in parse.diagnostics() {
+        printer.diagnostics.push(Diagnostic {
+            message: diagnostic.message.to_string(),
+            severity: DiagnosticSeverity::Error,
+            source: diagnostic_source_range(diagnostic, original_start, raw.len() as u32),
+        });
+    }
     printer.write_with_mapping(raw, original_start);
+}
+
+/// Expression-body diagnostics already carry document offsets thanks to the
+/// parse offset, but a spanless one falls back to the whole body.
+fn diagnostic_source_range(
+    diagnostic: &biome_parser::diagnostic::ParseDiagnostic,
+    start: u32,
+    len: u32,
+) -> SourceRange {
+    match biome_diagnostics::Diagnostic::location(diagnostic).span {
+        Some(span) => SourceRange::new(u32::from(span.start()), u32::from(span.end())),
+        None => SourceRange::new(start, start + len),
+    }
 }
 
 fn render_html_element(printer: &mut Printer, node: HtmlElement) {
@@ -456,12 +508,14 @@ fn render_html_element(printer: &mut Printer, node: HtmlElement) {
             if is_script {
                 printer.add_script_block(
                     GeneratedRange::new(body_start, body_end),
+                    SourceRange::new(start, end),
                     content,
                     classify_script_label(&attributes),
                 );
             } else {
                 printer.add_style_block(
                     GeneratedRange::new(body_start, body_end),
+                    SourceRange::new(start, end),
                     content,
                     style_lang_label(&attributes),
                 );
@@ -849,12 +903,14 @@ fn emit_html_attribute(printer: &mut Printer, attr_node: &HtmlAttribute) {
             if is_html_event_attribute(&key_text) {
                 printer.add_event_attribute(
                     GeneratedRange::new(generated_start, generated_end),
+                    SourceRange::new(value_start, inner_end),
                     inner.to_string(),
                 );
             }
             if key_text == "style" {
                 printer.add_style_attribute(
                     GeneratedRange::new(generated_start, generated_end),
+                    SourceRange::new(value_start, inner_end),
                     inner.to_string(),
                 );
             }

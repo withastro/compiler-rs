@@ -35,6 +35,8 @@ fn parse_fixture(raw: &str) -> (String, ConvertOptions) {
 #[derive(Serialize)]
 struct Info {
     has_parse_errors: bool,
+    frontmatter_status: String,
+    frontmatter_source: Range,
     frontmatter: Range,
     body: Range,
     scripts: Vec<Tag>,
@@ -52,6 +54,7 @@ struct Tag {
     kind: String,
     lang: Option<String>,
     generated: Range,
+    source: Range,
     content: String,
 }
 
@@ -64,6 +67,10 @@ fn tags(tags: &[ExtractedTag]) -> Vec<Tag> {
                 start: tag.range.start,
                 end: tag.range.end,
             },
+            source: Range {
+                start: tag.source.start,
+                end: tag.source.end,
+            },
             content: tag.content.clone(),
         })
         .collect()
@@ -72,9 +79,14 @@ fn tags(tags: &[ExtractedTag]) -> Vec<Tag> {
 fn info(result: &ConvertResult) -> Info {
     Info {
         has_parse_errors: result.has_parse_errors,
+        frontmatter_status: format!("{:?}", result.frontmatter.status),
+        frontmatter_source: Range {
+            start: result.frontmatter.source.start,
+            end: result.frontmatter.source.end,
+        },
         frontmatter: Range {
-            start: result.frontmatter.start,
-            end: result.frontmatter.end,
+            start: result.frontmatter_range.start,
+            end: result.frontmatter_range.end,
         },
         body: Range {
             start: result.body.start,

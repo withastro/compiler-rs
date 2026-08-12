@@ -2,6 +2,10 @@
 source: crates/astro2tsx/tests/snapshots.rs
 info:
   has_parse_errors: false
+  frontmatter_status: DoesntExist
+  frontmatter_source:
+    start: 0
+    end: 0
   frontmatter:
     start: 0
     end: 0
@@ -14,18 +18,27 @@ info:
       generated:
         start: 71
         end: 71
+      source:
+        start: 30
+        end: 35
       content: go();
     - kind: Script
       lang: json
       generated:
         start: 113
         end: 113
+      source:
+        start: 77
+        end: 84
       content: "{\"a\":1}"
     - kind: Script
       lang: unknown
       generated:
         start: 163
         end: 163
+      source:
+        start: 134
+        end: 137
       content: wat
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/script_type_labels.astro

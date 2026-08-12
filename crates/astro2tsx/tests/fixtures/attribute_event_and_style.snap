@@ -2,6 +2,10 @@
 source: crates/astro2tsx/tests/snapshots.rs
 info:
   has_parse_errors: false
+  frontmatter_status: DoesntExist
+  frontmatter_source:
+    start: 0
+    end: 0
   frontmatter:
     start: 0
     end: 0
@@ -14,6 +18,9 @@ info:
       generated:
         start: 55
         end: 59
+      source:
+        start: 14
+        end: 18
       content: go()
   styles:
     - kind: StyleAttribute
@@ -21,6 +28,9 @@ info:
       generated:
         start: 68
         end: 77
+      source:
+        start: 27
+        end: 36
       content: "color:red"
 input_file: crates/astro2tsx/tests/fixtures/attribute_event_and_style.astro
 ---

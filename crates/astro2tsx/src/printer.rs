@@ -2,7 +2,9 @@
 
 use biome_rowan::TextRange;
 
-use crate::sourcemap::{ExtractedKind, ExtractedTag, GeneratedRange, Mapping};
+use crate::sourcemap::{
+    Diagnostic, ExtractedKind, ExtractedTag, FrontmatterInfo, GeneratedRange, Mapping, SourceRange,
+};
 use crate::utils::{comment_body_escape, template_text_escape};
 
 pub(crate) struct Printer<'a> {
@@ -15,6 +17,8 @@ pub(crate) struct Printer<'a> {
     pub(crate) body_range: GeneratedRange,
     pub(crate) scripts: Vec<ExtractedTag>,
     pub(crate) styles: Vec<ExtractedTag>,
+    pub(crate) diagnostics: Vec<Diagnostic>,
+    pub(crate) frontmatter_info: FrontmatterInfo,
     /// An expression body failed to parse and was emitted verbatim.
     pub(crate) has_expression_errors: bool,
 }
@@ -30,6 +34,8 @@ impl<'a> Printer<'a> {
             body_range: GeneratedRange::default(),
             scripts: Vec::new(),
             styles: Vec::new(),
+            diagnostics: Vec::new(),
+            frontmatter_info: FrontmatterInfo::default(),
             has_expression_errors: false,
         }
     }
@@ -146,38 +152,59 @@ impl<'a> Printer<'a> {
     pub(crate) fn add_script_block(
         &mut self,
         range: GeneratedRange,
+        source: SourceRange,
         content: String,
         kind_label: &str,
     ) {
         self.scripts.push(ExtractedTag {
             range,
+            source,
             kind: ExtractedKind::Script,
             content,
             lang: Some(kind_label.to_string()),
         });
     }
 
-    pub(crate) fn add_style_block(&mut self, range: GeneratedRange, content: String, lang: String) {
+    pub(crate) fn add_style_block(
+        &mut self,
+        range: GeneratedRange,
+        source: SourceRange,
+        content: String,
+        lang: String,
+    ) {
         self.styles.push(ExtractedTag {
             range,
+            source,
             kind: ExtractedKind::Style,
             content,
             lang: Some(lang),
         });
     }
 
-    pub(crate) fn add_event_attribute(&mut self, range: GeneratedRange, content: String) {
+    pub(crate) fn add_event_attribute(
+        &mut self,
+        range: GeneratedRange,
+        source: SourceRange,
+        content: String,
+    ) {
         self.scripts.push(ExtractedTag {
             range,
+            source,
             kind: ExtractedKind::EventAttribute,
             content,
             lang: Some("event-attribute".to_string()),
         });
     }
 
-    pub(crate) fn add_style_attribute(&mut self, range: GeneratedRange, content: String) {
+    pub(crate) fn add_style_attribute(
+        &mut self,
+        range: GeneratedRange,
+        source: SourceRange,
+        content: String,
+    ) {
         self.styles.push(ExtractedTag {
             range,
+            source,
             kind: ExtractedKind::StyleAttribute,
             content,
             lang: Some("css".to_string()),
