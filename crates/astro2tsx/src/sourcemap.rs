@@ -54,10 +54,58 @@ impl GeneratedRange {
     }
 }
 
+/// Byte range inside the original `.astro` source. Distinct from
+/// [`GeneratedRange`] so the two coordinate spaces cannot be mixed up.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SourceRange {
+    pub start: u32,
+    pub end: u32,
+}
+
+impl SourceRange {
+    pub(crate) fn new(start: u32, end: u32) -> Self {
+        Self { start, end }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DiagnosticSeverity {
+    Error = 1,
+    Warning = 2,
+    Information = 3,
+    Hint = 4,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Diagnostic {
+    pub message: String,
+    pub severity: DiagnosticSeverity,
+    pub source: SourceRange,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum FrontmatterStatus {
+    #[default]
+    DoesntExist,
+    /// An opening fence with no closing one.
+    Open,
+    Closed,
+}
+
+/// `source` spans the opening fence through the end of the closing fence,
+/// so it doubles as the offset where body content starts.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct FrontmatterInfo {
+    pub status: FrontmatterStatus,
+    pub source: SourceRange,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExtractedTag {
     /// Range of `content` within the generated TSX, for every kind.
     pub range: GeneratedRange,
+    /// Range of `content` within the original source.
+    pub source: SourceRange,
     pub kind: ExtractedKind,
     pub content: String,
     pub lang: Option<String>,

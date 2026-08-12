@@ -157,3 +157,40 @@ test('every clean-parse fixture emits syntactically valid TSX', async () => {
 	}
 	assert.ok(checked > 50, `expected to check most fixtures, checked ${checked}`);
 });
+
+test('offsets are UTF-16 code units, not bytes', () => {
+	const source = '---\nconst \u{1f984} = 1;\n---\n<style>.a{color:red}</style>';
+	const result = convertToTsx(source, { sourcemap: 'external' });
+
+	// The unicorn is four bytes but two UTF-16 units, so a byte offset would overshoot.
+	const style = result.styles[0];
+	assert.equal(source.slice(style.position.start, style.position.end), '.a{color:red}');
+	assert.equal(
+		source.slice(result.frontmatterSource.start, result.frontmatterSource.end).at(-1),
+		'-',
+	);
+
+	const { generatedOffsets, sourceOffsets, lengths } = result;
+	for (let i = 0; i < generatedOffsets.length; i++) {
+		assert.equal(
+			result.code.slice(generatedOffsets[i], generatedOffsets[i] + lengths[i]),
+			source.slice(sourceOffsets[i], sourceOffsets[i] + lengths[i]),
+			`run ${i} is not verbatim`,
+		);
+	}
+});
+
+test('reports frontmatter status and positioned diagnostics', () => {
+	assert.equal(convertToTsx('---\nlet x = 1;\n---\n<p/>').frontmatterStatus, 'closed');
+	assert.equal(convertToTsx('---\nlet x = 1;\n').frontmatterStatus, 'open');
+	assert.equal(convertToTsx('<p/>').frontmatterStatus, 'doesnt-exist');
+
+	const broken = convertToTsx('<div>{x ==}</div>');
+	assert.ok(broken.hasParseErrors);
+	assert.ok(broken.diagnostics.length > 0);
+	for (const diagnostic of broken.diagnostics) {
+		assert.ok(diagnostic.message.length > 0);
+		assert.equal(diagnostic.severity, 1);
+		assert.ok(diagnostic.position.end >= diagnostic.position.start);
+	}
+});

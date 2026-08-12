@@ -2,6 +2,10 @@
 source: crates/astro2tsx/tests/snapshots.rs
 info:
   has_parse_errors: false
+  frontmatter_status: Closed
+  frontmatter_source:
+    start: 0
+    end: 165
   frontmatter:
     start: 30
     end: 190

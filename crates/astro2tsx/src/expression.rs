@@ -7,7 +7,7 @@ use biome_js_syntax::{
 use biome_rowan::{AstNode, AstNodeList, SyntaxNode, SyntaxToken, SyntaxTriviaPiece, TextSize};
 
 use crate::printer::Printer;
-use crate::sourcemap::GeneratedRange;
+use crate::sourcemap::{GeneratedRange, SourceRange};
 use crate::utils::{
     classify_script_type, comment_needs_leading_space, encode_double_quote,
     is_valid_tsx_attribute_name,
@@ -213,16 +213,17 @@ fn emit_jsx_element(printer: &mut Printer, element: &JsxElement, base: u32) {
         }
         ChildrenMode::ExcludedScript | ChildrenMode::ExcludedStyle => {
             if let Some((from, to)) = children_source_span(element) {
-                let content =
-                    printer.source[abs(base, from) as usize..abs(base, to) as usize].to_string();
+                let (from, to) = (abs(base, from), abs(base, to));
+                let content = printer.source[from as usize..to as usize].to_string();
                 let range = GeneratedRange::new(body_start, printer.position());
+                let source = SourceRange::new(from, to);
                 if matches!(mode, ChildrenMode::ExcludedScript) {
                     let label = script_label(&opening.attributes());
-                    printer.add_script_block(range, content, label);
+                    printer.add_script_block(range, source, content, label);
                 } else {
                     let lang = jsx_attribute_string(&opening.attributes(), "lang")
                         .unwrap_or_else(|| "css".to_string());
-                    printer.add_style_block(range, content, lang);
+                    printer.add_style_block(range, source, content, lang);
                 }
             }
         }

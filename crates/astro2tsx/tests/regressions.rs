@@ -14,9 +14,9 @@ fn frontmatter_range_is_recorded() {
         "---\nlet x = 1;\n---\n<div></div>",
         ConvertOptions::default(),
     );
-    assert!(result.frontmatter.end > result.frontmatter.start);
-    let frontmatter_slice =
-        &result.code[result.frontmatter.start as usize..result.frontmatter.end as usize];
+    assert!(result.frontmatter_range.end > result.frontmatter_range.start);
+    let frontmatter_slice = &result.code
+        [result.frontmatter_range.start as usize..result.frontmatter_range.end as usize];
     assert!(frontmatter_slice.contains("let x = 1;"));
 }
 
@@ -285,5 +285,48 @@ fn comments_before_the_first_element_survive() {
             "a leading comment was dropped for {input:?}:\n{actual}"
         );
         assert!(!actual.contains("<!--"), "untranslated comment:\n{actual}");
+    }
+}
+
+#[test]
+fn extracted_tags_carry_source_ranges() {
+    let source = "---\nconst x = 1;\n---\n<style>.a{color:red}</style>\n<div onclick=\"go()\" style=\"color:red\"></div>\n<script>run();</script>";
+    let result = convert_to_tsx(source, ConvertOptions::default());
+
+    let slice = |range: astro2tsx::SourceRange| &source[range.start as usize..range.end as usize];
+    assert_eq!(slice(result.styles[0].source), ".a{color:red}");
+    assert_eq!(slice(result.styles[1].source), "color:red");
+    assert_eq!(slice(result.scripts[0].source), "go()");
+    assert_eq!(slice(result.scripts[1].source), "run();");
+}
+
+#[test]
+fn frontmatter_status_and_source_are_reported() {
+    use astro2tsx::FrontmatterStatus;
+
+    let closed = convert_to_tsx("---\nlet x = 1;\n---\n<p/>", ConvertOptions::default());
+    assert_eq!(closed.frontmatter.status, FrontmatterStatus::Closed);
+    assert_eq!(closed.frontmatter.source.start, 0);
+    assert_eq!(closed.frontmatter.source.end, 18);
+
+    let open = convert_to_tsx("---\nlet x = 1;\n", ConvertOptions::default());
+    assert_eq!(open.frontmatter.status, FrontmatterStatus::Open);
+
+    let absent = convert_to_tsx("<p>hi</p>", ConvertOptions::default());
+    assert_eq!(absent.frontmatter.status, FrontmatterStatus::DoesntExist);
+}
+
+#[test]
+fn diagnostics_carry_positions_pointing_at_the_problem() {
+    let source = "<div>{x ==}</div>";
+    let result = convert_to_tsx(source, ConvertOptions::default());
+    assert!(!result.diagnostics.is_empty());
+    for diagnostic in &result.diagnostics {
+        assert!(!diagnostic.message.is_empty());
+        assert!(
+            diagnostic.source.end as usize <= source.len(),
+            "{diagnostic:?} runs past the source"
+        );
+        assert!(diagnostic.source.start <= diagnostic.source.end);
     }
 }

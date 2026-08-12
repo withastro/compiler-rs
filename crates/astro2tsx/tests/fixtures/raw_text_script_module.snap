@@ -2,6 +2,10 @@
 source: crates/astro2tsx/tests/snapshots.rs
 info:
   has_parse_errors: false
+  frontmatter_status: DoesntExist
+  frontmatter_source:
+    start: 0
+    end: 0
   frontmatter:
     start: 0
     end: 0
@@ -14,6 +18,9 @@ info:
       generated:
         start: 63
         end: 63
+      source:
+        start: 22
+        end: 34
       content: const a = 1;
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/raw_text_script_module.astro
