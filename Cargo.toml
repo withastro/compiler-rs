@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/*"]
+members = ["crates/*", "benches/*"]
 
 [workspace.package]
 authors = ["Astro contributors"]
