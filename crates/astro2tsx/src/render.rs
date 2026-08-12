@@ -496,15 +496,8 @@ fn render_html_element(printer: &mut Printer, node: HtmlElement) {
     let element_is_raw = attrs_for_classify
         .iter()
         .any(|a| attribute_key(a).as_deref() == Some("is:raw"));
-    let script_label = if is_script {
-        Some(classify_script_label(&attrs_for_classify))
-    } else {
-        None
-    };
-    // `<script is:raw>` stays executable JS, so `is:raw` only wraps non-scripts.
-    let wrap_children_as_template = (element_is_raw && !is_script)
-        || matches!(script_label, Some("json" | "unknown"))
-        || is_style;
+    // Script and style win over `is:raw` when classifying the body.
+    let inline_raw_body = element_is_raw && !is_script && !is_style;
 
     let closing_inner_start = node
         .closing_element()
@@ -512,7 +505,9 @@ fn render_html_element(printer: &mut Printer, node: HtmlElement) {
         .and_then(|c| c.l_angle_token().ok())
         .map(|t| u32::from(t.text_trimmed_range().start()));
 
-    if wrap_children_as_template {
+    if is_script || is_style {
+        // The tag still prints; only its text content is left out.
+    } else if inline_raw_body {
         // Unclosed raw-text content runs to the end of the node the parser built.
         let inner_start = opening_end;
         let inner_end = closing_inner_start.unwrap_or_else(|| u32::from(node.range().end()));
@@ -532,11 +527,7 @@ fn render_html_element(printer: &mut Printer, node: HtmlElement) {
             let child_start = u32::from(child_range.start());
             let leading_from = prev_end.unwrap_or(opening_end);
             emit_source_gap(printer, leading_from, child_start);
-            if is_script {
-                render_script_child(printer, child);
-            } else {
-                render_element(printer, child);
-            }
+            render_element(printer, child);
             prev_end = Some(u32::from(child_range.end()));
         }
         if let Some(trailing_to) = closing_inner_start {
@@ -696,23 +687,6 @@ fn directive_value_name(directive: &AnyAstroDirective) -> Option<String> {
     };
     let name = value.name().ok()?;
     Some(name.value_token().ok()?.text_trimmed().to_string())
-}
-
-fn render_script_child(printer: &mut Printer, child: AnyHtmlElement) {
-    if let AnyHtmlElement::AnyHtmlContent(AnyHtmlContent::HtmlEmbeddedContent(node)) = &child
-        && let Ok(token) = node.value_token()
-    {
-        // Wrapped in an arrow body so TSX type-checks the script.
-        let original_start = u32::from(token.text_trimmed_range().start());
-        let raw = token.text_trimmed().to_string();
-        printer.map_nil();
-        printer.write("\n{() => {");
-        printer.write_with_mapping(&raw, original_start);
-        printer.map_nil();
-        printer.write("}}\n");
-        return;
-    }
-    render_element(printer, child);
 }
 
 fn render_self_closing_element(printer: &mut Printer, node: HtmlSelfClosingElement) {
