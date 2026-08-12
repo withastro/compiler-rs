@@ -364,6 +364,14 @@ fn emit_plain_jsx_attribute(printer: &mut Printer, attribute: &JsxAttribute, bas
         AnyJsxAttributeValue::AnyJsxTag(tag) => {
             emit_node(printer, tag.syntax(), base);
         }
+        // Astro's `attr=`t${x}`` needs braces to be a TSX attribute value.
+        AnyJsxAttributeValue::JsTemplateExpression(template) => {
+            printer.map_nil();
+            printer.write("{");
+            emit_node(printer, template.syntax(), base);
+            printer.map_nil();
+            printer.write("}");
+        }
     }
 }
 

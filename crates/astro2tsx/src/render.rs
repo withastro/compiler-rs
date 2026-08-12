@@ -19,7 +19,7 @@ use crate::props::{PropsAnalysis, analyze as analyze_props};
 use crate::sourcemap::GeneratedRange;
 use crate::utils::{
     ScriptKind, classify_script_type, comment_needs_leading_space, encode_double_quote,
-    escape_comment_body, is_html_event_attribute, is_valid_tsx_attribute_name, tsx_component_name,
+    is_html_event_attribute, is_valid_tsx_attribute_name, tsx_component_name,
 };
 
 const TSX_PREFIX: &str = "/* @jsxImportSource astro */\n\n";
@@ -340,74 +340,11 @@ fn parse_expression_body(text: &str, base_offset: u32) -> JsOffsetParse {
     )
 }
 
-/// The HTML lexer reads an expression body as one token, so its `<!-- -->`
-/// comments must be found by scan; an unterminated comment stays text.
-fn split_on_html_comments(text: &str) -> Vec<(usize, &str, bool)> {
-    let mut segments = Vec::new();
-    let mut cursor = 0usize;
-    while let Some(found) = text[cursor..].find("<!--") {
-        let comment_start = cursor + found;
-        let body_start = comment_start + "<!--".len();
-        let Some(close) = text[body_start..].find("-->") else {
-            break;
-        };
-        let body_end = body_start + close;
-        if comment_start > cursor {
-            segments.push((cursor, &text[cursor..comment_start], false));
-        }
-        segments.push((body_start, &text[body_start..body_end], true));
-        cursor = body_end + "-->".len();
-    }
-    if cursor < text.len() {
-        segments.push((cursor, &text[cursor..], false));
-    }
-    segments
-}
-
-/// Translates comments exactly as emission does, so a passing test-parse
-/// guarantees the emitted body parses too.
-fn html_comments_as_jsx(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    for (_, slice, is_comment) in split_on_html_comments(text) {
-        if is_comment {
-            out.push_str("{/**");
-            if comment_needs_leading_space(slice) {
-                out.push(' ');
-            }
-            out.push_str(&escape_comment_body(slice));
-            out.push_str("*/}");
-        } else {
-            out.push_str(slice);
-        }
-    }
-    out
-}
-
-fn emit_expression_with_comments(printer: &mut Printer, raw: &str, original_start: u32) {
-    for (offset, slice, is_comment) in split_on_html_comments(raw) {
-        if is_comment {
-            emit_html_comment(printer, slice, original_start + offset as u32);
-        } else {
-            printer.write_with_mapping(slice, original_start + offset as u32);
-        }
-    }
-}
-
 fn emit_expression_body(printer: &mut Printer, raw: &str, original_start: u32) {
     let parse = parse_expression_body(raw, original_start);
     if parse.diagnostics().is_empty() {
         let syntax = parse.syntax();
         emit_expression_tree(printer, syntax.inner(), original_start);
-        return;
-    }
-    // HTML comments are not a JS production, so a body carrying one cannot parse
-    // until they are rewritten as JSX comments.
-    if raw.contains("<!--")
-        && parse_expression_body(&html_comments_as_jsx(raw), original_start)
-            .diagnostics()
-            .is_empty()
-    {
-        emit_expression_with_comments(printer, raw, original_start);
         return;
     }
     printer.has_expression_errors = true;
