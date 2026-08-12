@@ -1,36 +1,42 @@
 //! Text-escaping helpers for text and attribute payloads emitted as TSX.
 
-/// Escapes embedded backslashes, then `${`, then backticks. Used inside
-/// `<script>` / `<style>` text-node bodies that are wrapped in
-/// `{\`...\`}` so they parse as a TSX template literal.
-pub(crate) fn escape_text(src: &str) -> String {
-    escape_backticks(&escape_interpolation(&escape_existing_escapes(src)))
+/// Escape for text wrapped in `{\`...\`}`: backslashes, backticks, and `${`.
+pub(crate) fn template_text_escape(ch: char, next: Option<char>) -> Option<&'static str> {
+    match ch {
+        '\\' => Some("\\\\"),
+        '`' => Some("\\`"),
+        '$' if next == Some('{') => Some("\\$"),
+        _ => None,
+    }
 }
 
-/// Escapes braces and `${` so a comment body can be embedded in a JSX
-/// `{/* ... */}` comment without being interpreted as an expression.
-pub(crate) fn escape_braces(src: &str) -> String {
-    escape_star_slash(&escape_tsx_expressions(&escape_existing_escapes(src)))
+/// Escape for `{/** ... */}` bodies, where `*/` closes the comment early.
+pub(crate) fn comment_body_escape(previous: Option<char>, ch: char) -> Option<&'static str> {
+    match ch {
+        '\\' => Some("\\\\"),
+        '{' => Some("\\\\{"),
+        '}' => Some("\\\\}"),
+        '/' if previous == Some('*') => Some("\\/"),
+        _ => None,
+    }
 }
 
-fn escape_star_slash(src: &str) -> String {
-    src.replace("*/", "*\\/")
+pub(crate) fn escape_comment_body(body: &str) -> String {
+    let mut out = String::with_capacity(body.len());
+    let mut previous = None;
+    for ch in body.chars() {
+        match comment_body_escape(previous, ch) {
+            Some(escaped) => out.push_str(escaped),
+            None => out.push(ch),
+        }
+        previous = Some(ch);
+    }
+    out
 }
 
-fn escape_existing_escapes(src: &str) -> String {
-    src.replace('\\', "\\\\")
-}
-
-fn escape_tsx_expressions(src: &str) -> String {
-    src.replace('{', "\\\\{").replace('}', "\\\\}")
-}
-
-fn escape_interpolation(src: &str) -> String {
-    src.replace("${", "\\${")
-}
-
-fn escape_backticks(src: &str) -> String {
-    src.replace('`', "\\`")
+/// Without the space, an empty body would emit `{/**/}`, which never opens.
+pub(crate) fn comment_needs_leading_space(body: &str) -> bool {
+    body.chars().next().is_none_or(|c| !c.is_whitespace())
 }
 
 pub(crate) fn encode_double_quote(src: &str) -> String {

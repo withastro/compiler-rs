@@ -1,27 +1,34 @@
-//! Frontmatter post-processing: rewrites top-level `return` statements
-//! into `throw ` so the generated TSX type-checks. Astro frontmatter runs
-//! inside an implicit function at runtime, so top-level returns are valid
-//! Astro syntax — but TS rejects them at the module level.
-//!
-//! `throw ` is six bytes like `return`, keeping source mapping aligned.
+//! Frontmatter runs in an implicit function, so its top-level `return`s are
+//! valid Astro but invalid TS; they become `throw `, whose six bytes match
+//! `return` and keep source mappings aligned.
 
-use biome_js_parser::{JsParserOptions, parse};
 use biome_js_syntax::{AnyJsRoot, JsReturnStatement, JsSyntaxKind};
-use biome_languages::JsFileSource;
 use biome_rowan::{AstNode, WalkEvent};
 
-/// Returns the byte offsets (relative to `source`) of every `return`
-/// keyword that sits at module scope. Offsets address the start of the
-/// keyword, ready for substitution.
-pub(crate) fn find_top_level_returns(source: &str) -> Vec<u32> {
-    let parse = parse(source, JsFileSource::astro(), JsParserOptions::default());
-    let root: AnyJsRoot = parse.tree();
-    let syntax = root.syntax().clone();
+/// `root` must be the parse of `source`.
+pub(crate) fn rewrite_top_level_returns(source: &str, root: &AnyJsRoot) -> String {
+    let offsets = find_top_level_returns(root);
+    if offsets.is_empty() {
+        return source.to_string();
+    }
+    let mut out = String::with_capacity(source.len());
+    let mut cursor = 0usize;
+    for offset in offsets {
+        let offset = offset as usize;
+        out.push_str(&source[cursor..offset]);
+        out.push_str("throw ");
+        cursor = offset + "return".len();
+    }
+    out.push_str(&source[cursor..]);
+    out
+}
 
+/// Byte offsets of every `return` keyword sitting at module scope, ascending.
+fn find_top_level_returns(root: &AnyJsRoot) -> Vec<u32> {
     let mut offsets = Vec::new();
     let mut function_depth: u32 = 0;
 
-    for event in syntax.preorder() {
+    for event in root.syntax().preorder() {
         match event {
             WalkEvent::Enter(node) => {
                 if is_function_like(node.kind()) {
@@ -58,29 +65,4 @@ fn is_function_like(kind: JsSyntaxKind) -> bool {
             | JsSyntaxKind::JS_SETTER_OBJECT_MEMBER
             | JsSyntaxKind::JS_CONSTRUCTOR_CLASS_MEMBER
     )
-}
-
-/// Replaces the keyword `return` with `throw ` at every top-level return.
-pub(crate) fn rewrite_top_level_returns(source: &str) -> String {
-    let offsets = find_top_level_returns(source);
-    if offsets.is_empty() {
-        return source.to_string();
-    }
-    let bytes = source.as_bytes();
-    let mut out = Vec::with_capacity(bytes.len());
-    let mut cursor = 0usize;
-    for offset in offsets {
-        let offset = offset as usize;
-        if offset < cursor || offset + b"return".len() > bytes.len() {
-            continue;
-        }
-        if &bytes[offset..offset + b"return".len()] != b"return" {
-            continue;
-        }
-        out.extend_from_slice(&bytes[cursor..offset]);
-        out.extend_from_slice(b"throw ");
-        cursor = offset + b"return".len();
-    }
-    out.extend_from_slice(&bytes[cursor..]);
-    String::from_utf8(out).expect("ASCII substitution must remain valid UTF-8")
 }

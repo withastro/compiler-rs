@@ -1,12 +1,14 @@
-//! Internal mutable buffer the renderer writes into. Tracks both the
-//! generated TSX bytes and the running list of source-position mappings.
+//! Mutable output buffer: generated TSX bytes plus source-position mappings.
 
 use biome_rowan::TextRange;
 
 use crate::sourcemap::{ExtractedKind, ExtractedTag, GeneratedRange, Mapping};
+use crate::utils::{comment_body_escape, template_text_escape};
 
-pub(crate) struct Printer {
-    pub(crate) source: String,
+pub(crate) struct Printer<'a> {
+    pub(crate) source: &'a str,
+    /// Ranges of `<!-- ... -->` trivia, ascending, straight from the lexer.
+    pub(crate) comment_ranges: Vec<TextRange>,
     pub(crate) output: String,
     pub(crate) mappings: Vec<Mapping>,
     pub(crate) frontmatter_range: GeneratedRange,
@@ -15,10 +17,11 @@ pub(crate) struct Printer {
     pub(crate) styles: Vec<ExtractedTag>,
 }
 
-impl Printer {
-    pub(crate) fn new(source: &str) -> Self {
+impl<'a> Printer<'a> {
+    pub(crate) fn new(source: &'a str) -> Self {
         Self {
-            source: source.to_string(),
+            source,
+            comment_ranges: Vec::new(),
             output: String::new(),
             mappings: Vec::new(),
             frontmatter_range: GeneratedRange::default(),
@@ -47,8 +50,7 @@ impl Printer {
         self.mappings.push(Mapping::nil(generated));
     }
 
-    /// Emits `text` while attaching a per-character mapping back to the
-    /// source range starting at `original_start`.
+    /// Emits `text` with per-character mappings starting at `original_start`.
     pub(crate) fn write_with_mapping(&mut self, text: &str, original_start: u32) {
         let mut original = original_start;
         for ch in text.chars() {
@@ -58,8 +60,7 @@ impl Printer {
         }
     }
 
-    /// JSX cannot contain raw `>` or `}`, so emit them inside `{\`...\`}`
-    /// when they show up in text content.
+    /// JSX text cannot contain raw `>` or `}`; they emit as `{\`>\`}`.
     pub(crate) fn write_jsx_text_with_mapping(&mut self, text: &str, original_start: u32) {
         let mut original = original_start;
         for ch in text.chars() {
@@ -78,12 +79,45 @@ impl Printer {
         }
     }
 
-    pub(crate) fn record_frontmatter_range(&mut self, range: GeneratedRange) {
-        self.frontmatter_range = range;
+    /// Template-body escaping; inserted escapes map to the character they
+    /// escape, so they never shift later mappings.
+    pub(crate) fn write_template_text_with_mapping(&mut self, text: &str, original_start: u32) {
+        let mut original = original_start;
+        let mut chars = text.chars().peekable();
+        while let Some(ch) = chars.next() {
+            match template_text_escape(ch, chars.peek().copied()) {
+                Some(escaped) => self.write_mapped_str(escaped, original),
+                None => {
+                    self.map_to_offset(original);
+                    self.output.push(ch);
+                }
+            }
+            original += ch.len_utf8() as u32;
+        }
     }
 
-    pub(crate) fn record_body_range(&mut self, range: GeneratedRange) {
-        self.body_range = range;
+    /// JSX-comment-body escaping, with the same mapping guarantee as above.
+    pub(crate) fn write_comment_body_with_mapping(&mut self, body: &str, original_start: u32) {
+        let mut original = original_start;
+        let mut previous = None;
+        for ch in body.chars() {
+            match comment_body_escape(previous, ch) {
+                Some(escaped) => self.write_mapped_str(escaped, original),
+                None => {
+                    self.map_to_offset(original);
+                    self.output.push(ch);
+                }
+            }
+            previous = Some(ch);
+            original += ch.len_utf8() as u32;
+        }
+    }
+
+    fn write_mapped_str(&mut self, text: &str, original: u32) {
+        for ch in text.chars() {
+            self.map_to_offset(original);
+            self.output.push(ch);
+        }
     }
 
     pub(crate) fn add_script_block(
