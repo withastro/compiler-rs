@@ -182,6 +182,55 @@ fn spread_object_entries_are_comma_separated_without_a_leading_comma() {
 }
 
 #[test]
+fn expression_string_literals_keep_their_value() {
+    for (input, expected) in [
+        ("<div>{\"<br/>\"}</div>", "{\"<br/>\"}"),
+        ("<div>{'<b>y</b>'}</div>", "{'<b>y</b>'}"),
+        ("<div>{`<b>y</b>`}</div>", "{`<b>y</b>`}"),
+    ] {
+        let actual = convert(input);
+        assert!(
+            actual.contains(expected),
+            "string value was rewritten for {input:?}:\n{actual}"
+        );
+    }
+}
+
+#[test]
+fn expression_generics_are_not_markup() {
+    for (input, expected) in [
+        ("<div>{foo<Bar>(x)}</div>", "{foo<Bar>(x)}"),
+        ("<div>{a.b<C<D>>(y)}</div>", "{a.b<C<D>>(y)}"),
+    ] {
+        let actual = convert(input);
+        assert!(
+            actual.contains(expected),
+            "generics were treated as markup for {input:?}:\n{actual}"
+        );
+    }
+}
+
+#[test]
+fn only_adjacent_siblings_are_wrapped_in_a_fragment() {
+    let adjacent = convert("<div>{c && <span>a</span> <span>b</span>}</div>");
+    assert!(
+        adjacent.contains("{c && <Fragment><span>a</span> <span>b</span></Fragment>}"),
+        "adjacent siblings were not wrapped:\n{adjacent}"
+    );
+
+    for input in [
+        "<div>{c && <span>a</span>}</div>",
+        "<div>{l.map(i => <span>{i}</span>)}</div>",
+    ] {
+        let actual = convert(input);
+        assert!(
+            !actual.contains("<Fragment><span"),
+            "a lone element was wrapped for {input:?}:\n{actual}"
+        );
+    }
+}
+
+#[test]
 fn get_static_paths_needs_a_real_export() {
     let mentioned = convert("---\n// see getStaticPaths in the docs\nexport const x = 1;\n---\n");
     assert!(
