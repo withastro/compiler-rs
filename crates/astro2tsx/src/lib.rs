@@ -77,7 +77,7 @@ pub fn convert_to_tsx(source: &str, options: ConvertOptions) -> ConvertResult {
 
     if options.sourcemap == SourceMapMode::Inline {
         let source_name = options.filename.as_deref().unwrap_or(DEFAULT_SOURCE_NAME);
-        let comment = result.source_map(source, source_name).to_inline_comment();
+        let comment = sourcemap::to_inline_comment(&result.source_map(source, source_name));
         result.code.push('\n');
         result.code.push_str(&comment);
     }

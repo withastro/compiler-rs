@@ -1,21 +1,16 @@
 //! Node.js bindings for `astro2tsx`. Excluded from `cfg(test)` builds, where
 //! napi-derive emits no registration and every item here looks dead.
 
+use napi::bindgen_prelude::Uint32Array;
 use napi_derive::napi;
 
 use crate::{
     ConvertOptions, DEFAULT_SOURCE_NAME, ExtractedKind, SourceMapMode, convert_to_tsx as convert_rs,
 };
 
-/// Per-byte source-position mapping between the emitted TSX and the source.
-#[napi(object)]
-pub struct Mapping {
-    /// Byte offset into the generated TSX.
-    pub generated: u32,
-    /// Byte offset into the original `.astro` source. `None` for synthetic
-    /// content (e.g. the `<Fragment>` wrapping or the prefix comment).
-    pub original: Option<u32>,
-}
+/// Sentinel in the odd slots of `mappings`: that output has no original position.
+#[napi]
+pub const NO_ORIGINAL: u32 = u32::MAX;
 
 /// Byte range inside the generated TSX.
 #[napi(object)]
@@ -53,7 +48,9 @@ pub struct ConvertToTsxOptions {
 #[napi(object)]
 pub struct ConvertToTsxResult {
     pub code: String,
-    pub mappings: Vec<Mapping>,
+    /// Flat `(generated, original)` byte-offset pairs, ascending by generated
+    /// offset; an original of `0xFFFF_FFFF` marks synthetic output.
+    pub mappings: Uint32Array,
     /// Source Map v3 JSON for `code`, with `sourcesContent` embedded.
     pub map: String,
     pub frontmatter: GeneratedRange,
@@ -85,19 +82,18 @@ pub fn convert_to_tsx(source: String, options: Option<ConvertToTsxOptions>) -> C
             },
         },
     );
-    let map = result.source_map(&source, &source_name).to_json();
+    let map = result.source_map(&source, &source_name).to_json_string();
+
+    let mut mappings = Vec::with_capacity(result.mappings.len() * 2);
+    for mapping in &result.mappings {
+        mappings.push(mapping.generated);
+        mappings.push(mapping.original.unwrap_or(NO_ORIGINAL));
+    }
 
     ConvertToTsxResult {
         code: result.code,
         map,
-        mappings: result
-            .mappings
-            .into_iter()
-            .map(|m| Mapping {
-                generated: m.generated,
-                original: m.original,
-            })
-            .collect(),
+        mappings: Uint32Array::new(mappings),
         frontmatter: GeneratedRange {
             start: result.frontmatter.start,
             end: result.frontmatter.end,
