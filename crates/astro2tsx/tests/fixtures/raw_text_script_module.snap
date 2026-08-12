@@ -7,13 +7,13 @@ info:
     end: 0
   body:
     start: 41
-    end: 98
+    end: 74
   scripts:
     - kind: Script
       lang: module
       generated:
         start: 63
-        end: 87
+        end: 63
       content: const a = 1;
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/raw_text_script_module.astro
@@ -21,11 +21,9 @@ input_file: crates/astro2tsx/tests/fixtures/raw_text_script_module.astro
 /* @jsxImportSource astro */
 
 <Fragment>
-<script type="module">
-{() => {const a = 1;}}
-</script>
+<script type="module"></script>
 
 </Fragment>
 export default function __AstroComponent_(_props: Record<string, any>): any {}
 
-//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbImlucHV0LmFzdHJvIl0sInNvdXJjZXNDb250ZW50IjpbIjxzY3JpcHQgdHlwZT1cIm1vZHVsZVwiPmNvbnN0IGEgPSAxOzwvc2NyaXB0PlxuIl0sIm5hbWVzIjpbXSwibWFwcGluZ3MiOiJBOztBO0FBQUEsQ0FBQyxNLENBQU8sSUFBSSxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDO1FBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLEM7QUFBQyxFQUFFLE1BQU0sQ0FBQztBQUMzQztBIn0=
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbImlucHV0LmFzdHJvIl0sInNvdXJjZXNDb250ZW50IjpbIjxzY3JpcHQgdHlwZT1cIm1vZHVsZVwiPmNvbnN0IGEgPSAxOzwvc2NyaXB0PlxuIl0sIm5hbWVzIjpbXSwibWFwcGluZ3MiOiJBOztBO0FBQUEsQ0FBQyxNLENBQU8sSUFBSSxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFhLEVBQUUsTUFBTSxDQUFDO0FBQzNDO0EifQ==

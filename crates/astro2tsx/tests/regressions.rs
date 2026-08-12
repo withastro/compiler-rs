@@ -40,23 +40,30 @@ fn parser_errors_surface_but_do_not_block_emission() {
     assert!(result.code.starts_with(PREFIX));
 }
 
+/// Excluded bodies must stay reachable through the extracted arrays.
 #[test]
-fn unclosed_raw_text_element_keeps_content_and_siblings() {
-    for (input, retained) in [
-        ("<style>.a{color:red}\n<div>after</div>", ".a{color:red}"),
-        ("<div is:raw>lost\n<p>after</p>", "lost"),
-        ("<script type=\"application/json\">{\"a\":1}", "{\"a\":1}"),
-    ] {
-        let actual = convert(input);
-        assert!(
-            actual.contains(retained),
-            "lost content for {input:?}:\n{actual}"
-        );
-        assert!(
-            actual.contains("after") || input.starts_with("<script"),
-            "lost following siblings for {input:?}:\n{actual}"
-        );
-    }
+fn unclosed_raw_text_element_still_accounts_for_its_content() {
+    let raw = convert("<div is:raw>lost\n<p>after</p>");
+    assert!(
+        raw.contains("lost") && raw.contains("after"),
+        "is:raw content should stay inline:\n{raw}"
+    );
+
+    let style = convert_to_tsx(
+        "<style>.a{color:red}\n<div>after</div>",
+        ConvertOptions::default(),
+    );
+    assert!(!style.code.contains("color:red"), "{}", style.code);
+    assert_eq!(style.styles.len(), 1);
+    assert!(style.styles[0].content.starts_with(".a{color:red}"));
+
+    let script = convert_to_tsx(
+        "<script type=\"application/json\">{\"a\":1}",
+        ConvertOptions::default(),
+    );
+    assert!(!script.code.contains("\"a\":1"), "{}", script.code);
+    assert_eq!(script.scripts.len(), 1);
+    assert_eq!(script.scripts[0].content, "{\"a\":1}");
 }
 
 #[test]

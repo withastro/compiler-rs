@@ -38,6 +38,34 @@ struct Options {
     filename: Option<String>,
 }
 
+/// Empties `<script>` and `<style>` bodies. The corpus was captured with them
+/// included, so only their surroundings can be compared.
+fn strip_tag_bodies(code: &str) -> String {
+    let mut out = String::with_capacity(code.len());
+    let mut rest = code;
+    loop {
+        let next = [("<script", "</script>"), ("<style", "</style>")]
+            .into_iter()
+            .filter_map(|(open, close)| rest.find(open).map(|at| (at, open, close)))
+            .min_by_key(|(at, _, _)| *at);
+
+        let Some((at, _, close)) = next else {
+            out.push_str(rest);
+            return out;
+        };
+        let Some(body) = rest[at..].find('>').map(|i| at + i + 1) else {
+            out.push_str(rest);
+            return out;
+        };
+        let Some(end) = rest[body..].find(close).map(|i| body + i) else {
+            out.push_str(rest);
+            return out;
+        };
+        out.push_str(&rest[..body]);
+        rest = &rest[end..];
+    }
+}
+
 /// Drops the trailing inline sourcemap comment, which is not compared.
 fn strip_inline_sourcemap(code: &str) -> &str {
     if let Some(idx) = code.rfind("\n//# sourceMappingURL=") {
@@ -78,9 +106,12 @@ fn dump_named_diff() {
         eprintln!("--- INPUT ---");
         eprintln!("{:?}", record.input);
         eprintln!("--- EXPECTED ---");
-        eprintln!("{:?}", strip_inline_sourcemap(&record.expected));
+        eprintln!(
+            "{:?}",
+            strip_tag_bodies(strip_inline_sourcemap(&record.expected))
+        );
         eprintln!("--- ACTUAL ---");
-        eprintln!("{:?}", strip_inline_sourcemap(&actual));
+        eprintln!("{:?}", strip_tag_bodies(strip_inline_sourcemap(&actual)));
     }
 }
 
@@ -141,15 +172,16 @@ fn corpus_parity() {
         )
         .code;
 
-        let matched = strip_inline_sourcemap(&actual) == strip_inline_sourcemap(&record.expected);
+        let matched = strip_tag_bodies(strip_inline_sourcemap(&actual))
+            == strip_tag_bodies(strip_inline_sourcemap(&record.expected));
         let allowed = INTENTIONAL_DIVERGENCES.contains(&key.as_str());
 
         match (matched, allowed) {
             (false, false) => regressions.push(format!(
                 "  {key}\n    input:    {:?}\n    expected: {:?}\n    actual:   {:?}",
                 record.input,
-                strip_inline_sourcemap(&record.expected),
-                strip_inline_sourcemap(&actual),
+                strip_tag_bodies(strip_inline_sourcemap(&record.expected)),
+                strip_tag_bodies(strip_inline_sourcemap(&actual)),
             )),
             (true, true) => resolved.push(key),
             _ => {}
