@@ -30,6 +30,15 @@ fn body_range_is_recorded() {
 }
 
 #[test]
+fn unparseable_expression_bodies_are_not_silent() {
+    let broken = convert_to_tsx("<div>{x ==}</div>", ConvertOptions::default());
+    assert!(broken.has_parse_errors, "raw fallback must flag the result");
+
+    let empty = convert_to_tsx("<div>{}</div>", ConvertOptions::default());
+    assert!(!empty.has_parse_errors, "an empty expression is fine");
+}
+
+#[test]
 fn parser_errors_surface_but_do_not_block_emission() {
     // Unbalanced curly brace — bogus text expression recovery.
     let result = convert_to_tsx(

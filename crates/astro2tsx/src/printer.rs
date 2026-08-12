@@ -15,6 +15,8 @@ pub(crate) struct Printer<'a> {
     pub(crate) body_range: GeneratedRange,
     pub(crate) scripts: Vec<ExtractedTag>,
     pub(crate) styles: Vec<ExtractedTag>,
+    /// An expression body failed to parse and was emitted verbatim.
+    pub(crate) has_expression_errors: bool,
 }
 
 impl<'a> Printer<'a> {
@@ -28,6 +30,7 @@ impl<'a> Printer<'a> {
             body_range: GeneratedRange::default(),
             scripts: Vec::new(),
             styles: Vec::new(),
+            has_expression_errors: false,
         }
     }
 
