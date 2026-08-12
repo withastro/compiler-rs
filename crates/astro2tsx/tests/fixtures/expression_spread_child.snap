@@ -7,8 +7,8 @@ info:
     start: 0
     end: 0
   frontmatter:
-    start: 0
-    end: 0
+    start: 30
+    end: 30
   body:
     start: 41
     end: 63

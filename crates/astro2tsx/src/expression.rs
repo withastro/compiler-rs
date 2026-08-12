@@ -8,10 +8,7 @@ use biome_rowan::{AstNode, AstNodeList, SyntaxNode, SyntaxToken, SyntaxTriviaPie
 
 use crate::printer::Printer;
 use crate::sourcemap::{GeneratedRange, SourceRange};
-use crate::utils::{
-    classify_script_type, comment_needs_leading_space, encode_double_quote,
-    is_valid_tsx_attribute_name,
-};
+use crate::utils::{comment_needs_leading_space, encode_double_quote, is_valid_tsx_attribute_name};
 
 type JsNode = SyntaxNode<JsLanguage>;
 type JsToken = SyntaxToken<JsLanguage>;
@@ -495,26 +492,16 @@ fn emit_invalid_jsx_attribute(
 }
 
 fn script_label(attributes: &JsxAttributeList) -> &'static str {
-    let is_raw = attributes
+    if attributes.iter().next().is_none() {
+        return "processed-module";
+    }
+    if attributes
         .iter()
-        .any(|attr| attribute_name_text(&attr).as_deref() == Some("is:raw"));
-    if is_raw {
+        .any(|attr| attribute_name_text(&attr).as_deref() == Some("is:raw"))
+    {
         return "raw";
     }
-    let type_value = jsx_attribute_string(attributes, "type");
-    match classify_script_type(type_value.as_deref()) {
-        crate::utils::ScriptKind::Script => {
-            if matches!(type_value.as_deref(), Some("module")) {
-                "module"
-            } else if type_value.is_some() {
-                "inline"
-            } else {
-                "processed-module"
-            }
-        }
-        crate::utils::ScriptKind::Json => "json",
-        crate::utils::ScriptKind::Unknown => "unknown",
-    }
+    crate::render::script_label_for_type(jsx_attribute_string(attributes, "type").as_deref())
 }
 
 fn jsx_attribute_string(attributes: &JsxAttributeList, name: &str) -> Option<String> {

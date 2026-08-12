@@ -30,6 +30,8 @@ pub(crate) fn render_root(printer: &mut Printer, root: HtmlRoot, options: &Conve
     printer.comment_ranges = comment_trivia_ranges(&root);
     printer.map_nil();
     printer.write(TSX_PREFIX);
+    // Where frontmatter would be inserted, so editors can anchor an edit there.
+    printer.frontmatter_range = GeneratedRange::new(printer.position(), printer.position());
 
     let frontmatter = root.frontmatter();
     let body = root.html();
@@ -47,7 +49,7 @@ pub(crate) fn render_root(printer: &mut Printer, root: HtmlRoot, options: &Conve
     }
 
     if let Some(node) = &frontmatter {
-        emit_frontmatter(printer, node, rewritten.as_ref());
+        emit_frontmatter(printer, node, rewritten.as_ref(), frontmatter_anchor(node));
     }
 
     printer.frontmatter_info = frontmatter_info(&frontmatter, printer.source.len() as u32);
@@ -216,20 +218,41 @@ fn emit_default_export(printer: &mut Printer, component: &str, analysis: &PropsA
     }
 }
 
+/// Offset just after the opening fence, where an empty frontmatter's newline
+/// lives. Editors insert imports there, so it must carry a mapping.
+fn frontmatter_anchor(frontmatter: &AnyAstroFrontmatterElement) -> Option<u32> {
+    let AnyAstroFrontmatterElement::AstroFrontmatterElement(node) = frontmatter else {
+        return None;
+    };
+    node.l_fence_token()
+        .ok()
+        .map(|token| u32::from(token.text_trimmed_range().end()))
+}
+
 fn emit_frontmatter(
     printer: &mut Printer,
     frontmatter: &AnyAstroFrontmatterElement,
     rewritten: Option<&(String, u32)>,
+    anchor: Option<u32>,
 ) {
     let frontmatter_start = printer.position();
 
     match frontmatter {
         AnyAstroFrontmatterElement::AstroFrontmatterElement(_) => {
             printer.map_to_offset(0);
-            if let Some((text, start)) = rewritten {
-                printer.write_with_mapping(text, *start);
+            let emitted_content = match rewritten {
+                Some((text, start)) => {
+                    printer.write_with_mapping(text, *start);
+                    !text.is_empty()
+                }
+                None => false,
+            };
+            match anchor.filter(|_| !emitted_content) {
+                Some(anchor) if printer.source[anchor as usize..].starts_with('\n') => {
+                    printer.map_to_offset(anchor)
+                }
+                _ => printer.map_nil(),
             }
-            printer.map_nil();
             printer.write("\n");
         }
         AnyAstroFrontmatterElement::AstroBogusFrontmatter(_) => {
@@ -552,22 +575,31 @@ fn render_html_element(printer: &mut Printer, node: HtmlElement) {
     // Unclosed tags are unsupported, so no synthetic `</tag>` is emitted.
 }
 
+/// Only a bare `<script>` is processed by Astro; any attribute (`is:inline`,
+/// `define:vars`, …) leaves the script inline, sharing one scope with its peers.
 fn classify_script_label(attrs: &[AnyHtmlAttribute]) -> &'static str {
-    let type_value = find_attr_value(attrs, "type");
-    let is_raw = attrs
+    if attrs.is_empty() {
+        return "processed-module";
+    }
+    if attrs
         .iter()
-        .any(|a| attribute_key(a).as_deref() == Some("is:raw"));
-    if is_raw {
+        .any(|a| attribute_key(a).as_deref() == Some("is:raw"))
+    {
         return "raw";
     }
-    match classify_script_type(type_value.as_deref()) {
+    script_label_for_type(find_attr_value(attrs, "type").as_deref())
+}
+
+pub(crate) fn script_label_for_type(type_value: Option<&str>) -> &'static str {
+    let Some(value) = type_value else {
+        return "inline";
+    };
+    match classify_script_type(Some(value)) {
         ScriptKind::Script => {
-            if matches!(type_value.as_deref(), Some("module")) {
+            if value.trim().eq_ignore_ascii_case("module") {
                 "module"
-            } else if type_value.is_some() {
-                "inline"
             } else {
-                "processed-module"
+                "inline"
             }
         }
         ScriptKind::Json => "json",
@@ -1169,8 +1201,17 @@ fn emit_source_gap(printer: &mut Printer, from: u32, to: u32) {
             .and_then(|t| t.strip_suffix("-->"))
         {
             Some(body) => emit_html_comment(printer, body, start as u32 + 4),
-            // An unterminated comment passes through so no content is dropped.
-            None => printer.write_with_mapping(text, start as u32),
+            // An unterminated comment runs to the end of the file, as in HTML.
+            None => {
+                let body = text.strip_prefix("<!--").unwrap_or(text);
+                let body_start = start as u32 + (text.len() - body.len()) as u32;
+                printer.diagnostics.push(Diagnostic {
+                    message: "Unterminated comment".to_string(),
+                    severity: DiagnosticSeverity::Warning,
+                    source: SourceRange::new(start as u32, end as u32),
+                });
+                emit_html_comment(printer, body, body_start);
+            }
         }
         cursor = end;
     }
