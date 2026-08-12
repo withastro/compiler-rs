@@ -21,7 +21,11 @@ export interface ConvertToTsxOptions {
 
 export interface ConvertToTsxResult {
   code: string
-  mappings: Array<Mapping>
+  /**
+   * Flat `(generated, original)` byte-offset pairs, ascending by generated
+   * offset; an original of `0xFFFF_FFFF` marks synthetic output.
+   */
+  mappings: Uint32Array
   /** Source Map v3 JSON for `code`, with `sourcesContent` embedded. */
   map: string
   frontmatter: GeneratedRange
@@ -51,13 +55,5 @@ export interface GeneratedRange {
   end: number
 }
 
-/** Per-byte source-position mapping between the emitted TSX and the source. */
-export interface Mapping {
-  /** Byte offset into the generated TSX. */
-  generated: number
-  /**
-   * Byte offset into the original `.astro` source. `None` for synthetic
-   * content (e.g. the `<Fragment>` wrapping or the prefix comment).
-   */
-  original?: number
-}
+/** Sentinel in the odd slots of `mappings`: that output has no original position. */
+export const NO_ORIGINAL: number

@@ -579,6 +579,7 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { convertToTsx, ExtractedTagKind } = nativeBinding
+const { convertToTsx, ExtractedTagKind, NO_ORIGINAL } = nativeBinding
 export { convertToTsx }
 export { ExtractedTagKind }
+export { NO_ORIGINAL }

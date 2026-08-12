@@ -15,21 +15,21 @@ test       = true
 doctest    = false
 
 [dependencies]
-biome_html_parser = { git = "https://github.com/Princesseuh/biome", rev = "2532865deaf49db5ecee53281a59ee01e95174ac" }
-biome_html_syntax = { git = "https://github.com/Princesseuh/biome", rev = "2532865deaf49db5ecee53281a59ee01e95174ac" }
-biome_js_parser = { git = "https://github.com/Princesseuh/biome", rev = "2532865deaf49db5ecee53281a59ee01e95174ac" }
-biome_js_syntax = { git = "https://github.com/Princesseuh/biome", rev = "2532865deaf49db5ecee53281a59ee01e95174ac" }
-biome_languages = { git = "https://github.com/Princesseuh/biome", rev = "2532865deaf49db5ecee53281a59ee01e95174ac" }
-biome_rowan = { git = "https://github.com/Princesseuh/biome", rev = "2532865deaf49db5ecee53281a59ee01e95174ac" }
+biome_html_parser = { workspace = true }
+biome_html_syntax = { workspace = true }
+biome_js_parser   = { workspace = true }
+biome_js_syntax   = { workspace = true }
+biome_languages   = { workspace = true }
+biome_rowan       = { workspace = true }
 
-napi        = { workspace = true }
-napi-derive = { workspace = true }
-serde       = { version = "1", features = ["derive"] }
-serde_json  = "1"
+napi          = { workspace = true }
+napi-derive   = { workspace = true }
+oxc_sourcemap = { workspace = true }
 
 [dev-dependencies]
-insta         = { workspace = true, features = ["glob", "serde"] }
-oxc_sourcemap = { workspace = true }
+insta      = { workspace = true, features = ["glob", "serde"] }
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
 
 [build-dependencies]
 napi-build = { workspace = true }
