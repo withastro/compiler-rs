@@ -18,7 +18,9 @@ mod utils;
 use biome_html_parser::parse_html;
 use biome_languages::HtmlFileSource;
 
-pub use crate::sourcemap::{ExtractedKind, ExtractedTag, GeneratedRange, Mapping};
+pub use crate::sourcemap::{
+    DEFAULT_SOURCE_NAME, ExtractedKind, ExtractedTag, GeneratedRange, Mapping, SourceMap,
+};
 
 #[derive(Clone, Debug, Default)]
 pub struct ConvertOptions {
@@ -43,6 +45,14 @@ pub struct ConvertResult {
     pub styles: Vec<ExtractedTag>,
     /// Conversion still runs to completion when this is `true`.
     pub has_parse_errors: bool,
+}
+
+impl ConvertResult {
+    /// Encodes [`Self::mappings`] as a Source Map v3 document, embedding
+    /// `source` as `sourcesContent` so the map stands alone.
+    pub fn source_map(&self, source: &str, source_name: &str) -> SourceMap {
+        sourcemap::encode(source, &self.code, &self.mappings, source_name)
+    }
 }
 
 pub fn convert_to_tsx(source: &str, options: ConvertOptions) -> ConvertResult {
