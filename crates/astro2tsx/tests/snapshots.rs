@@ -90,11 +90,15 @@ fn write_tags(out: &mut String, label: &str, tags: &[ExtractedTag]) {
 
 fn report(source: &str, source_name: &str, result: &ConvertResult) -> String {
     let mut out = String::new();
+    let map = result.source_map(source, source_name);
 
+    out.push_str("--- code, with an inline source map this harness appends ---\n");
     out.push_str(&result.code);
     if !result.code.ends_with('\n') {
         out.push('\n');
     }
+    out.push_str(&map.to_inline_comment());
+    out.push('\n');
 
     out.push_str("\n--- result ---\n");
     let _ = writeln!(out, "has_parse_errors: {}", result.has_parse_errors);
@@ -126,11 +130,6 @@ fn report(source: &str, source_name: &str, result: &ConvertResult) -> String {
             run.generated_start, run.generated_end, run.points, original
         );
     }
-
-    let map = result.source_map(source, source_name);
-    out.push_str("\n--- source map v3 (paste into any source map viewer) ---\n");
-    out.push_str(&serde_json::to_string_pretty(&map).unwrap());
-    out.push('\n');
 
     out
 }

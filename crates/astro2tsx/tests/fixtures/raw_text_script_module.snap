@@ -2,6 +2,7 @@
 source: crates/astro2tsx/tests/snapshots.rs
 input_file: crates/astro2tsx/tests/fixtures/raw_text_script_module.astro
 ---
+--- code, with an inline source map this harness appends ---
 /* @jsxImportSource astro */
 
 <Fragment>
@@ -11,6 +12,7 @@ input_file: crates/astro2tsx/tests/fixtures/raw_text_script_module.astro
 
 </Fragment>
 export default function __AstroComponent_(_props: Record<string, any>): any {}
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbImlucHV0LmFzdHJvIl0sInNvdXJjZXNDb250ZW50IjpbIjxzY3JpcHQgdHlwZT1cIm1vZHVsZVwiPmNvbnN0IGEgPSAxOzwvc2NyaXB0PlxuIl0sIm5hbWVzIjpbXSwibWFwcGluZ3MiOiJBOztBO0FBQUEsQ0FBQyxNLENBQU8sSUFBSSxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDO1FBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLEM7QUFBQyxFQUFFLE1BQU0sQ0FBQztBQUMzQztBIn0=
 
 --- result ---
 has_parse_errors: false
@@ -31,16 +33,3 @@ generated_start..generated_end xpoints -> original; `-` is unmapped
 84..87 x1 -> -
 87..98 x5 -> 34
 98..189 x1 -> -
-
---- source map v3 (paste into any source map viewer) ---
-{
-  "version": 3,
-  "sources": [
-    "input.astro"
-  ],
-  "sourcesContent": [
-    "<script type=\"module\">const a = 1;</script>\n"
-  ],
-  "names": [],
-  "mappings": "A;;A;AAAA,CAAC,M,CAAO,IAAI,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,C;QAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,C;AAAC,EAAE,MAAM,CAAC;AAC3C;A"
-}
