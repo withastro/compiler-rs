@@ -382,6 +382,35 @@ fn implicit_fragment_spans(parse: &JsOffsetParse, len: usize) -> Vec<(usize, usi
     spans
 }
 
+/// Rewrites `<!-- x -->` as `{/** x*/}`, matching what the printer emits, so a
+/// body carrying HTML comments can be test-parsed before it is emitted.
+fn html_comments_as_jsx(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = String::with_capacity(text.len());
+    let mut i = 0usize;
+    while i < bytes.len() {
+        if i + 4 <= bytes.len() && &bytes[i..i + 4] == b"<!--" {
+            let body_start = i + 4;
+            let mut end = body_start;
+            while end + 3 <= bytes.len() && &bytes[end..end + 3] != b"-->" {
+                end += 1;
+            }
+            if end + 3 > bytes.len() {
+                out.push_str(&text[i..]);
+                return out;
+            }
+            out.push_str("{/**");
+            out.push_str(&escape_braces(&text[body_start..end]));
+            out.push_str("*/}");
+            i = end + 3;
+        } else {
+            out.push(bytes[i] as char);
+            i += 1;
+        }
+    }
+    out
+}
+
 fn emit_expression_body(printer: &mut Printer, raw: &str, original_start: u32) {
     let parse = parse_expression_body(raw, original_start);
     if parse.diagnostics().is_empty() {
@@ -400,6 +429,16 @@ fn emit_expression_body(printer: &mut Printer, raw: &str, original_start: u32) {
             cursor = end;
         }
         printer.write_with_mapping(&raw[cursor..], original_start + cursor as u32);
+        return;
+    }
+    // HTML comments are not a JS production, so a body carrying one cannot parse
+    // until they are rewritten as JSX comments.
+    if raw.contains("<!--")
+        && parse_expression_body(&html_comments_as_jsx(raw), original_start)
+            .diagnostics()
+            .is_empty()
+    {
+        emit_with_comment_translation(printer, raw, original_start);
         return;
     }
     printer.write_with_mapping(raw, original_start);
