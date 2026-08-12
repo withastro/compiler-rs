@@ -1,9 +1,12 @@
 //! Checks the encoded source map by decoding it with `oxc_sourcemap` rather
 //! than by re-deriving it from the same code that produced it.
 
+mod common;
+
 use std::fs;
 
 use astro2tsx::{ConvertOptions, DEFAULT_SOURCE_NAME, SourceMapMode, convert_to_tsx};
+use common::parse_fixture;
 use oxc_sourcemap::SourceMap as DecodedMap;
 
 fn fixtures() -> Vec<(String, String)> {
@@ -21,17 +24,6 @@ fn fixtures() -> Vec<(String, String)> {
         .collect();
     fixtures.sort();
     fixtures
-}
-
-fn strip_directives(raw: &str) -> String {
-    let mut remaining = raw;
-    while let Some(line) = remaining.lines().next() {
-        if !line.starts_with("// @config ") {
-            break;
-        }
-        remaining = remaining[line.len()..].trim_start_matches('\n');
-    }
-    remaining.to_string()
 }
 
 /// Byte offset of a zero-based line and UTF-16 column, resolved through
@@ -59,9 +51,11 @@ fn byte_offset(text: &str, line: u32, column: u32) -> Option<usize> {
 #[test]
 fn every_fixture_round_trips_through_an_independent_decoder() {
     for (name, raw) in fixtures() {
-        let source = strip_directives(&raw);
+        let (source, _) = parse_fixture(&raw);
         let result = convert_to_tsx(&source, ConvertOptions::default());
-        let json = result.source_map(&source, DEFAULT_SOURCE_NAME).to_json();
+        let json = result
+            .source_map(&source, DEFAULT_SOURCE_NAME)
+            .to_json_string();
 
         let decoded = DecodedMap::from_json_string(&json)
             .unwrap_or_else(|error| panic!("{name}: map did not decode: {error}"));
@@ -162,7 +156,9 @@ fn external_mode_omits_the_inline_comment() {
 fn astral_columns_are_utf16_code_units() {
     let source = "---\nconst \u{3c0} = Math.PI;\n---\n<p>\u{1f984} {\u{3c0}}</p>\n";
     let result = convert_to_tsx(source, ConvertOptions::default());
-    let json = result.source_map(source, DEFAULT_SOURCE_NAME).to_json();
+    let json = result
+        .source_map(source, DEFAULT_SOURCE_NAME)
+        .to_json_string();
     let decoded = DecodedMap::from_json_string(&json).unwrap();
 
     let tokens: Vec<_> = decoded.get_tokens().collect();

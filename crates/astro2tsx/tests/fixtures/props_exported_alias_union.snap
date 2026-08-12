@@ -1,0 +1,34 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+info:
+  has_parse_errors: false
+  frontmatter:
+    start: 30
+    end: 149
+  body:
+    start: 163
+    end: 172
+  scripts: []
+  styles: []
+input_file: crates/astro2tsx/tests/fixtures/props_exported_alias_union.astro
+---
+/* @jsxImportSource astro */
+
+
+interface LocalProps { a: string }
+interface RemoteProps { b: string }
+export type Props = LocalProps | RemoteProps;
+
+{};<Fragment>
+
+<div/>
+
+</Fragment>
+export default function __AstroComponent_(_props: Props): any {}
+/**
+ * Astro global available in all contexts in .astro files
+ *
+ * [Astro documentation](https://docs.astro.build/reference/api-reference/#astro-global)
+*/
+declare const Astro: Readonly<import('astro').AstroGlobal<Props, typeof __AstroComponent_>>
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiaW5wdXQuYXN0cm8iXSwic291cmNlc0NvbnRlbnQiOlsiLS0tXG5pbnRlcmZhY2UgTG9jYWxQcm9wcyB7IGE6IHN0cmluZyB9XG5pbnRlcmZhY2UgUmVtb3RlUHJvcHMgeyBiOiBzdHJpbmcgfVxuZXhwb3J0IHR5cGUgUHJvcHMgPSBMb2NhbFByb3BzIHwgUmVtb3RlUHJvcHM7XG4tLS1cbjxkaXYvPlxuIl0sIm1hcHBpbmdzIjoiQTs7QUFBQSxBQUFHO0FBQ0gsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQztBQUNsQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUM7QUFDbkMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUM7QTtBLEc7QUFDMUM7QUFDSCxDQUFDLEdBQUksRUFBQztBQUNOO0EifQ==

@@ -210,8 +210,7 @@ const SOURCEMAP_CASES: &[(&str, &str, &str)] = &[
     ),
 ];
 
-// Non-identifier attribute names map onto the opening quote of `"name":`, not the name.
-const KNOWN_GAPS: &[&str] = &["template/special-attributes", "windows/special-attributes"];
+const KNOWN_GAPS: &[&str] = &[];
 
 #[test]
 fn sourcemap_resolves_to_snippet() {

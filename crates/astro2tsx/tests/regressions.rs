@@ -214,11 +214,67 @@ fn extracted_ranges_are_generated_offsets() {
         "go()"
     );
 
+    // An excluded body leaves an empty range between the tags.
     let tag = convert_to_tsx("<style>.a{color:red}</style>", ConvertOptions::default());
     let range = tag.styles[0].range;
+    assert_eq!(range.start, range.end);
+    assert!(tag.code[..range.start as usize].ends_with("<style>"));
+    assert!(tag.code[range.end as usize..].starts_with("</style>"));
+}
+
+#[test]
+fn props_binding_needs_a_local_name() {
+    for (input, has_props) in [
+        ("---\nimport Foo from './Props';\nFoo;\n---\n<div/>", false),
+        (
+            "---\nimport { Props as Other } from './t';\n---\n<div/>",
+            false,
+        ),
+        ("---\nexport { Props } from './t';\n---\n<div/>", false),
+        (
+            "---\n// mentions Props only in a comment\n---\n<div/>",
+            false,
+        ),
+        (
+            "---\nimport { Other as Props } from './t';\n---\n<div/>",
+            true,
+        ),
+        ("---\nimport type { Props } from './t';\n---\n<div/>", true),
+        ("---\nimport Props from './t';\n---\n<div/>", true),
+        (
+            "---\nexport interface Props { a: string }\n---\n<div/>",
+            true,
+        ),
+    ] {
+        let actual = convert(input);
+        assert_eq!(
+            actual.contains("_props: Props"),
+            has_props,
+            "wrong Props detection for {input:?}:\n{actual}"
+        );
+    }
+}
+
+#[test]
+fn frontmatter_is_terminated_even_when_a_comment_ends_with_a_semicolon() {
+    let actual = convert("---\nconst x = foo\n// note;\n---\n<div/>");
     assert!(
-        tag.code
-            .get(range.start as usize..range.end as usize)
-            .is_some()
+        actual.contains("{};<Fragment>"),
+        "`<Fragment>` can continue the unterminated expression:\n{actual}"
     );
+}
+
+#[test]
+fn comments_before_the_first_element_survive() {
+    for input in [
+        "<!-- leading -->\n<div>x</div>",
+        "---\nconst a = 1;\n---\n<!-- between -->\n<div>x</div>",
+    ] {
+        let actual = convert(input);
+        assert!(
+            actual.contains("{/** leading */}") || actual.contains("{/** between */}"),
+            "a leading comment was dropped for {input:?}:\n{actual}"
+        );
+        assert!(!actual.contains("<!--"), "untranslated comment:\n{actual}");
+    }
 }

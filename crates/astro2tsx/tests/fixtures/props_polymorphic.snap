@@ -1,0 +1,34 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+info:
+  has_parse_errors: false
+  frontmatter:
+    start: 30
+    end: 133
+  body:
+    start: 147
+    end: 156
+  scripts: []
+  styles: []
+input_file: crates/astro2tsx/tests/fixtures/props_polymorphic.astro
+---
+/* @jsxImportSource astro */
+
+
+interface Props<Tag extends keyof JSX.IntrinsicElements> extends HTMLAttributes<Tag> {
+  as?: Tag;
+}
+
+{};<Fragment>
+
+<div/>
+
+</Fragment>
+export default function __AstroComponent_<Tag extends keyof JSX.IntrinsicElements>(_props: Props<Tag>): any {}
+/**
+ * Astro global available in all contexts in .astro files
+ *
+ * [Astro documentation](https://docs.astro.build/reference/api-reference/#astro-global)
+*/
+declare const Astro: Readonly<import('astro').AstroGlobal<Props, typeof __AstroComponent_>>
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiaW5wdXQuYXN0cm8iXSwic291cmNlc0NvbnRlbnQiOlsiLS0tXG5pbnRlcmZhY2UgUHJvcHM8VGFnIGV4dGVuZHMga2V5b2YgSlNYLkludHJpbnNpY0VsZW1lbnRzPiBleHRlbmRzIEhUTUxBdHRyaWJ1dGVzPFRhZz4ge1xuICBhcz86IFRhZztcbn1cbi0tLVxuPGRpdi8+XG4iXSwibWFwcGluZ3MiOiJBOztBQUFBLEFBQUc7QUFDSCxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUM7QUFDdEYsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDO0FBQ1gsQ0FBQztBO0EsRztBQUNFO0FBQ0gsQ0FBQyxHQUFJLEVBQUM7QUFDTjtBIn0=

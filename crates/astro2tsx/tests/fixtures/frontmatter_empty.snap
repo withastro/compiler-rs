@@ -7,7 +7,7 @@ info:
     end: 31
   body:
     start: 42
-    end: 55
+    end: 56
   scripts: []
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/frontmatter_empty.astro
@@ -16,9 +16,10 @@ input_file: crates/astro2tsx/tests/fixtures/frontmatter_empty.astro
 
 
 <Fragment>
+
 <div></div>
 
 </Fragment>
 export default function __AstroComponent_(_props: Record<string, any>): any {}
 
-//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbImlucHV0LmFzdHJvIl0sInNvdXJjZXNDb250ZW50IjpbIi0tLVxuLS0tXG48ZGl2PjwvZGl2PlxuIl0sIm5hbWVzIjpbXSwibWFwcGluZ3MiOiJBOztBQUFBLEE7QTtBQUVBLENBQUMsR0FBRyxDQUFDLEVBQUUsR0FBRyxDQUFDO0FBQ1g7QSJ9
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiaW5wdXQuYXN0cm8iXSwic291cmNlc0NvbnRlbnQiOlsiLS0tXG4tLS1cbjxkaXY+PC9kaXY+XG4iXSwibWFwcGluZ3MiOiJBOztBQUFBLEE7QTtBQUNHO0FBQ0gsQ0FBQyxHQUFHLENBQUMsRUFBRSxHQUFHLENBQUM7QUFDWDtBIn0=

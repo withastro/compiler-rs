@@ -1,0 +1,24 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+info:
+  has_parse_errors: false
+  frontmatter:
+    start: 0
+    end: 0
+  body:
+    start: 41
+    end: 116
+  scripts: []
+  styles: []
+input_file: crates/astro2tsx/tests/fixtures/escape_comment_bodies.astro
+---
+/* @jsxImportSource astro */
+
+<Fragment>
+{/** outer \\{ braces \\} and *\/ star-slash */}
+<div>{/** tight*/}</div>
+
+</Fragment>
+export default function __AstroComponent_(_props: Record<string, any>): any {}
+
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiaW5wdXQuYXN0cm8iXSwic291cmNlc0NvbnRlbnQiOlsiPCEtLSBvdXRlciB7IGJyYWNlcyB9IGFuZCAqLyBzdGFyLXNsYXNoIC0tPlxuPGRpdj48IS0tdGlnaHQtLT48L2Rpdj5cbiJdLCJtYXBwaW5ncyI6IkE7O0E7QSxJQUFJLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQSxDQUFBLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUEsQ0FBQSxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUEsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQyxHQUFJO0FBQzNDLENBQUMsR0FBRyxDLEtBQUssQ0FBQyxDQUFDLENBQUMsQ0FBQyxDLEdBQUksRUFBRSxHQUFHLENBQUM7QUFDdkI7QSJ9

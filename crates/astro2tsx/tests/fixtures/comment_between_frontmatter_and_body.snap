@@ -1,0 +1,28 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+info:
+  has_parse_errors: false
+  frontmatter:
+    start: 30
+    end: 45
+  body:
+    start: 59
+    end: 91
+  scripts: []
+  styles: []
+input_file: crates/astro2tsx/tests/fixtures/comment_between_frontmatter_and_body.astro
+---
+/* @jsxImportSource astro */
+
+
+const a = 1;
+
+{};<Fragment>
+
+{/** between */}
+<div>x</div>
+
+</Fragment>
+export default function __AstroComponent_(_props: Record<string, any>): any {}
+
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiaW5wdXQuYXN0cm8iXSwic291cmNlc0NvbnRlbnQiOlsiLS0tXG5jb25zdCBhID0gMTtcbi0tLVxuPCEtLSBiZXR3ZWVuIC0tPlxuPGRpdj54PC9kaXY+XG4iXSwibWFwcGluZ3MiOiJBOztBQUFBLEFBQUc7QUFDSCxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQztBO0EsRztBQUNUO0EsSUFDQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQyxHQUFJO0FBQ2hCLENBQUMsR0FBRyxDQUFDLENBQUMsRUFBRSxHQUFHLENBQUM7QUFDWjtBIn0=

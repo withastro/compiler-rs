@@ -1,0 +1,26 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+info:
+  has_parse_errors: false
+  frontmatter:
+    start: 0
+    end: 0
+  body:
+    start: 41
+    end: 75
+  scripts: []
+  styles: []
+input_file: crates/astro2tsx/tests/fixtures/fragment_shorthand.astro
+---
+/* @jsxImportSource astro */
+
+<Fragment>
+<>
+<div>a</div>
+<div>b</div>
+</>
+
+</Fragment>
+export default function __AstroComponent_(_props: Record<string, any>): any {}
+
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiaW5wdXQuYXN0cm8iXSwic291cmNlc0NvbnRlbnQiOlsiPD5cbjxkaXY+YTwvZGl2PlxuPGRpdj5iPC9kaXY+XG48Lz5cbiJdLCJtYXBwaW5ncyI6IkE7O0E7QUFBQSxDQUFDLENBQUM7QUFDRixDQUFDLEdBQUcsQ0FBQyxDQUFDLEVBQUUsR0FBRyxDQUFDO0FBQ1osQ0FBQyxHQUFHLENBQUMsQ0FBQyxFQUFFLEdBQUcsQ0FBQztBQUNaLEVBQUUsQ0FBQztBQUNIO0EifQ==
