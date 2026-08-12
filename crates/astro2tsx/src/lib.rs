@@ -6,6 +6,7 @@
 
 #![deny(clippy::use_self)]
 
+mod expression;
 mod frontmatter;
 #[cfg(not(test))]
 mod napi;

@@ -7,12 +7,12 @@ use biome_html_syntax::{
     HtmlSingleTextExpression, HtmlSpreadAttribute,
 };
 use biome_js_parser::{JsOffsetParse, JsParserOptions, parse, parse_js_with_offset};
-use biome_js_syntax::JsSyntaxKind;
 use biome_languages::JsFileSource;
 use biome_languages::javascript::JsEmbeddingKind;
 use biome_rowan::{AstNode, AstNodeList, Direction, TextRange, TextSize};
 
 use crate::ConvertOptions;
+use crate::expression::emit_expression_tree;
 use crate::frontmatter::rewrite_top_level_returns;
 use crate::printer::{Printer, range_start};
 use crate::props::{PropsAnalysis, analyze as analyze_props};
@@ -340,34 +340,6 @@ fn parse_expression_body(text: &str, base_offset: u32) -> JsOffsetParse {
     )
 }
 
-/// Ranges are body-relative: only the root node carries the base offset.
-fn implicit_fragment_spans(parse: &JsOffsetParse, len: usize) -> Vec<(usize, usize)> {
-    let mut spans: Vec<(usize, usize)> = Vec::new();
-    for node in parse.syntax().inner().descendants() {
-        if node.kind() != JsSyntaxKind::JSX_FRAGMENT {
-            continue;
-        }
-        let implicit = node.children().any(|c| {
-            c.kind() == JsSyntaxKind::JSX_OPENING_FRAGMENT && c.text_trimmed_range().is_empty()
-        });
-        if !implicit {
-            continue;
-        }
-        let range = node.text_trimmed_range();
-        let start = u32::from(range.start()) as usize;
-        let end = u32::from(range.end()) as usize;
-        if start >= end || end > len {
-            continue;
-        }
-        if spans.iter().any(|(s, e)| start >= *s && end <= *e) {
-            continue;
-        }
-        spans.push((start, end));
-    }
-    spans.sort_unstable();
-    spans
-}
-
 /// The HTML lexer reads an expression body as one token, so its `<!-- -->`
 /// comments must be found by scan; an unterminated comment stays text.
 fn split_on_html_comments(text: &str) -> Vec<(usize, &str, bool)> {
@@ -424,21 +396,8 @@ fn emit_expression_with_comments(printer: &mut Printer, raw: &str, original_star
 fn emit_expression_body(printer: &mut Printer, raw: &str, original_start: u32) {
     let parse = parse_expression_body(raw, original_start);
     if parse.diagnostics().is_empty() {
-        let spans = implicit_fragment_spans(&parse, raw.len());
-        let mut cursor = 0usize;
-        for (start, end) in spans {
-            if start < cursor {
-                continue;
-            }
-            printer.write_with_mapping(&raw[cursor..start], original_start + cursor as u32);
-            printer.map_nil();
-            printer.write("<Fragment>");
-            printer.write_with_mapping(&raw[start..end], original_start + start as u32);
-            printer.map_nil();
-            printer.write("</Fragment>");
-            cursor = end;
-        }
-        printer.write_with_mapping(&raw[cursor..], original_start + cursor as u32);
+        let syntax = parse.syntax();
+        emit_expression_tree(printer, syntax.inner(), original_start);
         return;
     }
     // HTML comments are not a JS production, so a body carrying one cannot parse
@@ -964,22 +923,29 @@ fn emit_html_attribute(printer: &mut Printer, attr_node: &HtmlAttribute) {
             }
         }
         AnyHtmlAttributeInitializer::HtmlAttributeSingleTextExpression(expr) => {
-            // `attr={expr}` — passes through verbatim with surrounding
-            // braces so JSX accepts it.
-            let Ok(text) = expr.expression() else {
-                return;
-            };
-            let Ok(literal) = text.html_literal_token() else {
-                return;
-            };
-            let value = literal.text_trimmed().to_string();
-            let value_start = u32::from(literal.text_trimmed_range().start());
-
+            let literal = expr
+                .expression()
+                .ok()
+                .and_then(|e| e.html_literal_token().ok());
             printer.map_to_offset(eq_start);
             printer.write("=");
             printer.map_nil();
             printer.write("{");
-            printer.write_with_mapping(&value, value_start);
+            match literal {
+                Some(literal) if !literal.text_trimmed().trim().is_empty() => {
+                    let value = literal.text_trimmed().to_string();
+                    emit_expression_body(
+                        printer,
+                        &value,
+                        range_start(literal.text_trimmed_range()),
+                    );
+                }
+                // TSX rejects an empty attribute expression.
+                _ => {
+                    printer.map_nil();
+                    printer.write("(void 0)");
+                }
+            }
             printer.map_nil();
             printer.write("}");
         }

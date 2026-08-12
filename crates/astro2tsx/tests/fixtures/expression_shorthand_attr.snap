@@ -1,0 +1,23 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+info:
+  has_parse_errors: false
+  frontmatter:
+    start: 0
+    end: 0
+  body:
+    start: 41
+    end: 74
+  scripts: []
+  styles: []
+input_file: crates/astro2tsx/tests/fixtures/expression_shorthand_attr.astro
+---
+/* @jsxImportSource astro */
+
+<Fragment>
+{cond && <Card title={title}/>}
+
+</Fragment>
+export default function __AstroComponent_(_props: Record<string, any>): any {}
+
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiaW5wdXQuYXN0cm8iXSwic291cmNlc0NvbnRlbnQiOlsie2NvbmQgJiYgPENhcmQge3RpdGxlfSAvPn1cbiJdLCJtYXBwaW5ncyI6IkE7O0E7QUFBQSxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBRSxDQUFDLENBQUMsQ0FBQyxDQUFDLEMsRUFBSixDQUFDLENBQUMsQ0FBQyxDQUFDLEMsQ0FBRyxDQUFDLENBQUMsQ0FBQztBQUMxQjtBIn0=
