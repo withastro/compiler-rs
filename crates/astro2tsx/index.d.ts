@@ -2,8 +2,7 @@
 /* eslint-disable */
 export interface AstroDiagnostic {
   message: string
-  /** 1 = error, 2 = warning, 3 = information, 4 = hint. */
-  severity: number
+  severity: DiagnosticSeverity
   position: Range
 }
 
@@ -52,26 +51,52 @@ export interface ConvertToTsxResult {
   frontmatterStatus: AstroFrontmatterStatus
   /** Range of the frontmatter in the original source, fences included. */
   frontmatterSource: Range
-  scripts: Array<ExtractedTag>
-  styles: Array<ExtractedTag>
+  scripts: Array<ExtractedScript>
+  styles: Array<ExtractedStyle>
   diagnostics: Array<AstroDiagnostic>
   hasParseErrors: boolean
 }
 
-export interface ExtractedTag {
-  /** Range of `content` in the original source. */
-  position: Range
-  kind: ExtractedTagKind
-  content: string
-  /** Script family (`module`, `json`, …) or style language (`css`, `scss`, …). */
-  lang?: string
+export declare const enum DiagnosticSeverity {
+  Error = 1,
+  Warning = 2,
+  Information = 3,
+  Hint = 4
 }
 
-export declare const enum ExtractedTagKind {
-  Script = 'script',
-  Style = 'style',
-  StyleAttribute = 'style-attribute',
-  EventAttribute = 'event-attribute'
+export interface ExtractedScript {
+  /** Range of `content` in the original source. */
+  position: Range
+  content: string
+  type: ExtractedScriptType
+}
+
+/**
+ * How a `<script>`'s contents should be treated. A bare `<script>` is
+ * processed by Astro; anything else is inlined as written.
+ */
+export declare const enum ExtractedScriptType {
+  ProcessedModule = 'processed-module',
+  Module = 'module',
+  Inline = 'inline',
+  EventAttribute = 'event-attribute',
+  Json = 'json',
+  Raw = 'raw',
+  Unknown = 'unknown'
+}
+
+export interface ExtractedStyle {
+  /** Range of `content` in the original source. */
+  position: Range
+  content: string
+  type: ExtractedStyleType
+  /** `css`, `scss`, `less`, … taken from the `lang` attribute. */
+  lang: string
+}
+
+export declare const enum ExtractedStyleType {
+  Tag = 'tag',
+  StyleAttribute = 'style-attribute'
 }
 
 export interface Range {

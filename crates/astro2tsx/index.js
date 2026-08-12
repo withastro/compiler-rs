@@ -579,7 +579,9 @@ if (!nativeBinding) {
   throw new Error(`Failed to load native binding`)
 }
 
-const { AstroFrontmatterStatus, convertToTsx, ExtractedTagKind } = nativeBinding
+const { AstroFrontmatterStatus, convertToTsx, DiagnosticSeverity, ExtractedScriptType, ExtractedStyleType } = nativeBinding
 export { AstroFrontmatterStatus }
 export { convertToTsx }
-export { ExtractedTagKind }
+export { DiagnosticSeverity }
+export { ExtractedScriptType }
+export { ExtractedStyleType }
