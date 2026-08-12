@@ -9,8 +9,8 @@ use napi_derive::napi;
 
 use crate::utf16::Utf16Index;
 use crate::{
-    ConvertOptions, DEFAULT_SOURCE_NAME, DiagnosticSeverity, ExtractedKind, FrontmatterStatus,
-    SourceMapMode, convert_to_tsx as convert_rs,
+    ConvertOptions, DEFAULT_SOURCE_NAME, DiagnosticSeverity as CoreDiagnosticSeverity,
+    ExtractedKind, FrontmatterStatus, SourceMapMode, convert_to_tsx as convert_rs,
 };
 
 #[napi(object)]
@@ -19,22 +19,43 @@ pub struct Range {
     pub end: u32,
 }
 
+/// How a `<script>`'s contents should be treated. A bare `<script>` is
+/// processed by Astro; anything else is inlined as written.
 #[napi(string_enum = "kebab-case")]
-pub enum ExtractedTagKind {
-    Script,
-    Style,
-    StyleAttribute,
+pub enum ExtractedScriptType {
+    ProcessedModule,
+    Module,
+    Inline,
     EventAttribute,
+    Json,
+    Raw,
+    Unknown,
+}
+
+#[napi(string_enum = "kebab-case")]
+pub enum ExtractedStyleType {
+    Tag,
+    StyleAttribute,
 }
 
 #[napi(object)]
-pub struct ExtractedTag {
+pub struct ExtractedScript {
     /// Range of `content` in the original source.
     pub position: Range,
-    pub kind: ExtractedTagKind,
     pub content: String,
-    /// Script family (`module`, `json`, …) or style language (`css`, `scss`, …).
-    pub lang: Option<String>,
+    #[napi(js_name = "type")]
+    pub r#type: ExtractedScriptType,
+}
+
+#[napi(object)]
+pub struct ExtractedStyle {
+    /// Range of `content` in the original source.
+    pub position: Range,
+    pub content: String,
+    #[napi(js_name = "type")]
+    pub r#type: ExtractedStyleType,
+    /// `css`, `scss`, `less`, … taken from the `lang` attribute.
+    pub lang: String,
 }
 
 #[napi(string_enum = "kebab-case")]
@@ -44,11 +65,18 @@ pub enum AstroFrontmatterStatus {
     Closed,
 }
 
+#[napi]
+pub enum DiagnosticSeverity {
+    Error = 1,
+    Warning = 2,
+    Information = 3,
+    Hint = 4,
+}
+
 #[napi(object)]
 pub struct AstroDiagnostic {
     pub message: String,
-    /// 1 = error, 2 = warning, 3 = information, 4 = hint.
-    pub severity: u32,
+    pub severity: DiagnosticSeverity,
     pub position: Range,
 }
 
@@ -81,8 +109,8 @@ pub struct ConvertToTsxResult {
     pub frontmatter_status: AstroFrontmatterStatus,
     /// Range of the frontmatter in the original source, fences included.
     pub frontmatter_source: Range,
-    pub scripts: Vec<ExtractedTag>,
-    pub styles: Vec<ExtractedTag>,
+    pub scripts: Vec<ExtractedScript>,
+    pub styles: Vec<ExtractedStyle>,
     pub diagnostics: Vec<AstroDiagnostic>,
     pub has_parse_errors: bool,
 }
@@ -162,12 +190,12 @@ pub fn convert_to_tsx(source: String, options: Option<ConvertToTsxOptions>) -> C
         scripts: result
             .scripts
             .iter()
-            .map(|tag| extracted_tag_to_napi(tag, &source_index))
+            .map(|tag| extracted_script_to_napi(tag, &source_index))
             .collect(),
         styles: result
             .styles
             .iter()
-            .map(|tag| extracted_tag_to_napi(tag, &source_index))
+            .map(|tag| extracted_style_to_napi(tag, &source_index))
             .collect(),
         diagnostics: result
             .diagnostics
@@ -175,10 +203,10 @@ pub fn convert_to_tsx(source: String, options: Option<ConvertToTsxOptions>) -> C
             .map(|diagnostic| AstroDiagnostic {
                 message: diagnostic.message.clone(),
                 severity: match diagnostic.severity {
-                    DiagnosticSeverity::Error => 1,
-                    DiagnosticSeverity::Warning => 2,
-                    DiagnosticSeverity::Information => 3,
-                    DiagnosticSeverity::Hint => 4,
+                    CoreDiagnosticSeverity::Error => DiagnosticSeverity::Error,
+                    CoreDiagnosticSeverity::Warning => DiagnosticSeverity::Warning,
+                    CoreDiagnosticSeverity::Information => DiagnosticSeverity::Information,
+                    CoreDiagnosticSeverity::Hint => DiagnosticSeverity::Hint,
                 },
                 position: Range {
                     start: source_index.convert(diagnostic.source.start),
@@ -195,19 +223,40 @@ pub fn convert_to_tsx(source: String, options: Option<ConvertToTsxOptions>) -> C
     }
 }
 
-fn extracted_tag_to_napi(tag: &crate::ExtractedTag, source_index: &Utf16Index) -> ExtractedTag {
-    ExtractedTag {
-        position: Range {
-            start: source_index.convert(tag.source.start),
-            end: source_index.convert(tag.source.end),
-        },
-        kind: match tag.kind {
-            ExtractedKind::Script => ExtractedTagKind::Script,
-            ExtractedKind::Style => ExtractedTagKind::Style,
-            ExtractedKind::StyleAttribute => ExtractedTagKind::StyleAttribute,
-            ExtractedKind::EventAttribute => ExtractedTagKind::EventAttribute,
-        },
+fn source_position(tag: &crate::ExtractedTag, source_index: &Utf16Index) -> Range {
+    Range {
+        start: source_index.convert(tag.source.start),
+        end: source_index.convert(tag.source.end),
+    }
+}
+
+fn extracted_script_to_napi(
+    tag: &crate::ExtractedTag,
+    source_index: &Utf16Index,
+) -> ExtractedScript {
+    ExtractedScript {
+        position: source_position(tag, source_index),
         content: tag.content.clone(),
-        lang: tag.lang.clone(),
+        r#type: match (tag.kind, tag.lang.as_deref()) {
+            (ExtractedKind::EventAttribute, _) => ExtractedScriptType::EventAttribute,
+            (_, Some("processed-module")) => ExtractedScriptType::ProcessedModule,
+            (_, Some("module")) => ExtractedScriptType::Module,
+            (_, Some("inline")) => ExtractedScriptType::Inline,
+            (_, Some("json")) => ExtractedScriptType::Json,
+            (_, Some("raw")) => ExtractedScriptType::Raw,
+            _ => ExtractedScriptType::Unknown,
+        },
+    }
+}
+
+fn extracted_style_to_napi(tag: &crate::ExtractedTag, source_index: &Utf16Index) -> ExtractedStyle {
+    ExtractedStyle {
+        position: source_position(tag, source_index),
+        content: tag.content.clone(),
+        r#type: match tag.kind {
+            ExtractedKind::StyleAttribute => ExtractedStyleType::StyleAttribute,
+            _ => ExtractedStyleType::Tag,
+        },
+        lang: tag.lang.clone().unwrap_or_else(|| "css".to_string()),
     }
 }
