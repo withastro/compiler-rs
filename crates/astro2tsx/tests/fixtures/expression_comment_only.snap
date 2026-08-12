@@ -7,7 +7,7 @@ info:
     end: 0
   body:
     start: 41
-    end: 69
+    end: 63
   scripts: []
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/expression_comment_only.astro
@@ -15,9 +15,9 @@ input_file: crates/astro2tsx/tests/fixtures/expression_comment_only.astro
 /* @jsxImportSource astro */
 
 <Fragment>
-<div>{/* keep me */}</div>
+{/** just a note */}
 
 </Fragment>
 export default function __AstroComponent_(_props: Record<string, any>): any {}
 
-//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiaW5wdXQuYXN0cm8iXSwic291cmNlc0NvbnRlbnQiOlsiPGRpdj57Lyoga2VlcCBtZSAqL308L2Rpdj5cbiJdLCJtYXBwaW5ncyI6IkE7O0E7QUFBQSxDQUFDLEdBQUcsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxFQUFFLEdBQUcsQ0FBQztBQUMxQjtBIn0=
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiaW5wdXQuYXN0cm8iXSwic291cmNlc0NvbnRlbnQiOlsiezwhLS0ganVzdCBhIG5vdGUgLS0+fVxuIl0sIm1hcHBpbmdzIjoiQTs7QTtBQUFBLEMsR0FBSyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDLEVBQUksQ0FBQztBQUN0QjtBIn0=
