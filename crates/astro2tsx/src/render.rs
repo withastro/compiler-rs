@@ -440,12 +440,9 @@ fn render_html_element(printer: &mut Printer, node: HtmlElement) {
     let Ok(opening) = node.opening_element() else {
         return;
     };
-    if opening.name().is_err() {
+    let Some(name) = opening.name() else {
         // Fragment shorthand: `<>...</>`, which JSX accepts as `Fragment`.
         render_fragment_shorthand(printer, &node);
-        return;
-    }
-    let Ok(name) = opening.name() else {
         return;
     };
     let Ok(open_l_angle) = opening.l_angle_token() else {
@@ -567,7 +564,7 @@ fn render_html_element(printer: &mut Printer, node: HtmlElement) {
     if let Ok(closing) = node.closing_element() {
         let l_angle = closing.l_angle_token().ok();
         let r_angle = closing.r_angle_token().ok();
-        let closing_name = closing.name().ok();
+        let closing_name = closing.name();
 
         if let Some(l_angle) = l_angle {
             printer.map_to_offset(range_start(l_angle.text_trimmed_range()));

@@ -15,12 +15,12 @@ test       = true
 doctest    = false
 
 [dependencies]
-biome_html_parser = { git = "https://github.com/Princesseuh/biome", rev = "a7fc0b0ea54b7bca38e4a20c9bf30245a7732f01" }
-biome_html_syntax = { git = "https://github.com/Princesseuh/biome", rev = "a7fc0b0ea54b7bca38e4a20c9bf30245a7732f01" }
-biome_js_parser = { git = "https://github.com/Princesseuh/biome", rev = "a7fc0b0ea54b7bca38e4a20c9bf30245a7732f01" }
-biome_js_syntax = { git = "https://github.com/Princesseuh/biome", rev = "a7fc0b0ea54b7bca38e4a20c9bf30245a7732f01" }
-biome_languages = { git = "https://github.com/Princesseuh/biome", rev = "a7fc0b0ea54b7bca38e4a20c9bf30245a7732f01" }
-biome_rowan = { git = "https://github.com/Princesseuh/biome", rev = "a7fc0b0ea54b7bca38e4a20c9bf30245a7732f01" }
+biome_html_parser = { git = "https://github.com/Princesseuh/biome", rev = "2532865deaf49db5ecee53281a59ee01e95174ac" }
+biome_html_syntax = { git = "https://github.com/Princesseuh/biome", rev = "2532865deaf49db5ecee53281a59ee01e95174ac" }
+biome_js_parser = { git = "https://github.com/Princesseuh/biome", rev = "2532865deaf49db5ecee53281a59ee01e95174ac" }
+biome_js_syntax = { git = "https://github.com/Princesseuh/biome", rev = "2532865deaf49db5ecee53281a59ee01e95174ac" }
+biome_languages = { git = "https://github.com/Princesseuh/biome", rev = "2532865deaf49db5ecee53281a59ee01e95174ac" }
+biome_rowan = { git = "https://github.com/Princesseuh/biome", rev = "2532865deaf49db5ecee53281a59ee01e95174ac" }
 
 napi        = { workspace = true }
 napi-derive = { workspace = true }
