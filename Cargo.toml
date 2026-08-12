@@ -34,12 +34,12 @@ oxc_transformer = { git = "https://github.com/withastro/oxc", rev = "8bb526fc0c2
 oxc_sourcemap = "6.0.1"
 
 # Biome dependencies via git, all pinned to the same fork revision
-biome_html_parser = { git = "https://github.com/Princesseuh/biome", rev = "0194be3fabd06a1eb1edb6abdd02f396df290eed" }
-biome_html_syntax = { git = "https://github.com/Princesseuh/biome", rev = "0194be3fabd06a1eb1edb6abdd02f396df290eed" }
-biome_js_parser = { git = "https://github.com/Princesseuh/biome", rev = "0194be3fabd06a1eb1edb6abdd02f396df290eed" }
-biome_js_syntax = { git = "https://github.com/Princesseuh/biome", rev = "0194be3fabd06a1eb1edb6abdd02f396df290eed" }
-biome_languages = { git = "https://github.com/Princesseuh/biome", rev = "0194be3fabd06a1eb1edb6abdd02f396df290eed" }
-biome_rowan = { git = "https://github.com/Princesseuh/biome", rev = "0194be3fabd06a1eb1edb6abdd02f396df290eed" }
+biome_html_parser = { git = "https://github.com/Princesseuh/biome", rev = "8087f81577d3ef5f37e8b676032afdf49ffc040b" }
+biome_html_syntax = { git = "https://github.com/Princesseuh/biome", rev = "8087f81577d3ef5f37e8b676032afdf49ffc040b" }
+biome_js_parser = { git = "https://github.com/Princesseuh/biome", rev = "8087f81577d3ef5f37e8b676032afdf49ffc040b" }
+biome_js_syntax = { git = "https://github.com/Princesseuh/biome", rev = "8087f81577d3ef5f37e8b676032afdf49ffc040b" }
+biome_languages = { git = "https://github.com/Princesseuh/biome", rev = "8087f81577d3ef5f37e8b676032afdf49ffc040b" }
+biome_rowan = { git = "https://github.com/Princesseuh/biome", rev = "8087f81577d3ef5f37e8b676032afdf49ffc040b" }
 
 # NAPI
 napi = { version = "3", features = ["tokio_rt"] }
