@@ -43,3 +43,26 @@ test('mappings carry per-byte source offsets', () => {
 	const mapped = result.mappings.find((m) => m.original !== null && m.original !== undefined);
 	assert.ok(mapped, 'expected at least one mapped byte');
 });
+
+test('returns a self-contained source map v3', () => {
+	const input = '---\nlet x = 1;\n---\n<p>Hi</p>';
+	const map = JSON.parse(convertToTsx(input).map);
+	assert.equal(map.version, 3);
+	assert.deepEqual(map.sources, ['input.astro']);
+	assert.deepEqual(map.sourcesContent, [input]);
+	assert.deepEqual(map.names, []);
+	assert.ok(map.mappings.length > 0);
+});
+
+test('names the source after the filename option', () => {
+	const map = JSON.parse(convertToTsx('<p></p>', { filename: 'Index.astro' }).map);
+	assert.deepEqual(map.sources, ['Index.astro']);
+});
+
+test('source map carries astral characters through unchanged', () => {
+	const input = '<p>🦄 {value}</p>';
+	const result = convertToTsx(input);
+	const map = JSON.parse(result.map);
+	assert.equal(map.sourcesContent[0], input);
+	assert.ok(map.mappings.split(';').length <= result.code.split('\n').length);
+});

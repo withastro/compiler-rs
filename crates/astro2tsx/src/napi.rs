@@ -3,7 +3,7 @@
 
 use napi_derive::napi;
 
-use crate::{ConvertOptions, ExtractedKind, convert_to_tsx as convert_rs};
+use crate::{ConvertOptions, DEFAULT_SOURCE_NAME, ExtractedKind, convert_to_tsx as convert_rs};
 
 /// Per-byte source-position mapping between the emitted TSX and the source.
 #[napi(object)]
@@ -50,6 +50,8 @@ pub struct ConvertToTsxOptions {
 pub struct ConvertToTsxResult {
     pub code: String,
     pub mappings: Vec<Mapping>,
+    /// Source Map v3 JSON for `code`, with `sourcesContent` embedded.
+    pub map: String,
     pub frontmatter: GeneratedRange,
     pub body: GeneratedRange,
     pub scripts: Vec<ExtractedTag>,
@@ -65,15 +67,21 @@ pub struct ConvertToTsxResult {
 #[napi(js_name = "convertToTsx")]
 pub fn convert_to_tsx(source: String, options: Option<ConvertToTsxOptions>) -> ConvertToTsxResult {
     let opts = options.unwrap_or_default();
+    let source_name = opts
+        .filename
+        .clone()
+        .unwrap_or_else(|| DEFAULT_SOURCE_NAME.to_string());
     let result = convert_rs(
         &source,
         ConvertOptions {
             filename: opts.filename,
         },
     );
+    let map = result.source_map(&source, &source_name).to_json();
 
     ConvertToTsxResult {
         code: result.code,
+        map,
         mappings: result
             .mappings
             .into_iter()
