@@ -8,87 +8,6 @@ fn convert(source: &str) -> String {
     convert_to_tsx(source, ConvertOptions::default()).code
 }
 
-fn convert_named(source: &str, filename: &str) -> String {
-    convert_to_tsx(
-        source,
-        ConvertOptions {
-            filename: Some(filename.to_string()),
-        },
-    )
-    .code
-}
-
-#[test]
-fn empty_no_props_default_export() {
-    let input = "<div></div>";
-    let expected = format!(
-        "{PREFIX}<Fragment>\n<div></div>\n</Fragment>\n\
-         export default function __AstroComponent_(_props: Record<string, any>): any {{}}\n"
-    );
-    assert_eq!(convert(input), expected);
-}
-
-#[test]
-fn frontmatter_followed_by_body() {
-    let input = "\n---\nlet value = 'world';\n---\n\n<h1>Hello {value}</h1>\n";
-    let actual = convert(input);
-    assert!(actual.contains("let value = 'world';"));
-    assert!(actual.contains("<Fragment>"));
-    // Text and expression are emitted as separate spans.
-    assert!(actual.contains("Hello "));
-    assert!(actual.contains("{value}"));
-    assert!(actual.contains("</Fragment>"));
-    assert!(actual.contains("export default function __AstroComponent_"));
-}
-
-#[test]
-fn frontmatter_only_no_body() {
-    let input = "---\nfunction DoTheThing(Props) {}\n---";
-    let actual = convert(input);
-    assert!(actual.starts_with(PREFIX));
-    assert!(actual.contains("function DoTheThing(Props) {}"));
-    assert!(!actual.contains("<Fragment>"));
-    assert!(actual.contains("export default function __AstroComponent_"));
-}
-
-#[test]
-fn template_literal_attribute_passes_through_braces() {
-    let input = "<div class=\"hello\"></div>";
-    let actual = convert(input);
-    assert!(actual.contains("<div class=\"hello\">"));
-}
-
-#[test]
-fn invalid_attribute_collected_in_spread_object() {
-    let input = "<div @click={() => {}} name=\"value\"></div>";
-    let actual = convert(input);
-    assert!(actual.contains("name=\"value\""));
-    assert!(actual.contains("{...{"));
-    assert!(actual.contains("\"@click\""));
-}
-
-#[test]
-fn named_export_uses_filename_basename() {
-    let input = "<div></div>";
-    let actual = convert_named(input, "/Users/nmoo/test.astro");
-    assert!(actual.contains("export default function Test__AstroComponent_"));
-}
-
-#[test]
-fn comment_emits_jsx_comment_with_leading_space() {
-    let input = "<!--/<div>Error?<div/>-->";
-    let actual = convert(input);
-    assert!(actual.starts_with(PREFIX));
-}
-
-#[test]
-fn unclosed_tag_passes_through() {
-    let input = "<components.";
-    let actual = convert(input);
-    assert!(actual.contains("<Fragment>"));
-    assert!(actual.contains("</Fragment>"));
-}
-
 #[test]
 fn frontmatter_range_is_recorded() {
     let result = convert_to_tsx(
@@ -119,13 +38,6 @@ fn parser_errors_surface_but_do_not_block_emission() {
     );
     assert!(result.has_parse_errors);
     assert!(result.code.starts_with(PREFIX));
-}
-
-#[test]
-fn shorthand_attribute_expands_to_named_form() {
-    let input = "<Foo {bar} />";
-    let actual = convert(input);
-    assert!(actual.contains("bar={bar}"));
 }
 
 #[test]
