@@ -33,6 +33,14 @@ oxc_syntax = { git = "https://github.com/withastro/oxc", rev = "8bb526fc0c20beb4
 oxc_transformer = { git = "https://github.com/withastro/oxc", rev = "8bb526fc0c20beb4649b223d3ac39851505caa5a" }
 oxc_sourcemap = "6.0.1"
 
+# Biome dependencies via git, all pinned to the same fork revision
+biome_html_parser = { git = "https://github.com/Princesseuh/biome", rev = "2e96281bb1bfb2601d07929de917b6b64030663f" }
+biome_html_syntax = { git = "https://github.com/Princesseuh/biome", rev = "2e96281bb1bfb2601d07929de917b6b64030663f" }
+biome_js_parser = { git = "https://github.com/Princesseuh/biome", rev = "2e96281bb1bfb2601d07929de917b6b64030663f" }
+biome_js_syntax = { git = "https://github.com/Princesseuh/biome", rev = "2e96281bb1bfb2601d07929de917b6b64030663f" }
+biome_languages = { git = "https://github.com/Princesseuh/biome", rev = "2e96281bb1bfb2601d07929de917b6b64030663f" }
+biome_rowan = { git = "https://github.com/Princesseuh/biome", rev = "2e96281bb1bfb2601d07929de917b6b64030663f" }
+
 # NAPI
 napi = { version = "3", features = ["tokio_rt"] }
 napi-build = "2"
