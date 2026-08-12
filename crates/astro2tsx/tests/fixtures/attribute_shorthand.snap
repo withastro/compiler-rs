@@ -1,8 +1,17 @@
 ---
 source: crates/astro2tsx/tests/snapshots.rs
+info:
+  has_parse_errors: false
+  frontmatter:
+    start: 0
+    end: 0
+  body:
+    start: 41
+    end: 60
+  scripts: []
+  styles: []
 input_file: crates/astro2tsx/tests/fixtures/attribute_shorthand.astro
 ---
---- code, with an inline source map this harness appends ---
 /* @jsxImportSource astro */
 
 <Fragment>
@@ -11,24 +20,3 @@ input_file: crates/astro2tsx/tests/fixtures/attribute_shorthand.astro
 </Fragment>
 export default function __AstroComponent_(_props: Record<string, any>): any {}
 //# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbImlucHV0LmFzdHJvIl0sInNvdXJjZXNDb250ZW50IjpbIjxGb28ge2Jhcn0gLz5cbiJdLCJuYW1lcyI6W10sIm1hcHBpbmdzIjoiQTs7QTtBQUFBLENBQUMsRyxDQUFLLENBQUMsQ0FBQyxDLEMsQ0FBRixDQUFDLENBQUMsQyxDQUFFLENBQUUsRUFBQztBQUNiO0EifQ==
-
---- result ---
-has_parse_errors: false
-frontmatter: 0..0
-body: 41..60
-scripts: (none)
-styles: (none)
-
---- mappings: 19 points in 11 runs ---
-generated_start..generated_end xpoints -> original; `-` is unmapped
-0..41 x2 -> -
-41..45 x2 -> 0
-45..46 x1 -> -
-46..49 x3 -> 6
-49..51 x2 -> -
-51..54 x3 -> 6
-54..55 x1 -> -
-55..56 x1 -> 10
-56..58 x1 -> 12
-58..60 x2 -> 13
-60..151 x1 -> -

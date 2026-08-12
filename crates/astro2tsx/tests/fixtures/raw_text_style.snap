@@ -1,8 +1,23 @@
 ---
 source: crates/astro2tsx/tests/snapshots.rs
+info:
+  has_parse_errors: false
+  frontmatter:
+    start: 0
+    end: 0
+  body:
+    start: 41
+    end: 80
+  scripts: []
+  styles:
+    - kind: Style
+      lang: css
+      generated:
+        start: 48
+        end: 70
+      content: ".a { color: red; }"
 input_file: crates/astro2tsx/tests/fixtures/raw_text_style.astro
 ---
---- code, with an inline source map this harness appends ---
 /* @jsxImportSource astro */
 
 <Fragment>
@@ -11,21 +26,3 @@ input_file: crates/astro2tsx/tests/fixtures/raw_text_style.astro
 </Fragment>
 export default function __AstroComponent_(_props: Record<string, any>): any {}
 //# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbImlucHV0LmFzdHJvIl0sInNvdXJjZXNDb250ZW50IjpbIjxzdHlsZT4uYSB7IGNvbG9yOiByZWQ7IH08L3N0eWxlPlxuIl0sIm5hbWVzIjpbXSwibWFwcGluZ3MiOiJBOztBO0FBQUEsQ0FBQyxLQUFLLEMsRUFBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQyxFQUFDLEVBQUUsS0FBSyxDQUFDO0FBQ2pDO0EifQ==
-
---- result ---
-has_parse_errors: false
-frontmatter: 0..0
-body: 41..80
-scripts: (none)
-styles:
-  Style lang=Some("css") generated 48..70 content=".a { color: red; }"
-
---- mappings: 31 points in 7 runs ---
-generated_start..generated_end xpoints -> original; `-` is unmapped
-0..41 x2 -> -
-41..48 x3 -> 0
-48..50 x1 -> -
-50..68 x18 -> 7
-68..70 x1 -> -
-70..80 x5 -> 25
-80..171 x1 -> -

@@ -1,8 +1,17 @@
 ---
 source: crates/astro2tsx/tests/snapshots.rs
+info:
+  has_parse_errors: false
+  frontmatter:
+    start: 0
+    end: 0
+  body:
+    start: 41
+    end: 116
+  scripts: []
+  styles: []
 input_file: crates/astro2tsx/tests/fixtures/directives.astro
 ---
---- code, with an inline source map this harness appends ---
 /* @jsxImportSource astro */
 
 <Fragment>
@@ -11,26 +20,3 @@ input_file: crates/astro2tsx/tests/fixtures/directives.astro
 </Fragment>
 export default function __AstroComponent_(_props: Record<string, any>): any {}
 //# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbImlucHV0LmFzdHJvIl0sInNvdXJjZXNDb250ZW50IjpbIjxDb21wIGNsaWVudDpsb2FkIHNldDpodG1sPXtodG1sfSBjbGFzczpsaXN0PXtjbHN9IHRyYW5zaXRpb246bmFtZT1cIm5cIiAvPlxuIl0sIm5hbWVzIjpbXSwibWFwcGluZ3MiOiJBOztBO0FBQUEsQ0FBQyxJLENBQUssQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDLENBQUUsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLEMsQ0FBRSxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDLENBQUUsZUFBZSxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUUsRUFBQztBQUN6RTtBIn0=
-
---- result ---
-has_parse_errors: false
-frontmatter: 0..0
-body: 41..116
-scripts: (none)
-styles: (none)
-
---- mappings: 60 points in 13 runs ---
-generated_start..generated_end xpoints -> original; `-` is unmapped
-0..41 x2 -> -
-41..46 x2 -> 0
-46..47 x1 -> -
-47..58 x11 -> 6
-58..59 x1 -> -
-59..74 x15 -> 18
-74..75 x1 -> -
-75..91 x16 -> 34
-91..92 x1 -> -
-92..112 x6 -> 51
-112..114 x1 -> 72
-114..116 x2 -> 73
-116..207 x1 -> -

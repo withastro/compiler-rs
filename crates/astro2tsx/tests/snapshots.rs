@@ -1,16 +1,15 @@
 //! astro2tsx snapshot tests. Run `cargo insta review` to accept changes.
 //!
-//! Each snapshot captures the whole `ConvertResult`, not just its code.
+//! The body is only the TSX and its inline source map, so it pastes straight
+//! into a viewer; the rest of the result rides in insta's `info` header.
 //!
 //! A fixture may open with `// @config key=value` lines, stripped before
 //! conversion. The only key is `filename`, which defaults to none.
 
-use std::fmt::Write as _;
 use std::fs;
 
-use astro2tsx::{
-    ConvertOptions, ConvertResult, DEFAULT_SOURCE_NAME, ExtractedTag, Mapping, convert_to_tsx,
-};
+use astro2tsx::{ConvertOptions, ConvertResult, DEFAULT_SOURCE_NAME, ExtractedTag, convert_to_tsx};
+use serde::Serialize;
 
 /// Parse `// @config` directives from the top of a fixture file.
 ///
@@ -33,105 +32,57 @@ fn parse_fixture(raw: &str) -> (String, ConvertOptions) {
     (remaining.to_string(), options)
 }
 
-/// Mappings are per character, so lockstep ones collapse into a run.
-struct Run {
-    generated_start: u32,
-    generated_end: u32,
-    original: Option<u32>,
-    points: usize,
+#[derive(Serialize)]
+struct Info {
+    has_parse_errors: bool,
+    frontmatter: Range,
+    body: Range,
+    scripts: Vec<Tag>,
+    styles: Vec<Tag>,
 }
 
-fn runs(mappings: &[Mapping], code_len: u32) -> Vec<Run> {
-    let mut runs: Vec<Run> = Vec::new();
-    for (index, mapping) in mappings.iter().enumerate() {
-        let generated_end = mappings
-            .get(index + 1)
-            .map_or(code_len, |next| next.generated);
-        if let Some(open) = runs.last_mut() {
-            let previous = &mappings[index - 1];
-            let lockstep = match (previous.original, mapping.original) {
-                (None, None) => true,
-                (Some(before), Some(after)) => {
-                    i64::from(mapping.generated) - i64::from(previous.generated)
-                        == i64::from(after) - i64::from(before)
-                }
-                _ => false,
-            };
-            if lockstep && mapping.generated >= previous.generated {
-                open.generated_end = generated_end;
-                open.points += 1;
-                continue;
-            }
-        }
-        runs.push(Run {
-            generated_start: mapping.generated,
-            generated_end,
-            original: mapping.original,
-            points: 1,
-        });
-    }
-    runs
+#[derive(Serialize)]
+struct Range {
+    start: u32,
+    end: u32,
 }
 
-fn write_tags(out: &mut String, label: &str, tags: &[ExtractedTag]) {
-    if tags.is_empty() {
-        let _ = writeln!(out, "{label}: (none)");
-        return;
-    }
-    let _ = writeln!(out, "{label}:");
-    for tag in tags {
-        let _ = writeln!(
-            out,
-            "  {:?} lang={:?} generated {}..{} content={:?}",
-            tag.kind, tag.lang, tag.range.start, tag.range.end, tag.content
-        );
-    }
+#[derive(Serialize)]
+struct Tag {
+    kind: String,
+    lang: Option<String>,
+    generated: Range,
+    content: String,
 }
 
-fn report(source: &str, source_name: &str, result: &ConvertResult) -> String {
-    let mut out = String::new();
-    let map = result.source_map(source, source_name);
+fn tags(tags: &[ExtractedTag]) -> Vec<Tag> {
+    tags.iter()
+        .map(|tag| Tag {
+            kind: format!("{:?}", tag.kind),
+            lang: tag.lang.clone(),
+            generated: Range {
+                start: tag.range.start,
+                end: tag.range.end,
+            },
+            content: tag.content.clone(),
+        })
+        .collect()
+}
 
-    out.push_str("--- code, with an inline source map this harness appends ---\n");
-    out.push_str(&result.code);
-    if !result.code.ends_with('\n') {
-        out.push('\n');
+fn info(result: &ConvertResult) -> Info {
+    Info {
+        has_parse_errors: result.has_parse_errors,
+        frontmatter: Range {
+            start: result.frontmatter.start,
+            end: result.frontmatter.end,
+        },
+        body: Range {
+            start: result.body.start,
+            end: result.body.end,
+        },
+        scripts: tags(&result.scripts),
+        styles: tags(&result.styles),
     }
-    out.push_str(&map.to_inline_comment());
-    out.push('\n');
-
-    out.push_str("\n--- result ---\n");
-    let _ = writeln!(out, "has_parse_errors: {}", result.has_parse_errors);
-    let _ = writeln!(
-        out,
-        "frontmatter: {}..{}",
-        result.frontmatter.start, result.frontmatter.end
-    );
-    let _ = writeln!(out, "body: {}..{}", result.body.start, result.body.end);
-    write_tags(&mut out, "scripts", &result.scripts);
-    write_tags(&mut out, "styles", &result.styles);
-
-    let runs = runs(&result.mappings, result.code.len() as u32);
-    let _ = writeln!(
-        out,
-        "\n--- mappings: {} points in {} runs ---",
-        result.mappings.len(),
-        runs.len()
-    );
-    out.push_str("generated_start..generated_end xpoints -> original; `-` is unmapped\n");
-    for run in &runs {
-        let original = match run.original {
-            Some(offset) => offset.to_string(),
-            None => "-".to_string(),
-        };
-        let _ = writeln!(
-            out,
-            "{}..{} x{} -> {}",
-            run.generated_start, run.generated_end, run.points, original
-        );
-    }
-
-    out
 }
 
 #[test]
@@ -144,15 +95,25 @@ fn snapshots() {
             .filename
             .clone()
             .unwrap_or_else(|| DEFAULT_SOURCE_NAME.to_string());
-        let output = report(&source, &source_name, &convert_to_tsx(&source, options));
+        let result = convert_to_tsx(&source, options);
+        let map = result.source_map(&source, &source_name);
+
+        // A leading blank line would shift every generated line by one.
+        let mut body = String::new();
+        body.push_str(&result.code);
+        if !result.code.ends_with('\n') {
+            body.push('\n');
+        }
+        body.push_str(&map.to_inline_comment());
 
         insta::with_settings!({
             snapshot_path => path.parent().unwrap(),
             prepend_module_to_snapshot => false,
             snapshot_suffix => "",
             omit_expression => true,
+            info => &info(&result),
         }, {
-            insta::assert_snapshot!(name, output);
+            insta::assert_snapshot!(name, body);
         });
     });
 }
