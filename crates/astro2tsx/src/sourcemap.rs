@@ -76,6 +76,40 @@ impl SourceMap {
     pub fn to_json(&self) -> String {
         serde_json::to_string(self).expect("a source map contains only serialisable types")
     }
+
+    pub fn to_data_url(&self) -> String {
+        format!(
+            "data:application/json;charset=utf-8;base64,{}",
+            base64(self.to_json().as_bytes())
+        )
+    }
+
+    /// The `//# sourceMappingURL=` line that carries this map inline.
+    pub fn to_inline_comment(&self) -> String {
+        format!("//# sourceMappingURL={}", self.to_data_url())
+    }
+}
+
+fn base64(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len().div_ceil(3) * 4);
+    for chunk in bytes.chunks(3) {
+        let triple = (u32::from(chunk[0]) << 16)
+            | (u32::from(chunk.get(1).copied().unwrap_or(0)) << 8)
+            | u32::from(chunk.get(2).copied().unwrap_or(0));
+        out.push(BASE64[(triple >> 18 & 63) as usize] as char);
+        out.push(BASE64[(triple >> 12 & 63) as usize] as char);
+        out.push(if chunk.len() > 1 {
+            BASE64[(triple >> 6 & 63) as usize] as char
+        } else {
+            '='
+        });
+        out.push(if chunk.len() > 2 {
+            BASE64[(triple & 63) as usize] as char
+        } else {
+            '='
+        });
+    }
+    out
 }
 
 const BASE64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -182,7 +216,19 @@ pub(crate) fn encode(
 
 #[cfg(test)]
 mod tests {
-    use super::{LineIndex, push_vlq};
+    use super::{LineIndex, base64, push_vlq};
+
+    #[test]
+    fn base64_matches_rfc4648_vectors() {
+        assert_eq!(base64(b""), "");
+        assert_eq!(base64(b"f"), "Zg==");
+        assert_eq!(base64(b"fo"), "Zm8=");
+        assert_eq!(base64(b"foo"), "Zm9v");
+        assert_eq!(base64(b"foob"), "Zm9vYg==");
+        assert_eq!(base64(b"fooba"), "Zm9vYmE=");
+        assert_eq!(base64(b"foobar"), "Zm9vYmFy");
+        assert_eq!(base64("π🦄".as_bytes()), "z4Dwn6aE");
+    }
 
     fn vlq(value: i64) -> String {
         let mut out = String::new();
