@@ -28,3 +28,16 @@ generated_start..generated_end xpoints -> original; `-` is unmapped
 51..63 x2 -> -
 63..81 x13 -> 28
 81..172 x1 -> -
+
+--- source map v3 (paste into any source map viewer) ---
+{
+  "version": 3,
+  "sources": [
+    "input.astro"
+  ],
+  "sourcesContent": [
+    "---\nconst π = Math.PI;\n---\n<p>🦄 {π}</p>\n"
+  ],
+  "names": [],
+  "mappings": "A;;AAAA,AAAG;AACH,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC;A;A;AAElB,CAAC,CAAC,CAAC,EAAE,CAAC,CAAC,CAAC,CAAC,EAAE,CAAC,CAAC;AACb;A"
+}
