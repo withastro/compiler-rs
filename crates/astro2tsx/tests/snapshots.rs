@@ -1,14 +1,14 @@
 //! astro2tsx snapshot tests. Run `cargo insta review` to accept changes.
 //!
-//! The body is only the TSX and its inline source map, so it pastes straight
-//! into a viewer; the rest of the result rides in insta's `info` header.
+//! The body is `code` verbatim, inline source map and all, so it pastes
+//! straight into a viewer; the rest of the result rides in insta's `info`.
 //!
 //! A fixture may open with `// @config key=value` lines, stripped before
 //! conversion. The only key is `filename`, which defaults to none.
 
 use std::fs;
 
-use astro2tsx::{ConvertOptions, ConvertResult, DEFAULT_SOURCE_NAME, ExtractedTag, convert_to_tsx};
+use astro2tsx::{ConvertOptions, ConvertResult, ExtractedTag, convert_to_tsx};
 use serde::Serialize;
 
 /// Parse `// @config` directives from the top of a fixture file.
@@ -91,20 +91,7 @@ fn snapshots() {
         let raw = fs::read_to_string(path).unwrap();
         let name = path.file_stem().unwrap().to_str().unwrap();
         let (source, options) = parse_fixture(&raw);
-        let source_name = options
-            .filename
-            .clone()
-            .unwrap_or_else(|| DEFAULT_SOURCE_NAME.to_string());
         let result = convert_to_tsx(&source, options);
-        let map = result.source_map(&source, &source_name);
-
-        // A leading blank line would shift every generated line by one.
-        let mut body = String::new();
-        body.push_str(&result.code);
-        if !result.code.ends_with('\n') {
-            body.push('\n');
-        }
-        body.push_str(&map.to_inline_comment());
 
         insta::with_settings!({
             snapshot_path => path.parent().unwrap(),
@@ -113,7 +100,7 @@ fn snapshots() {
             omit_expression => true,
             info => &info(&result),
         }, {
-            insta::assert_snapshot!(name, body);
+            insta::assert_snapshot!(name, result.code);
         });
     });
 }
