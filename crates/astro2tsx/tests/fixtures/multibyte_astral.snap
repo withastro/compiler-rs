@@ -6,8 +6,8 @@ info:
     start: 30
     end: 52
   body:
-    start: 63
-    end: 81
+    start: 66
+    end: 85
   scripts: []
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/multibyte_astral.astro
@@ -17,10 +17,11 @@ input_file: crates/astro2tsx/tests/fixtures/multibyte_astral.astro
 
 const π = Math.PI;
 
-<Fragment>
+{};<Fragment>
+
 <p>🦄 {π}</p>
 
 </Fragment>
 export default function __AstroComponent_(_props: Record<string, any>): any {}
 
-//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbImlucHV0LmFzdHJvIl0sInNvdXJjZXNDb250ZW50IjpbIi0tLVxuY29uc3Qgz4AgPSBNYXRoLlBJO1xuLS0tXG48cD7wn6aEIHvPgH08L3A+XG4iXSwibmFtZXMiOltdLCJtYXBwaW5ncyI6IkE7O0FBQUEsQUFBRztBQUNILENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDO0E7QTtBQUVsQixDQUFDLENBQUMsQ0FBQyxFQUFFLENBQUMsQ0FBQyxDQUFDLENBQUMsRUFBRSxDQUFDLENBQUM7QUFDYjtBIn0=
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiaW5wdXQuYXN0cm8iXSwic291cmNlc0NvbnRlbnQiOlsiLS0tXG5jb25zdCDPgCA9IE1hdGguUEk7XG4tLS1cbjxwPvCfpoQge8+AfTwvcD5cbiJdLCJtYXBwaW5ncyI6IkE7O0FBQUEsQUFBRztBQUNILENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDO0E7QSxHO0FBQ2Y7QUFDSCxDQUFDLENBQUMsQ0FBQyxFQUFFLENBQUMsQ0FBQyxDQUFDLENBQUMsRUFBRSxDQUFDLENBQUM7QUFDYjtBIn0=

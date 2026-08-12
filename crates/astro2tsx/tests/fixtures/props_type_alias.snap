@@ -6,8 +6,8 @@ info:
     start: 30
     end: 64
   body:
-    start: 75
-    end: 88
+    start: 78
+    end: 92
   scripts: []
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/props_type_alias.astro
@@ -17,7 +17,8 @@ input_file: crates/astro2tsx/tests/fixtures/props_type_alias.astro
 
 type Props = { title: string };
 
-<Fragment>
+{};<Fragment>
+
 <div></div>
 
 </Fragment>
@@ -28,4 +29,4 @@ export default function __AstroComponent_(_props: Props): any {}
  * [Astro documentation](https://docs.astro.build/reference/api-reference/#astro-global)
 */
 declare const Astro: Readonly<import('astro').AstroGlobal<Props, typeof __AstroComponent_>>
-//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbImlucHV0LmFzdHJvIl0sInNvdXJjZXNDb250ZW50IjpbIi0tLVxudHlwZSBQcm9wcyA9IHsgdGl0bGU6IHN0cmluZyB9O1xuLS0tXG48ZGl2PjwvZGl2PlxuIl0sIm5hbWVzIjpbXSwibWFwcGluZ3MiOiJBOztBQUFBLEFBQUc7QUFDSCxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDO0E7QTtBQUUvQixDQUFDLEdBQUcsQ0FBQyxFQUFFLEdBQUcsQ0FBQztBQUNYO0EifQ==
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiaW5wdXQuYXN0cm8iXSwic291cmNlc0NvbnRlbnQiOlsiLS0tXG50eXBlIFByb3BzID0geyB0aXRsZTogc3RyaW5nIH07XG4tLS1cbjxkaXY+PC9kaXY+XG4iXSwibWFwcGluZ3MiOiJBOztBQUFBLEFBQUc7QUFDSCxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDO0E7QSxHO0FBQzVCO0FBQ0gsQ0FBQyxHQUFHLENBQUMsRUFBRSxHQUFHLENBQUM7QUFDWDtBIn0=

@@ -20,4 +20,4 @@ input_file: crates/astro2tsx/tests/fixtures/named_component_export.astro
 </Fragment>
 export default function MyPage__AstroComponent_(_props: Record<string, any>): any {}
 
-//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbIi9zcmMvcGFnZXMvTXlQYWdlLmFzdHJvIl0sInNvdXJjZXNDb250ZW50IjpbIjxkaXY+PC9kaXY+XG4iXSwibmFtZXMiOltdLCJtYXBwaW5ncyI6IkE7O0E7QUFBQSxDQUFDLEdBQUcsQ0FBQyxFQUFFLEdBQUcsQ0FBQztBQUNYO0EifQ==
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiL3NyYy9wYWdlcy9NeVBhZ2UuYXN0cm8iXSwic291cmNlc0NvbnRlbnQiOlsiPGRpdj48L2Rpdj5cbiJdLCJtYXBwaW5ncyI6IkE7O0E7QUFBQSxDQUFDLEdBQUcsQ0FBQyxFQUFFLEdBQUcsQ0FBQztBQUNYO0EifQ==

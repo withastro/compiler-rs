@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import { convertToTsx } from '../index.js';
+import { NO_ORIGINAL, convertToTsx } from '../index.js';
 
 test('emits the TSX prefix and a Fragment-wrapped body', () => {
 	const result = convertToTsx('<h1>Hello {value}</h1>');
@@ -38,10 +38,21 @@ test('records frontmatter and body byte ranges', () => {
 	assert.match(frontmatterSlice, /let x = 1;/);
 });
 
-test('mappings carry per-byte source offsets', () => {
+test('mappings are packed pairs ascending by generated offset', () => {
 	const result = convertToTsx('<h1>Hi</h1>');
-	const mapped = result.mappings.find((m) => m.original !== null && m.original !== undefined);
-	assert.ok(mapped, 'expected at least one mapped byte');
+	assert.ok(result.mappings instanceof Uint32Array);
+	assert.equal(result.mappings.length % 2, 0);
+	let mapped = 0;
+	for (let i = 0; i < result.mappings.length; i += 2) {
+		if (i > 0) assert.ok(result.mappings[i] >= result.mappings[i - 2], 'generated offsets ascend');
+		if (result.mappings[i + 1] !== NO_ORIGINAL) mapped++;
+	}
+	assert.ok(mapped > 0, 'expected at least one mapped byte');
+	const h1 = result.code.indexOf('<h1>');
+	const pair = [...Array(result.mappings.length / 2).keys()].find(
+		(n) => result.mappings[2 * n] === h1,
+	);
+	assert.notEqual(result.mappings[2 * pair + 1], NO_ORIGINAL, '<h1> maps back to the source');
 });
 
 test('returns a self-contained source map v3', () => {
@@ -57,14 +68,6 @@ test('returns a self-contained source map v3', () => {
 test('names the source after the filename option', () => {
 	const map = JSON.parse(convertToTsx('<p></p>', { filename: 'Index.astro' }).map);
 	assert.deepEqual(map.sources, ['Index.astro']);
-});
-
-test('source map carries astral characters through unchanged', () => {
-	const input = '<p>🦄 {value}</p>';
-	const result = convertToTsx(input);
-	const map = JSON.parse(result.map);
-	assert.equal(map.sourcesContent[0], input);
-	assert.ok(map.mappings.split(';').length <= result.code.split('\n').length);
 });
 
 test('appends the inline source map comment by default', () => {

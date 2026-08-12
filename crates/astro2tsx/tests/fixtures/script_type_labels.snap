@@ -1,0 +1,43 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+info:
+  has_parse_errors: false
+  frontmatter:
+    start: 0
+    end: 0
+  body:
+    start: 41
+    end: 174
+  scripts:
+    - kind: Script
+      lang: inline
+      generated:
+        start: 71
+        end: 71
+      content: go();
+    - kind: Script
+      lang: json
+      generated:
+        start: 113
+        end: 113
+      content: "{\"a\":1}"
+    - kind: Script
+      lang: unknown
+      generated:
+        start: 163
+        end: 163
+      content: wat
+  styles: []
+input_file: crates/astro2tsx/tests/fixtures/script_type_labels.astro
+---
+/* @jsxImportSource astro */
+
+<Fragment>
+<script type="text/partytown"></script>
+<script type="speculationrules"></script>
+<script is:inline type="text/x-unknown"></script>
+
+</Fragment>
+export default function __AstroComponent_(_props: Record<string, any>): any {}
+
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiaW5wdXQuYXN0cm8iXSwic291cmNlc0NvbnRlbnQiOlsiPHNjcmlwdCB0eXBlPVwidGV4dC9wYXJ0eXRvd25cIj5nbygpOzwvc2NyaXB0PlxuPHNjcmlwdCB0eXBlPVwic3BlY3VsYXRpb25ydWxlc1wiPntcImFcIjoxfTwvc2NyaXB0PlxuPHNjcmlwdCBpczppbmxpbmUgdHlwZT1cInRleHQveC11bmtub3duXCI+d2F0PC9zY3JpcHQ+XG4iXSwibWFwcGluZ3MiOiJBOztBO0FBQUEsQ0FBQyxNLENBQU8sSUFBSSxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBTSxFQUFFLE1BQU0sQ0FBQztBQUM1QyxDQUFDLE0sQ0FBTyxJQUFJLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBUSxFQUFFLE1BQU0sQ0FBQztBQUNoRCxDQUFDLE0sQ0FBTyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQyxDQUFFLElBQUksQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUksRUFBRSxNQUFNLENBQUM7QUFDcEQ7QSJ9

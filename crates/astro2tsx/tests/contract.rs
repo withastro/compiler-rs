@@ -20,14 +20,12 @@ const CONSTRUCTS: &[&str] = &[
 ];
 #[test]
 fn never_fails_on_truncated_input() {
-    let mut cases = 0usize;
     for src in CONSTRUCTS {
         for end in 0..=src.len() {
             if !src.is_char_boundary(end) {
                 continue;
             }
             let t = &src[..end];
-            cases += 1;
             let r = convert_to_tsx(
                 t,
                 ConvertOptions {
@@ -42,7 +40,6 @@ fn never_fails_on_truncated_input() {
             );
         }
     }
-    eprintln!("truncation cases: {cases}, panics: 0, empty: 0");
 }
 
 fn convert(source: &str) -> astro2tsx::ConvertResult {

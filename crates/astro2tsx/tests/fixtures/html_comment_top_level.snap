@@ -7,7 +7,7 @@ info:
     end: 0
   body:
     start: 41
-    end: 55
+    end: 72
   scripts: []
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/html_comment_top_level.astro
@@ -15,9 +15,10 @@ input_file: crates/astro2tsx/tests/fixtures/html_comment_top_level.astro
 /* @jsxImportSource astro */
 
 <Fragment>
+{/** leading */}
 <div>x</div>
 
 </Fragment>
 export default function __AstroComponent_(_props: Record<string, any>): any {}
 
-//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbImlucHV0LmFzdHJvIl0sInNvdXJjZXNDb250ZW50IjpbIjwhLS0gbGVhZGluZyAtLT5cbjxkaXY+eDwvZGl2PlxuIl0sIm5hbWVzIjpbXSwibWFwcGluZ3MiOiJBOztBO0FBQ0EsQ0FBQyxHQUFHLENBQUMsQ0FBQyxFQUFFLEdBQUcsQ0FBQztBQUNaO0EifQ==
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiaW5wdXQuYXN0cm8iXSwic291cmNlc0NvbnRlbnQiOlsiPCEtLSBsZWFkaW5nIC0tPlxuPGRpdj54PC9kaXY+XG4iXSwibWFwcGluZ3MiOiJBOztBO0EsSUFBSSxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQyxHQUFJO0FBQ2hCLENBQUMsR0FBRyxDQUFDLENBQUMsRUFBRSxHQUFHLENBQUM7QUFDWjtBIn0=
