@@ -20,6 +20,8 @@ export interface ConvertToTsxOptions {
 export interface ConvertToTsxResult {
   code: string
   mappings: Array<Mapping>
+  /** Source Map v3 JSON for `code`, with `sourcesContent` embedded. */
+  map: string
   frontmatter: GeneratedRange
   body: GeneratedRange
   scripts: Array<ExtractedTag>
