@@ -1,0 +1,13 @@
+[package]
+name              = "astro2tsx_benches"
+version           = "0.0.0"
+edition.workspace = true
+publish           = false
+
+[dependencies]
+astro2tsx = { path = "../../crates/astro2tsx" }
+divan     = { workspace = true }
+
+[[bench]]
+name    = "convert"
+harness = false

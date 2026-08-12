@@ -1,0 +1,45 @@
+---
+interface Item {
+	href: string;
+	title: string;
+	tags: string[];
+	draft?: boolean;
+}
+
+interface Props {
+	items: Item[];
+	heading?: string;
+}
+
+const { items, heading = 'Latest posts' } = Astro.props;
+const published = items.filter((item) => !item.draft);
+---
+
+<section class="listing">
+	<h2>{heading}</h2>
+	{published.length === 0 && <p class="empty">Nothing here yet.</p>}
+	<ul>
+		{
+			published.map((item, index) => (
+				<li class:list={['entry', { featured: index === 0 }]}>
+					<!-- The first entry gets hero treatment -->
+					{index === 0 ? (
+						<a href={item.href} class="hero">
+							<strong>{item.title}</strong>
+						</a>
+					) : (
+						<a href={item.href}>{item.title}</a>
+					)}
+					{item.tags.length > 0 && (
+						<span class="tags">
+							{item.tags.map((tag) => (
+								<em data-tag={tag}>#{tag}</em>
+							))}
+						</span>
+					)}
+				</li>
+			))
+		}
+	</ul>
+	{published.length > 10 && <a href="/archive">See all {published.length} posts</a>}
+</section>
