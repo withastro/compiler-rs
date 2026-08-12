@@ -44,23 +44,43 @@ impl<'a> Printer<'a> {
 
     pub(crate) fn map_to_offset(&mut self, original: u32) {
         let generated = self.position();
-        self.mappings
-            .push(Mapping::original_at(generated, original));
+        self.push_mapping(Mapping::original_at(generated, original));
     }
 
     pub(crate) fn map_nil(&mut self) {
         let generated = self.position();
-        self.mappings.push(Mapping::nil(generated));
+        self.push_mapping(Mapping::nil(generated));
     }
 
-    /// Emits `text` with per-character mappings starting at `original_start`.
-    pub(crate) fn write_with_mapping(&mut self, text: &str, original_start: u32) {
-        let mut original = original_start;
-        for ch in text.chars() {
-            self.map_to_offset(original);
-            self.output.push(ch);
-            original += ch.len_utf8() as u32;
+    /// A mapping opens a run: generated and original advance in lockstep until
+    /// the next mapping. Pairs that merely continue the current run are dropped.
+    fn push_mapping(&mut self, mapping: Mapping) {
+        if let Some(last) = self.mappings.last_mut() {
+            if last.generated == mapping.generated {
+                *last = mapping;
+                return;
+            }
+            let continues = match (last.original, mapping.original) {
+                (None, None) => true,
+                (Some(last_original), Some(original)) => {
+                    original.wrapping_sub(last_original) == mapping.generated - last.generated
+                }
+                _ => false,
+            };
+            if continues {
+                return;
+            }
         }
+        self.mappings.push(mapping);
+    }
+
+    /// Emits `text` as one lockstep run starting at `original_start`.
+    pub(crate) fn write_with_mapping(&mut self, text: &str, original_start: u32) {
+        if text.is_empty() {
+            return;
+        }
+        self.map_to_offset(original_start);
+        self.output.push_str(text);
     }
 
     /// JSX text cannot contain raw `>` or `}`; they emit as `{\`>\`}`.

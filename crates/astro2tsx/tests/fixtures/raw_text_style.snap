@@ -26,4 +26,4 @@ input_file: crates/astro2tsx/tests/fixtures/raw_text_style.astro
 </Fragment>
 export default function __AstroComponent_(_props: Record<string, any>): any {}
 
-//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiaW5wdXQuYXN0cm8iXSwic291cmNlc0NvbnRlbnQiOlsiPHN0eWxlPi5hIHsgY29sb3I6IHJlZDsgfTwvc3R5bGU+XG4iXSwibWFwcGluZ3MiOiJBOztBO0FBQUEsQ0FBQyxLQUFLLENBQW1CLEVBQUUsS0FBSyxDQUFDO0FBQ2pDO0EifQ==
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiaW5wdXQuYXN0cm8iXSwic291cmNlc0NvbnRlbnQiOlsiPHN0eWxlPi5hIHsgY29sb3I6IHJlZDsgfTwvc3R5bGU+XG4iXSwibWFwcGluZ3MiOiJBOzs7QUFBQSxPQUF5QjtBQUN6QjtBIn0=

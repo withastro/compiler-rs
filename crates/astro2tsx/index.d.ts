@@ -23,7 +23,8 @@ export interface ConvertToTsxResult {
   code: string
   /**
    * Flat `(generated, original)` byte-offset pairs, ascending by generated
-   * offset; an original of `0xFFFF_FFFF` marks synthetic output.
+   * offset. Each pair opens a run: both offsets advance in lockstep until
+   * the next pair. An original of `0xFFFF_FFFF` opens an unmapped run.
    */
   mappings: Uint32Array
   /** Source Map v3 JSON for `code`, with `sourcesContent` embedded. */

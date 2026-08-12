@@ -48,6 +48,38 @@ fn byte_offset(text: &str, line: u32, column: u32) -> Option<usize> {
     None
 }
 
+/// Zero-based line and UTF-16 column of a byte offset.
+fn line_col(text: &str, byte: usize) -> (u32, u32) {
+    let mut line = 0u32;
+    let mut col = 0u32;
+    for (index, ch) in text.char_indices() {
+        if index >= byte {
+            break;
+        }
+        if ch == '\n' {
+            line += 1;
+            col = 0;
+        } else {
+            col += ch.len_utf16() as u32;
+        }
+    }
+    (line, col)
+}
+
+/// Resolves a generated position the way an editor does: nearest token on the
+/// line at or before the column, then column arithmetic within its run.
+fn resolve_decoded(decoded: &DecodedMap, line: u32, column: u32) -> Option<(u32, u32)> {
+    let token = decoded
+        .get_tokens()
+        .filter(|token| token.get_dst_line() == line && token.get_dst_col() <= column)
+        .max_by_key(|token| token.get_dst_col())?;
+    token.get_source_id()?;
+    Some((
+        token.get_src_line(),
+        token.get_src_col() + (column - token.get_dst_col()),
+    ))
+}
+
 #[test]
 fn every_fixture_round_trips_through_an_independent_decoder() {
     for (name, raw) in fixtures() {
@@ -71,56 +103,77 @@ fn every_fixture_round_trips_through_an_independent_decoder() {
             "{name}: sourcesContent did not survive"
         );
 
-        let tokens: Vec<_> = decoded.get_tokens().collect();
-        assert_eq!(
-            tokens.len(),
-            result.mappings.len(),
-            "{name}: decoded {} tokens for {} mappings",
-            tokens.len(),
-            result.mappings.len()
-        );
+        // Every run start must decode back to exactly its original position.
+        for (index, mapping) in result.mappings.iter().enumerate() {
+            let (line, column) = line_col(&result.code, mapping.generated as usize);
+            match mapping.original {
+                Some(original) => {
+                    let resolved = resolve_decoded(&decoded, line, column).unwrap_or_else(|| {
+                        panic!("{name}: run {index} at {line}:{column} does not resolve")
+                    });
+                    assert_eq!(
+                        resolved,
+                        line_col(&source, original as usize),
+                        "{name}: run {index} resolves to the wrong original position"
+                    );
+                }
+                None => {
+                    let nil_token = decoded.get_tokens().any(|token| {
+                        token.get_dst_line() == line
+                            && token.get_dst_col() == column
+                            && token.get_source_id().is_none()
+                    });
+                    assert!(
+                        nil_token,
+                        "{name}: nil run {index} at {line}:{column} has no explicit end marker"
+                    );
+                }
+            }
+        }
 
-        for (index, (token, mapping)) in tokens.iter().zip(&result.mappings).enumerate() {
+        // Every decoded token must be consistent with the run that covers it.
+        for token in decoded.get_tokens() {
             let generated = byte_offset(&result.code, token.get_dst_line(), token.get_dst_col())
                 .unwrap_or_else(|| {
                     panic!(
-                        "{name}: mapping {index} decoded to generated {}:{}, which is off the end",
+                        "{name}: token at {}:{} is off the end of the output",
                         token.get_dst_line(),
                         token.get_dst_col()
                     )
-                });
-            assert_eq!(
-                generated as u32, mapping.generated,
-                "{name}: mapping {index} generated offset changed across the round trip"
-            );
-
-            match mapping.original {
+                }) as u32;
+            let run = result
+                .mappings
+                .iter()
+                .rev()
+                .find(|mapping| mapping.generated <= generated)
+                .unwrap_or_else(|| panic!("{name}: token at byte {generated} precedes all runs"));
+            match run.original {
                 Some(original) => {
-                    assert!(
-                        token.get_source_id().is_some(),
-                        "{name}: mapping {index} lost its source"
-                    );
-                    let decoded_original = byte_offset(
-                        &source,
-                        token.get_src_line(),
-                        token.get_src_col(),
-                    )
-                    .unwrap_or_else(|| {
-                        panic!(
-                            "{name}: mapping {index} decoded to source {}:{}, which is off the end",
-                            token.get_src_line(),
-                            token.get_src_col()
-                        )
-                    });
+                    let source_byte =
+                        byte_offset(&source, token.get_src_line(), token.get_src_col())
+                            .unwrap_or_else(|| {
+                                panic!(
+                                    "{name}: token source {}:{} is off the end of the input",
+                                    token.get_src_line(),
+                                    token.get_src_col()
+                                )
+                            }) as u32;
                     assert_eq!(
-                        decoded_original as u32, original,
-                        "{name}: mapping {index} original offset changed across the round trip"
+                        source_byte,
+                        original + (generated - run.generated),
+                        "{name}: token at byte {generated} breaks its run's lockstep"
                     );
                 }
-                None => assert!(
-                    token.get_source_id().is_none(),
-                    "{name}: mapping {index} gained a source it never had"
-                ),
+                None => {
+                    assert!(
+                        token.get_source_id().is_none(),
+                        "{name}: token inside a nil run carries a source"
+                    );
+                    assert_eq!(
+                        generated, run.generated,
+                        "{name}: nil runs must not synthesize extra tokens"
+                    );
+                }
             }
         }
     }
@@ -161,20 +214,17 @@ fn astral_columns_are_utf16_code_units() {
         .to_json_string();
     let decoded = DecodedMap::from_json_string(&json).unwrap();
 
-    let tokens: Vec<_> = decoded.get_tokens().collect();
-
-    // Selecting by raw byte offset keeps the assertion off the decoded columns.
-    let column_of = |offset: usize| {
-        let index = result
-            .mappings
-            .iter()
-            .position(|mapping| mapping.original == Some(offset as u32))
-            .unwrap_or_else(|| panic!("byte {offset} is not mapped"));
-        let token = tokens[index];
-        (token.get_src_line(), token.get_src_col())
+    let resolve_generated_snippet = |snippet: &str| {
+        let generated = result
+            .code
+            .find(snippet)
+            .unwrap_or_else(|| panic!("{snippet:?} not in the output"));
+        let (line, column) = line_col(&result.code, generated);
+        resolve_decoded(&decoded, line, column)
+            .unwrap_or_else(|| panic!("{snippet:?} does not resolve"))
     };
 
-    assert_eq!(column_of(source.find("{\u{3c0}}").unwrap()), (3, 6));
-    assert_eq!(column_of(source.find("\u{3c0} = Math.PI").unwrap()), (1, 6));
-    assert_eq!(column_of(source.find("</p>").unwrap()), (3, 9));
+    assert_eq!(resolve_generated_snippet("{\u{3c0}}"), (3, 6));
+    assert_eq!(resolve_generated_snippet("\u{3c0} = Math.PI"), (1, 6));
+    assert_eq!(resolve_generated_snippet("</p>"), (3, 9));
 }

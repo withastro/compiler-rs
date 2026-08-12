@@ -36,13 +36,24 @@ fn snippet_offset(source: &str, snippet: &str) -> usize {
         .unwrap_or_else(|| panic!("snippet {snippet:?} not found in input"))
 }
 
-/// Greatest mapping whose `original` is at or before `byte`.
-fn original_to_generated(mappings: &[Mapping], byte: u32) -> Option<u32> {
-    mappings
-        .iter()
-        .filter(|m| m.original.is_some_and(|o| o <= byte))
-        .max_by_key(|m| m.original.unwrap())
-        .map(|m| m.generated)
+/// Generated positions covering `byte`: each mapping opens a lockstep run
+/// that lasts until the next mapping.
+fn original_to_generated(mappings: &[Mapping], code_len: u32, byte: u32) -> Vec<u32> {
+    let mut candidates = Vec::new();
+    for (index, mapping) in mappings.iter().enumerate() {
+        let Some(original) = mapping.original else {
+            continue;
+        };
+        let run_end = mappings
+            .get(index + 1)
+            .map(|next| next.generated)
+            .unwrap_or(code_len);
+        let run_len = run_end - mapping.generated;
+        if byte >= original && byte - original < run_len {
+            candidates.push(mapping.generated + (byte - original));
+        }
+    }
+    candidates
 }
 
 enum Resolution {
@@ -53,25 +64,27 @@ enum Resolution {
     Unmapped,
 }
 
-/// Resolves a snippet's original offset to a generated offset and reports
-/// whether the generated output actually carries the snippet there.
+/// Resolves a snippet's original offset through the runs and reports whether
+/// any covering run lands exactly on the snippet in the generated output.
 fn resolve(input: &str, snippet: &str) -> Resolution {
     let result = convert(input);
     let offset = snippet_offset(input, snippet) as u32;
-    let Some(generated) = original_to_generated(&result.mappings, offset) else {
+    let candidates = original_to_generated(&result.mappings, result.code.len() as u32, offset);
+    if candidates.is_empty() {
         return Resolution::Unmapped;
-    };
-    let exact = result
-        .mappings
-        .iter()
-        .any(|m| m.original == Some(offset) && m.generated == generated);
-    let at = result.code.get(generated as usize..).unwrap_or("");
-    if exact && at.starts_with(snippet) {
-        Resolution::Exact
-    } else {
-        let found: String = at.chars().take(snippet.chars().count().max(12)).collect();
-        Resolution::Wrong(found)
     }
+    for generated in &candidates {
+        if result
+            .code
+            .get(*generated as usize..)
+            .is_some_and(|at| at.starts_with(snippet))
+        {
+            return Resolution::Exact;
+        }
+    }
+    let at = result.code.get(candidates[0] as usize..).unwrap_or("");
+    let found: String = at.chars().take(snippet.chars().count().max(12)).collect();
+    Resolution::Wrong(found)
 }
 
 const SOURCEMAP_CASES: &[(&str, &str, &str)] = &[
