@@ -1,0 +1,11 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+input_file: crates/astro2tsx/tests/fixtures/attribute_shorthand.astro
+---
+/* @jsxImportSource astro */
+
+<Fragment>
+<Foo bar={bar} />
+
+</Fragment>
+export default function __AstroComponent_(_props: Record<string, any>): any {}

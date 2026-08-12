@@ -1,0 +1,11 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+input_file: crates/astro2tsx/tests/fixtures/void_elements.astro
+---
+/* @jsxImportSource astro */
+
+<Fragment>
+<div><br/><hr /><img src="a.png"/><input type="text"/></div>
+
+</Fragment>
+export default function __AstroComponent_(_props: Record<string, any>): any {}

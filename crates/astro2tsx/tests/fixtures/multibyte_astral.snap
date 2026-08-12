@@ -1,0 +1,14 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+input_file: crates/astro2tsx/tests/fixtures/multibyte_astral.astro
+---
+/* @jsxImportSource astro */
+
+
+const π = Math.PI;
+
+<Fragment>
+<p>🦄 {π}</p>
+
+</Fragment>
+export default function __AstroComponent_(_props: Record<string, any>): any {}

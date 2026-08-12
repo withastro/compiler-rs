@@ -1,0 +1,11 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+input_file: crates/astro2tsx/tests/fixtures/html_comment_body.astro
+---
+/* @jsxImportSource astro */
+
+<Fragment>
+<div>{/** hi */}<p>x</p></div>
+
+</Fragment>
+export default function __AstroComponent_(_props: Record<string, any>): any {}

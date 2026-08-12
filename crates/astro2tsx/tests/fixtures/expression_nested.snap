@@ -1,0 +1,11 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+input_file: crates/astro2tsx/tests/fixtures/expression_nested.astro
+---
+/* @jsxImportSource astro */
+
+<Fragment>
+<div>{outer && <span>{inner}</span>}</div>
+
+</Fragment>
+export default function __AstroComponent_(_props: Record<string, any>): any {}

@@ -1,0 +1,16 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+input_file: crates/astro2tsx/tests/fixtures/frontmatter_top_level_return.astro
+---
+/* @jsxImportSource astro */
+
+
+if (cond) {
+	throw  Astro.redirect('/x');
+}
+
+{};<Fragment>
+<p>x</p>
+
+</Fragment>
+export default function __AstroComponent_(_props: Record<string, any>): any {}

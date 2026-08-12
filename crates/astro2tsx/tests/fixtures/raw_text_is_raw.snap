@@ -1,0 +1,11 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+input_file: crates/astro2tsx/tests/fixtures/raw_text_is_raw.astro
+---
+/* @jsxImportSource astro */
+
+<Fragment>
+<div is:raw>{`<b>not markup</b>`}</div>
+
+</Fragment>
+export default function __AstroComponent_(_props: Record<string, any>): any {}

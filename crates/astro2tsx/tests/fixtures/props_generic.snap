@@ -1,0 +1,22 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+input_file: crates/astro2tsx/tests/fixtures/props_generic.astro
+---
+/* @jsxImportSource astro */
+
+
+interface Props<T extends string> {
+	item: T;
+}
+
+{};<Fragment>
+<div></div>
+
+</Fragment>
+export default function __AstroComponent_<T extends string>(_props: Props<T>): any {}
+/**
+ * Astro global available in all contexts in .astro files
+ *
+ * [Astro documentation](https://docs.astro.build/reference/api-reference/#astro-global)
+*/
+declare const Astro: Readonly<import('astro').AstroGlobal<Props, typeof __AstroComponent_>>

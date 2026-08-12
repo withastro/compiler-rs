@@ -1,0 +1,11 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+input_file: crates/astro2tsx/tests/fixtures/attribute_expression_value.astro
+---
+/* @jsxImportSource astro */
+
+<Fragment>
+<div class={cls} aria-label={label}></div>
+
+</Fragment>
+export default function __AstroComponent_(_props: Record<string, any>): any {}

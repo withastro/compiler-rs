@@ -1,0 +1,12 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+input_file: crates/astro2tsx/tests/fixtures/adjacent_siblings_top_level.astro
+---
+/* @jsxImportSource astro */
+
+<Fragment>
+<span>a</span>
+<span>b</span>
+
+</Fragment>
+export default function __AstroComponent_(_props: Record<string, any>): any {}
