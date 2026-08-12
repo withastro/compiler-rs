@@ -14,6 +14,8 @@ const INTENTIONAL_DIVERGENCES: &[&str] = &[
     "escape.ts::does not escape tag opening unnecessarily III [1]",
     "basic.ts::preserves spaces in tag [2]",
     "basic.ts::preserves line returns in tag by transforming to space [1]",
+    // A lone element is already a single expression; wrapping it adds nothing.
+    "comment-whitespace.ts::preverve whitespace around jsx comments [1]",
 ];
 
 fn record_key(record: &Record, occurrence: usize) -> String {

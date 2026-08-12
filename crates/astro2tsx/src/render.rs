@@ -6,7 +6,11 @@ use biome_html_syntax::{
     AnyHtmlTextExpression, AstroFrontmatterElement, HtmlAttribute, HtmlElement, HtmlRoot,
     HtmlSelfClosingElement, HtmlSingleTextExpression, HtmlSpreadAttribute,
 };
-use biome_rowan::{AstNode, AstNodeList, TextRange};
+use biome_js_parser::{JsOffsetParse, JsParserOptions, parse_js_with_offset};
+use biome_js_syntax::JsSyntaxKind;
+use biome_languages::JsFileSource;
+use biome_languages::javascript::JsEmbeddingKind;
+use biome_rowan::{AstNode, AstNodeList, TextRange, TextSize};
 
 use crate::ConvertOptions;
 use crate::frontmatter::rewrite_top_level_returns;
@@ -314,8 +318,6 @@ fn render_single_text_expression(printer: &mut Printer, node: HtmlSingleTextExpr
     printer.write("{");
 
     if expression.html_literal_token().is_ok() {
-        // The parser stores a `{...}` body as one token, so embedded JSX has to
-        // be found by hand; bare JSX in a JS expression parses as a comparison.
         let original_start = u32::from(l_curly_range.end());
         // Whitespace touching `{` is trivia, which the literal token drops.
         let body = slice_source(
@@ -326,17 +328,8 @@ fn render_single_text_expression(printer: &mut Printer, node: HtmlSingleTextExpr
         if raw.is_empty() {
             printer.map_nil();
             printer.write("(void 0)");
-        } else if let Some(jsx_range) = scan_jsx_span(raw) {
-            let (jsx_start, jsx_end) = jsx_range;
-            printer.write_with_mapping(&raw[..jsx_start], original_start);
-            printer.map_nil();
-            printer.write("<Fragment>");
-            printer.write_with_mapping(&raw[jsx_start..jsx_end], original_start + jsx_start as u32);
-            printer.map_nil();
-            printer.write("</Fragment>");
-            printer.write_with_mapping(&raw[jsx_end..], original_start + jsx_end as u32);
         } else {
-            printer.write_with_mapping(raw, original_start);
+            emit_expression_body(printer, raw, original_start);
         }
     } else {
         printer.map_nil();
@@ -347,93 +340,69 @@ fn render_single_text_expression(printer: &mut Printer, node: HtmlSingleTextExpr
     printer.write("}");
 }
 
-/// Locates the first JSX tag in an expression body and returns its byte span in
-/// the input slice. JS line and block comments are skipped; string and template
-/// literals are not, so a tag inside a quoted value is treated as JSX.
-fn scan_jsx_span(text: &str) -> Option<(usize, usize)> {
-    let bytes = text.as_bytes();
-    let len = bytes.len();
-    let mut i = 0;
-    while i < len {
-        if i + 1 < len && bytes[i] == b'/' && bytes[i + 1] == b'/' {
-            while i < len && bytes[i] != b'\n' {
-                i += 1;
-            }
-            continue;
-        }
-        if i + 1 < len && bytes[i] == b'/' && bytes[i + 1] == b'*' {
-            i += 2;
-            while i + 1 < len && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
-                i += 1;
-            }
-            i = i.saturating_add(2);
-            continue;
-        }
-        if bytes[i] == b'<' && i + 1 < len && (bytes[i + 1].is_ascii_alphabetic()) {
-            return jsx_end_offset(bytes, i).map(|end| (i, end));
-        }
-        i += 1;
-    }
-    None
+/// Parses an expression body so markup is located by the tree rather than by
+/// scanning bytes, which is what keeps strings and generics from being rewritten.
+fn parse_expression_body(text: &str, base_offset: u32) -> JsOffsetParse {
+    parse_js_with_offset(
+        text,
+        TextSize::from(base_offset),
+        JsFileSource::tsx().with_embedding_kind(JsEmbeddingKind::Astro {
+            frontmatter: false,
+            is_class_attribute: false,
+        }),
+        JsParserOptions::default(),
+    )
 }
 
-/// Given a `<` at `start`, returns the offset just past the matching
-/// closing tag (for `<Foo>...</Foo>`) or self-closing `>` (for `<Foo/>`).
-fn jsx_end_offset(bytes: &[u8], start: usize) -> Option<usize> {
-    let len = bytes.len();
-    let mut i = start;
-    let mut depth = 0i32;
-    while i < len {
-        if bytes[i] == b'<' {
-            if i + 1 < len && bytes[i + 1] == b'/' {
-                while i < len && bytes[i] != b'>' {
-                    i += 1;
-                }
-                if i >= len {
-                    return None;
-                }
-                depth -= 1;
-                i += 1;
-                if depth == 0 {
-                    return Some(i);
-                }
-            } else {
-                let mut self_closing = false;
-                while i < len && bytes[i] != b'>' {
-                    if bytes[i] == b'/' && i + 1 < len && bytes[i + 1] == b'>' {
-                        self_closing = true;
-                        i += 1;
-                        break;
-                    }
-                    // Skip over quoted attribute values to avoid `<` /
-                    // `>` inside a string confusing the scanner.
-                    if bytes[i] == b'"' || bytes[i] == b'\'' {
-                        let quote = bytes[i];
-                        i += 1;
-                        while i < len && bytes[i] != quote {
-                            i += 1;
-                        }
-                    }
-                    i += 1;
-                }
-                if i >= len {
-                    return None;
-                }
-                if self_closing {
-                    i += 1; // consume `>`
-                    if depth == 0 {
-                        return Some(i);
-                    }
-                } else {
-                    depth += 1;
-                    i += 1;
-                }
-            }
-        } else {
-            i += 1;
+/// Ranges are body-relative: only the root node carries the base offset.
+fn implicit_fragment_spans(parse: &JsOffsetParse, len: usize) -> Vec<(usize, usize)> {
+    let mut spans: Vec<(usize, usize)> = Vec::new();
+    for node in parse.syntax().inner().descendants() {
+        if node.kind() != JsSyntaxKind::JSX_FRAGMENT {
+            continue;
         }
+        let implicit = node.children().any(|c| {
+            c.kind() == JsSyntaxKind::JSX_OPENING_FRAGMENT && c.text_trimmed_range().is_empty()
+        });
+        if !implicit {
+            continue;
+        }
+        let range = node.text_trimmed_range();
+        let start = u32::from(range.start()) as usize;
+        let end = u32::from(range.end()) as usize;
+        if start >= end || end > len {
+            continue;
+        }
+        if spans.iter().any(|(s, e)| start >= *s && end <= *e) {
+            continue;
+        }
+        spans.push((start, end));
     }
-    None
+    spans.sort_unstable();
+    spans
+}
+
+fn emit_expression_body(printer: &mut Printer, raw: &str, original_start: u32) {
+    let parse = parse_expression_body(raw, original_start);
+    if parse.diagnostics().is_empty() {
+        let spans = implicit_fragment_spans(&parse, raw.len());
+        let mut cursor = 0usize;
+        for (start, end) in spans {
+            if start < cursor {
+                continue;
+            }
+            printer.write_with_mapping(&raw[cursor..start], original_start + cursor as u32);
+            printer.map_nil();
+            printer.write("<Fragment>");
+            printer.write_with_mapping(&raw[start..end], original_start + start as u32);
+            printer.map_nil();
+            printer.write("</Fragment>");
+            cursor = end;
+        }
+        printer.write_with_mapping(&raw[cursor..], original_start + cursor as u32);
+        return;
+    }
+    printer.write_with_mapping(raw, original_start);
 }
 
 fn render_html_element(printer: &mut Printer, node: HtmlElement) {
