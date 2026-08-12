@@ -21,19 +21,6 @@ pub(crate) fn comment_body_escape(previous: Option<char>, ch: char) -> Option<&'
     }
 }
 
-pub(crate) fn escape_comment_body(body: &str) -> String {
-    let mut out = String::with_capacity(body.len());
-    let mut previous = None;
-    for ch in body.chars() {
-        match comment_body_escape(previous, ch) {
-            Some(escaped) => out.push_str(escaped),
-            None => out.push(ch),
-        }
-        previous = Some(ch);
-    }
-    out
-}
-
 /// Without the space, an empty body would emit `{/**/}`, which never opens.
 pub(crate) fn comment_needs_leading_space(body: &str) -> bool {
     body.chars().next().is_none_or(|c| !c.is_whitespace())
