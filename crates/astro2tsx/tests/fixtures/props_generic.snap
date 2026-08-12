@@ -1,8 +1,17 @@
 ---
 source: crates/astro2tsx/tests/snapshots.rs
+info:
+  has_parse_errors: false
+  frontmatter:
+    start: 30
+    end: 80
+  body:
+    start: 94
+    end: 107
+  scripts: []
+  styles: []
 input_file: crates/astro2tsx/tests/fixtures/props_generic.astro
 ---
---- code, with an inline source map this harness appends ---
 /* @jsxImportSource astro */
 
 
@@ -22,19 +31,3 @@ export default function __AstroComponent_<T extends string>(_props: Props<T>): a
 */
 declare const Astro: Readonly<import('astro').AstroGlobal<Props, typeof __AstroComponent_>>
 //# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbImlucHV0LmFzdHJvIl0sInNvdXJjZXNDb250ZW50IjpbIi0tLVxuaW50ZXJmYWNlIFByb3BzPFQgZXh0ZW5kcyBzdHJpbmc+IHtcblx0aXRlbTogVDtcbn1cbi0tLVxuPGRpdj48L2Rpdj5cbiJdLCJuYW1lcyI6W10sIm1hcHBpbmdzIjoiQTs7QUFBQSxBQUFHO0FBQ0gsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDO0FBQ25DLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDO0FBQ1QsQ0FBQztBO0EsRztBQUVELENBQUMsR0FBRyxDQUFDLEVBQUUsR0FBRyxDQUFDO0FBQ1g7QSJ9
-
---- result ---
-has_parse_errors: false
-frontmatter: 30..80
-body: 94..107
-scripts: (none)
-styles: (none)
-
---- mappings: 63 points in 6 runs ---
-generated_start..generated_end xpoints -> original; `-` is unmapped
-0..30 x1 -> -
-30..30 x1 -> 0
-30..79 x49 -> 3
-79..94 x3 -> -
-94..107 x8 -> 56
-107..453 x1 -> -

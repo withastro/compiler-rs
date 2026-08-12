@@ -1,8 +1,17 @@
 ---
 source: crates/astro2tsx/tests/snapshots.rs
+info:
+  has_parse_errors: false
+  frontmatter:
+    start: 0
+    end: 0
+  body:
+    start: 41
+    end: 69
+  scripts: []
+  styles: []
 input_file: crates/astro2tsx/tests/fixtures/attribute_spread.astro
 ---
---- code, with an inline source map this harness appends ---
 /* @jsxImportSource astro */
 
 <Fragment>
@@ -11,22 +20,3 @@ input_file: crates/astro2tsx/tests/fixtures/attribute_spread.astro
 </Fragment>
 export default function __AstroComponent_(_props: Record<string, any>): any {}
 //# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbImlucHV0LmFzdHJvIl0sInNvdXJjZXNDb250ZW50IjpbIjxGb28gey4uLnJlc3R9IG5hbWU9XCJ4XCIgLz5cbiJdLCJuYW1lcyI6W10sIm1hcHBpbmdzIjoiQTs7QTtBQUFBLENBQUMsRyxFLEdBQVEsQ0FBQyxDQUFDLENBQUMsQyxDLENBQUcsSUFBSSxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUUsRUFBQztBQUMxQjtBIn0=
-
---- result ---
-has_parse_errors: false
-frontmatter: 0..0
-body: 41..69
-scripts: (none)
-styles: (none)
-
---- mappings: 22 points in 9 runs ---
-generated_start..generated_end xpoints -> original; `-` is unmapped
-0..41 x2 -> -
-41..45 x2 -> 0
-45..50 x2 -> -
-50..54 x4 -> 9
-54..56 x2 -> -
-56..65 x6 -> 15
-65..67 x1 -> 25
-67..69 x2 -> 26
-69..160 x1 -> -

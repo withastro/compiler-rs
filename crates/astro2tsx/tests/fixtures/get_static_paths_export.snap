@@ -1,8 +1,17 @@
 ---
 source: crates/astro2tsx/tests/snapshots.rs
+info:
+  has_parse_errors: false
+  frontmatter:
+    start: 30
+    end: 78
+  body:
+    start: 89
+    end: 102
+  scripts: []
+  styles: []
 input_file: crates/astro2tsx/tests/fixtures/get_static_paths_export.astro
 ---
---- code, with an inline source map this harness appends ---
 /* @jsxImportSource astro */
 
 
@@ -25,19 +34,3 @@ type ASTRO__Get<T, K> = T extends undefined ? undefined : K extends keyof T ? T[
 */
 declare const Astro: Readonly<import('astro').AstroGlobal<ASTRO__MergeUnion<ASTRO__Get<ASTRO__InferredGetStaticPath, 'props'>>, typeof __AstroComponent_, ASTRO__Get<ASTRO__InferredGetStaticPath, 'params'>>>
 //# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbImlucHV0LmFzdHJvIl0sInNvdXJjZXNDb250ZW50IjpbIi0tLVxuZXhwb3J0IGNvbnN0IGdldFN0YXRpY1BhdGhzID0gYXN5bmMgKCkgPT4gW107XG4tLS1cbjxkaXY+PC9kaXY+XG4iXSwibmFtZXMiOltdLCJtYXBwaW5ncyI6IkE7O0FBQUEsQUFBRztBQUNILENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDO0E7QTtBQUU3QyxDQUFDLEdBQUcsQ0FBQyxFQUFFLEdBQUcsQ0FBQztBQUNYO0EifQ==
-
---- result ---
-has_parse_errors: false
-frontmatter: 30..78
-body: 89..102
-scripts: (none)
-styles: (none)
-
---- mappings: 60 points in 6 runs ---
-generated_start..generated_end xpoints -> original; `-` is unmapped
-0..30 x1 -> -
-30..30 x1 -> 0
-30..77 x47 -> 3
-77..89 x2 -> -
-89..102 x8 -> 54
-102..1244 x1 -> -

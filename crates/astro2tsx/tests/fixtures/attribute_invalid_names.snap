@@ -1,8 +1,17 @@
 ---
 source: crates/astro2tsx/tests/snapshots.rs
+info:
+  has_parse_errors: false
+  frontmatter:
+    start: 0
+    end: 0
+  body:
+    start: 41
+    end: 103
+  scripts: []
+  styles: []
 input_file: crates/astro2tsx/tests/fixtures/attribute_invalid_names.astro
 ---
---- code, with an inline source map this harness appends ---
 /* @jsxImportSource astro */
 
 <Fragment>
@@ -11,26 +20,3 @@ input_file: crates/astro2tsx/tests/fixtures/attribute_invalid_names.astro
 </Fragment>
 export default function __AstroComponent_(_props: Record<string, any>): any {}
 //# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbImlucHV0LmFzdHJvIl0sInNvdXJjZXNDb250ZW50IjpbIjxkaXYgQGNsaWNrPXtoYW5kbGVyfSA6Y2xhc3M9XCJ4XCIgbmFtZT1cIm9rXCI+PC9kaXY+XG4iXSwibmFtZXMiOltdLCJtYXBwaW5ncyI6IkE7O0E7QUFBQSxDQUFDLEcsQ0FBZ0MsSUFBSSxDQUFDLENBQUMsQ0FBQyxDQUFDLEMsTUFBcEMsUSxFQUFRLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLEMsQyxDQUFHLFEsQyxHLEVBQW9CLENBQUMsRUFBRSxHQUFHLENBQUM7QUFDakQ7QSJ9
-
---- result ---
-has_parse_errors: false
-frontmatter: 0..0
-body: 41..103
-scripts: (none)
-styles: (none)
-
---- mappings: 34 points in 13 runs ---
-generated_start..generated_end xpoints -> original; `-` is unmapped
-0..41 x2 -> -
-41..45 x2 -> 0
-45..46 x1 -> -
-46..55 x6 -> 33
-55..61 x1 -> -
-61..69 x1 -> 5
-69..71 x1 -> -
-71..78 x7 -> 13
-78..80 x2 -> -
-80..88 x1 -> 22
-88..94 x3 -> -
-94..103 x6 -> 42
-103..194 x1 -> -
