@@ -101,7 +101,7 @@ jobs:
       - name: Get published compiler version
         if: steps.changesets.outputs.published == 'true'
         id: compiler
-        run: echo "version=$(node -p \"require('./crates/astro_napi/package.json').version\")" >> "$GITHUB_OUTPUT"
+        run: echo "version=$(node -p 'require("./crates/astro_napi/package.json").version')" >> "$GITHUB_OUTPUT"
 
       - name: Update Astro playground compiler
         if: steps.changesets.outputs.published == 'true'
