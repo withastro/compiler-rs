@@ -70,6 +70,7 @@ fn dump_named_diff() {
             &record.input,
             ConvertOptions {
                 filename: record.options.filename.clone(),
+                ..Default::default()
             },
         )
         .code;
@@ -92,6 +93,7 @@ fn dump_first_diff_per_file() {
             &record.input,
             ConvertOptions {
                 filename: record.options.filename.clone(),
+                ..Default::default()
             },
         )
         .code;
@@ -134,6 +136,7 @@ fn corpus_parity() {
             &record.input,
             ConvertOptions {
                 filename: record.options.filename.clone(),
+                ..Default::default()
             },
         )
         .code;

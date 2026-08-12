@@ -6,6 +6,16 @@ use serde::Serialize;
 /// Used for `sources[0]` when the caller supplies no filename.
 pub const DEFAULT_SOURCE_NAME: &str = "input.astro";
 
+/// Whether the generated code carries its source map inline.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum SourceMapMode {
+    /// Append a `//# sourceMappingURL=` data URI comment to `code`.
+    #[default]
+    Inline,
+    /// Leave `code` alone; the map is only available separately.
+    External,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Mapping {
     /// Offset into the generated TSX, in bytes.

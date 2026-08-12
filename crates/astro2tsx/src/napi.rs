@@ -3,7 +3,9 @@
 
 use napi_derive::napi;
 
-use crate::{ConvertOptions, DEFAULT_SOURCE_NAME, ExtractedKind, convert_to_tsx as convert_rs};
+use crate::{
+    ConvertOptions, DEFAULT_SOURCE_NAME, ExtractedKind, SourceMapMode, convert_to_tsx as convert_rs,
+};
 
 /// Per-byte source-position mapping between the emitted TSX and the source.
 #[napi(object)]
@@ -44,6 +46,8 @@ pub struct ConvertToTsxOptions {
     /// Filename used to derive the default-exported component identifier
     /// (e.g. `MyPage.astro` produces `MyPage__AstroComponent_`). Optional.
     pub filename: Option<String>,
+    /// `"external"` omits the inline `//# sourceMappingURL=`; anything else appends it.
+    pub sourcemap: Option<String>,
 }
 
 #[napi(object)]
@@ -75,6 +79,10 @@ pub fn convert_to_tsx(source: String, options: Option<ConvertToTsxOptions>) -> C
         &source,
         ConvertOptions {
             filename: opts.filename,
+            sourcemap: match opts.sourcemap.as_deref() {
+                Some("external") => SourceMapMode::External,
+                _ => SourceMapMode::Inline,
+            },
         },
     );
     let map = result.source_map(&source, &source_name).to_json();

@@ -3,7 +3,7 @@
 
 use std::fs;
 
-use astro2tsx::{ConvertOptions, DEFAULT_SOURCE_NAME, convert_to_tsx};
+use astro2tsx::{ConvertOptions, DEFAULT_SOURCE_NAME, SourceMapMode, convert_to_tsx};
 use oxc_sourcemap::SourceMap as DecodedMap;
 
 fn fixtures() -> Vec<(String, String)> {
@@ -130,6 +130,30 @@ fn every_fixture_round_trips_through_an_independent_decoder() {
             }
         }
     }
+}
+
+#[test]
+fn external_mode_omits_the_inline_comment() {
+    let source = "---\nlet x = 1;\n---\n<p>Hi</p>\n";
+    const COMMENT: &str = "\n//# sourceMappingURL=data:application/json;charset=utf-8;base64,";
+
+    let external = convert_to_tsx(
+        source,
+        ConvertOptions {
+            sourcemap: SourceMapMode::External,
+            ..Default::default()
+        },
+    );
+    assert!(!external.code.contains(COMMENT));
+
+    let inline = convert_to_tsx(source, ConvertOptions::default());
+    assert!(inline.code.contains(COMMENT));
+    assert_eq!(
+        inline.code.split_once(COMMENT).unwrap().0,
+        external.code,
+        "the two modes should agree on everything before the comment"
+    );
+    assert_eq!(inline.mappings, external.mappings);
 }
 
 /// A byte column would be 8 here and a scalar-value column 5, so this pins the
