@@ -9,3 +9,21 @@ input_file: crates/astro2tsx/tests/fixtures/raw_text_style.astro
 
 </Fragment>
 export default function __AstroComponent_(_props: Record<string, any>): any {}
+
+--- result ---
+has_parse_errors: false
+frontmatter: 0..0
+body: 41..80
+scripts: (none)
+styles:
+  Style lang=Some("css") generated 48..70 content=".a { color: red; }"
+
+--- mappings: 31 points in 7 runs ---
+generated_start..generated_end xpoints -> original; `-` is unmapped
+0..41 x2 -> -
+41..48 x3 -> 0
+48..50 x1 -> -
+50..68 x18 -> 7
+68..70 x1 -> -
+70..80 x5 -> 25
+80..171 x1 -> -

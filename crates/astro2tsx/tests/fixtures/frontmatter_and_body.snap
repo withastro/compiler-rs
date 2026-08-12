@@ -12,3 +12,19 @@ let value = 'world';
 
 </Fragment>
 export default function __AstroComponent_(_props: Record<string, any>): any {}
+
+--- result ---
+has_parse_errors: false
+frontmatter: 30..53
+body: 64..88
+scripts: (none)
+styles: (none)
+
+--- mappings: 48 points in 6 runs ---
+generated_start..generated_end xpoints -> original; `-` is unmapped
+0..30 x1 -> -
+30..30 x1 -> 0
+30..52 x22 -> 3
+52..64 x2 -> -
+64..88 x21 -> 30
+88..179 x1 -> -

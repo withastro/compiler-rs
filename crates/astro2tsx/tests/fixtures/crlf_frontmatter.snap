@@ -14,3 +14,19 @@ import { Meta } from './Meta.astro';
 
 </Fragment>
 export default function __AstroComponent_(_props: Record<string, any>): any {}
+
+--- result ---
+has_parse_errors: false
+frontmatter: 30..71
+body: 82..114
+scripts: (none)
+styles: (none)
+
+--- mappings: 65 points in 6 runs ---
+generated_start..generated_end xpoints -> original; `-` is unmapped
+0..30 x1 -> -
+30..30 x1 -> 0
+30..70 x40 -> 3
+70..82 x2 -> -
+82..114 x20 -> 48
+114..205 x1 -> -

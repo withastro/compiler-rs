@@ -24,3 +24,19 @@ type ASTRO__Get<T, K> = T extends undefined ? undefined : K extends keyof T ? T[
  * [Astro documentation](https://docs.astro.build/reference/api-reference/#astro-global)
 */
 declare const Astro: Readonly<import('astro').AstroGlobal<Props, typeof __AstroComponent_, ASTRO__Get<ASTRO__InferredGetStaticPath, 'params'>>>
+
+--- result ---
+has_parse_errors: false
+frontmatter: 30..119
+body: 133..146
+scripts: (none)
+styles: (none)
+
+--- mappings: 102 points in 6 runs ---
+generated_start..generated_end xpoints -> original; `-` is unmapped
+0..30 x1 -> -
+30..30 x1 -> 0
+30..118 x88 -> 3
+118..133 x3 -> -
+133..146 x8 -> 95
+146..1162 x1 -> -

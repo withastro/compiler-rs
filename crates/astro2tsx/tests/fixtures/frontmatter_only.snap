@@ -9,3 +9,17 @@ const a = 1;
 
 
 export default function __AstroComponent_(_props: Record<string, any>): any {}
+
+--- result ---
+has_parse_errors: false
+frontmatter: 30..45
+body: 46..46
+scripts: (none)
+styles: (none)
+
+--- mappings: 18 points in 4 runs ---
+generated_start..generated_end xpoints -> original; `-` is unmapped
+0..30 x1 -> -
+30..30 x1 -> 0
+30..44 x14 -> 3
+44..125 x2 -> -

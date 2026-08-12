@@ -11,3 +11,23 @@ input_file: crates/astro2tsx/tests/fixtures/raw_text_script_module.astro
 
 </Fragment>
 export default function __AstroComponent_(_props: Record<string, any>): any {}
+
+--- result ---
+has_parse_errors: false
+frontmatter: 0..0
+body: 41..98
+scripts:
+  Script lang=Some("module") generated 63..87 content="const a = 1;"
+styles: (none)
+
+--- mappings: 36 points in 9 runs ---
+generated_start..generated_end xpoints -> original; `-` is unmapped
+0..41 x2 -> -
+41..48 x2 -> 0
+48..49 x1 -> -
+49..63 x11 -> 8
+63..72 x1 -> -
+72..84 x12 -> 22
+84..87 x1 -> -
+87..98 x5 -> 34
+98..189 x1 -> -

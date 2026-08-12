@@ -13,3 +13,21 @@ import type { Foo } from './types';
 
 </Fragment>
 export default function __AstroComponent_(_props: Record<string, any>): any {}
+
+--- result ---
+has_parse_errors: false
+frontmatter: 30..101
+body: 112..122
+scripts: (none)
+styles: (none)
+
+--- mappings: 81 points in 8 runs ---
+generated_start..generated_end xpoints -> original; `-` is unmapped
+0..30 x1 -> -
+30..30 x1 -> 0
+30..100 x70 -> 3
+100..112 x2 -> -
+112..118 x3 -> 77
+118..120 x1 -> 84
+120..122 x2 -> 85
+122..213 x1 -> -
