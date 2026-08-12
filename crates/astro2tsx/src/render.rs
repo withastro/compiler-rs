@@ -451,6 +451,7 @@ fn emit_expression_body(printer: &mut Printer, raw: &str, original_start: u32) {
         emit_expression_with_comments(printer, raw, original_start);
         return;
     }
+    printer.has_expression_errors = true;
     printer.write_with_mapping(raw, original_start);
 }
 

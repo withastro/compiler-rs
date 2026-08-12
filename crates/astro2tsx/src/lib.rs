@@ -59,7 +59,7 @@ impl ConvertResult {
 
 pub fn convert_to_tsx(source: &str, options: ConvertOptions) -> ConvertResult {
     let parse = parse_html(source, (&HtmlFileSource::astro()).into());
-    let has_parse_errors = parse.has_errors();
+    let html_has_errors = parse.has_errors();
     let root = parse.tree();
 
     let mut printer = printer::Printer::new(source);
@@ -72,7 +72,7 @@ pub fn convert_to_tsx(source: &str, options: ConvertOptions) -> ConvertResult {
         body: printer.body_range,
         scripts: printer.scripts,
         styles: printer.styles,
-        has_parse_errors,
+        has_parse_errors: html_has_errors || printer.has_expression_errors,
     };
 
     if options.sourcemap == SourceMapMode::Inline {
