@@ -2,6 +2,7 @@
 source: crates/astro2tsx/tests/snapshots.rs
 input_file: crates/astro2tsx/tests/fixtures/attribute_quoted_forms.astro
 ---
+--- code, with an inline source map this harness appends ---
 /* @jsxImportSource astro */
 
 <Fragment>
@@ -9,6 +10,7 @@ input_file: crates/astro2tsx/tests/fixtures/attribute_quoted_forms.astro
 
 </Fragment>
 export default function __AstroComponent_(_props: Record<string, any>): any {}
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbImlucHV0LmFzdHJvIl0sInNvdXJjZXNDb250ZW50IjpbIjxkaXYgaWQ9J3NpbmdsZScgY2xhc3M9XCJkb3VibGVcIiBkYXRhLW49MyBoaWRkZW4+PC9kaXY+XG4iXSwibmFtZXMiOltdLCJtYXBwaW5ncyI6IkE7O0E7QUFBQSxDQUFDLEcsQ0FBSSxFQUFFLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDLENBQUUsS0FBSyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQyxDQUFFLE1BQU0sQ0FBQyxDQUFDLENBQUMsQyxDQUFBLE1BQU0sQ0FBQyxFQUFFLEdBQUcsQ0FBQztBQUN0RDtBIn0=
 
 --- result ---
 has_parse_errors: false
@@ -30,16 +32,3 @@ generated_start..generated_end xpoints -> original; `-` is unmapped
 83..84 x1 -> -
 84..99 x7 -> 41
 99..190 x1 -> -
-
---- source map v3 (paste into any source map viewer) ---
-{
-  "version": 3,
-  "sources": [
-    "input.astro"
-  ],
-  "sourcesContent": [
-    "<div id='single' class=\"double\" data-n=3 hidden></div>\n"
-  ],
-  "names": [],
-  "mappings": "A;;A;AAAA,CAAC,G,CAAI,EAAE,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,C,CAAE,KAAK,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,C,CAAE,MAAM,CAAC,CAAC,CAAC,C,CAAA,MAAM,CAAC,EAAE,GAAG,CAAC;AACtD;A"
-}

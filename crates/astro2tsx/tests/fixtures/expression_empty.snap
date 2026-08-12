@@ -2,6 +2,7 @@
 source: crates/astro2tsx/tests/snapshots.rs
 input_file: crates/astro2tsx/tests/fixtures/expression_empty.astro
 ---
+--- code, with an inline source map this harness appends ---
 /* @jsxImportSource astro */
 
 <Fragment>
@@ -9,6 +10,7 @@ input_file: crates/astro2tsx/tests/fixtures/expression_empty.astro
 
 </Fragment>
 export default function __AstroComponent_(_props: Record<string, any>): any {}
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbImlucHV0LmFzdHJvIl0sInNvdXJjZXNDb250ZW50IjpbIjxkaXY+e308L2Rpdj5cbiJdLCJuYW1lcyI6W10sIm1hcHBpbmdzIjoiQTs7QTtBQUFBLENBQUMsR0FBRyxDQUFHLEVBQUUsR0FBRyxDQUFDO0FBQ2I7QSJ9
 
 --- result ---
 has_parse_errors: false
@@ -23,16 +25,3 @@ generated_start..generated_end xpoints -> original; `-` is unmapped
 41..46 x3 -> 0
 46..54 x5 -> 7
 54..145 x1 -> -
-
---- source map v3 (paste into any source map viewer) ---
-{
-  "version": 3,
-  "sources": [
-    "input.astro"
-  ],
-  "sourcesContent": [
-    "<div>{}</div>\n"
-  ],
-  "names": [],
-  "mappings": "A;;A;AAAA,CAAC,GAAG,CAAG,EAAE,GAAG,CAAC;AACb;A"
-}

@@ -2,6 +2,7 @@
 source: crates/astro2tsx/tests/snapshots.rs
 input_file: crates/astro2tsx/tests/fixtures/frontmatter_empty.astro
 ---
+--- code, with an inline source map this harness appends ---
 /* @jsxImportSource astro */
 
 
@@ -10,6 +11,7 @@ input_file: crates/astro2tsx/tests/fixtures/frontmatter_empty.astro
 
 </Fragment>
 export default function __AstroComponent_(_props: Record<string, any>): any {}
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbImlucHV0LmFzdHJvIl0sInNvdXJjZXNDb250ZW50IjpbIi0tLVxuLS0tXG48ZGl2PjwvZGl2PlxuIl0sIm5hbWVzIjpbXSwibWFwcGluZ3MiOiJBOztBQUFBLEE7QTtBQUVBLENBQUMsR0FBRyxDQUFDLEVBQUUsR0FBRyxDQUFDO0FBQ1g7QSJ9
 
 --- result ---
 has_parse_errors: false
@@ -25,16 +27,3 @@ generated_start..generated_end xpoints -> original; `-` is unmapped
 30..42 x2 -> -
 42..55 x8 -> 8
 55..146 x1 -> -
-
---- source map v3 (paste into any source map viewer) ---
-{
-  "version": 3,
-  "sources": [
-    "input.astro"
-  ],
-  "sourcesContent": [
-    "---\n---\n<div></div>\n"
-  ],
-  "names": [],
-  "mappings": "A;;AAAA,A;A;AAEA,CAAC,GAAG,CAAC,EAAE,GAAG,CAAC;AACX;A"
-}
