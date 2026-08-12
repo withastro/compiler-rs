@@ -9,3 +9,22 @@ input_file: crates/astro2tsx/tests/fixtures/attribute_event_and_style.astro
 
 </Fragment>
 export default function __AstroComponent_(_props: Record<string, any>): any {}
+
+--- result ---
+has_parse_errors: false
+frontmatter: 0..0
+body: 41..87
+scripts:
+  EventAttribute lang=Some("event-attribute") generated 55..59 content="go()"
+styles:
+  StyleAttribute lang=Some("css") generated 68..77 content="color:red"
+
+--- mappings: 34 points in 7 runs ---
+generated_start..generated_end xpoints -> original; `-` is unmapped
+0..41 x2 -> -
+41..45 x2 -> 0
+45..46 x1 -> -
+46..60 x8 -> 5
+60..61 x1 -> -
+61..87 x19 -> 20
+87..178 x1 -> -

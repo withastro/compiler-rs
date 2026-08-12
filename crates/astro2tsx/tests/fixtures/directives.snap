@@ -9,3 +9,26 @@ input_file: crates/astro2tsx/tests/fixtures/directives.astro
 
 </Fragment>
 export default function __AstroComponent_(_props: Record<string, any>): any {}
+
+--- result ---
+has_parse_errors: false
+frontmatter: 0..0
+body: 41..116
+scripts: (none)
+styles: (none)
+
+--- mappings: 60 points in 13 runs ---
+generated_start..generated_end xpoints -> original; `-` is unmapped
+0..41 x2 -> -
+41..46 x2 -> 0
+46..47 x1 -> -
+47..58 x11 -> 6
+58..59 x1 -> -
+59..74 x15 -> 18
+74..75 x1 -> -
+75..91 x16 -> 34
+91..92 x1 -> -
+92..112 x6 -> 51
+112..114 x1 -> 72
+114..116 x2 -> 73
+116..207 x1 -> -

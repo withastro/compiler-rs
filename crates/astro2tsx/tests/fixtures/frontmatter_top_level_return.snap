@@ -14,3 +14,19 @@ if (cond) {
 
 </Fragment>
 export default function __AstroComponent_(_props: Record<string, any>): any {}
+
+--- result ---
+has_parse_errors: false
+frontmatter: 30..76
+body: 90..100
+scripts: (none)
+styles: (none)
+
+--- mappings: 60 points in 6 runs ---
+generated_start..generated_end xpoints -> original; `-` is unmapped
+0..30 x1 -> -
+30..30 x1 -> 0
+30..75 x45 -> 3
+75..90 x3 -> -
+90..100 x9 -> 52
+100..191 x1 -> -

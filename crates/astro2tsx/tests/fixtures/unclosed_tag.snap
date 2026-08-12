@@ -9,3 +9,16 @@ input_file: crates/astro2tsx/tests/fixtures/unclosed_tag.astro
 
 </Fragment>
 export default function __AstroComponent_(_props: Record<string, any>): any {}
+
+--- result ---
+has_parse_errors: true
+frontmatter: 0..0
+body: 41..55
+scripts: (none)
+styles: (none)
+
+--- mappings: 17 points in 3 runs ---
+generated_start..generated_end xpoints -> original; `-` is unmapped
+0..41 x2 -> -
+41..55 x14 -> 0
+55..146 x1 -> -

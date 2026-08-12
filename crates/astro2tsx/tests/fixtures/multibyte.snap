@@ -9,3 +9,16 @@ input_file: crates/astro2tsx/tests/fixtures/multibyte.astro
 
 </Fragment>
 export default function __AstroComponent_(_props: Record<string, any>): any {}
+
+--- result ---
+has_parse_errors: false
+frontmatter: 0..0
+body: 41..68
+scripts: (none)
+styles: (none)
+
+--- mappings: 24 points in 3 runs ---
+generated_start..generated_end xpoints -> original; `-` is unmapped
+0..41 x2 -> -
+41..68 x21 -> 0
+68..159 x1 -> -

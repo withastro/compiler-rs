@@ -9,3 +9,22 @@ input_file: crates/astro2tsx/tests/fixtures/slot_element.astro
 
 </Fragment>
 export default function __AstroComponent_(_props: Record<string, any>): any {}
+
+--- result ---
+has_parse_errors: false
+frontmatter: 0..0
+body: 41..79
+scripts: (none)
+styles: (none)
+
+--- mappings: 25 points in 9 runs ---
+generated_start..generated_end xpoints -> original; `-` is unmapped
+0..41 x2 -> -
+41..51 x5 -> 0
+51..52 x1 -> -
+52..61 x6 -> 11
+61..63 x1 -> 21
+63..69 x3 -> 22
+69..71 x1 -> 29
+71..79 x5 -> 30
+79..170 x1 -> -

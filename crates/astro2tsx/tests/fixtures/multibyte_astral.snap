@@ -12,3 +12,19 @@ const π = Math.PI;
 
 </Fragment>
 export default function __AstroComponent_(_props: Record<string, any>): any {}
+
+--- result ---
+has_parse_errors: false
+frontmatter: 30..52
+body: 63..81
+scripts: (none)
+styles: (none)
+
+--- mappings: 38 points in 6 runs ---
+generated_start..generated_end xpoints -> original; `-` is unmapped
+0..30 x1 -> -
+30..30 x1 -> 0
+30..51 x20 -> 3
+51..63 x2 -> -
+63..81 x13 -> 28
+81..172 x1 -> -

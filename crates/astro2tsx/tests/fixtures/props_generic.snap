@@ -20,3 +20,19 @@ export default function __AstroComponent_<T extends string>(_props: Props<T>): a
  * [Astro documentation](https://docs.astro.build/reference/api-reference/#astro-global)
 */
 declare const Astro: Readonly<import('astro').AstroGlobal<Props, typeof __AstroComponent_>>
+
+--- result ---
+has_parse_errors: false
+frontmatter: 30..80
+body: 94..107
+scripts: (none)
+styles: (none)
+
+--- mappings: 63 points in 6 runs ---
+generated_start..generated_end xpoints -> original; `-` is unmapped
+0..30 x1 -> -
+30..30 x1 -> 0
+30..79 x49 -> 3
+79..94 x3 -> -
+94..107 x8 -> 56
+107..453 x1 -> -

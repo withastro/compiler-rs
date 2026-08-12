@@ -9,3 +9,22 @@ input_file: crates/astro2tsx/tests/fixtures/attribute_spread.astro
 
 </Fragment>
 export default function __AstroComponent_(_props: Record<string, any>): any {}
+
+--- result ---
+has_parse_errors: false
+frontmatter: 0..0
+body: 41..69
+scripts: (none)
+styles: (none)
+
+--- mappings: 22 points in 9 runs ---
+generated_start..generated_end xpoints -> original; `-` is unmapped
+0..41 x2 -> -
+41..45 x2 -> 0
+45..50 x2 -> -
+50..54 x4 -> 9
+54..56 x2 -> -
+56..65 x6 -> 15
+65..67 x1 -> 25
+67..69 x2 -> 26
+69..160 x1 -> -
