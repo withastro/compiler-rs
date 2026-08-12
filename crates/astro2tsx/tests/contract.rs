@@ -32,6 +32,7 @@ fn never_fails_on_truncated_input() {
                 t,
                 ConvertOptions {
                     filename: Some("index.astro".into()),
+                    ..Default::default()
                 },
             );
             assert!(!r.code.is_empty(), "empty output for {t:?}");

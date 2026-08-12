@@ -20,12 +20,14 @@ use biome_languages::HtmlFileSource;
 
 pub use crate::sourcemap::{
     DEFAULT_SOURCE_NAME, ExtractedKind, ExtractedTag, GeneratedRange, Mapping, SourceMap,
+    SourceMapMode,
 };
 
 #[derive(Clone, Debug, Default)]
 pub struct ConvertOptions {
-    /// Display name used to derive the default-exported component identifier.
+    /// Component identifier source, and `sources[0]` in the source map.
     pub filename: Option<String>,
+    pub sourcemap: SourceMapMode,
 }
 
 /// `code` is always populated, whether or not the input parsed cleanly.
@@ -63,7 +65,7 @@ pub fn convert_to_tsx(source: &str, options: ConvertOptions) -> ConvertResult {
     let mut printer = printer::Printer::new(source);
     render::render_root(&mut printer, root, &options);
 
-    ConvertResult {
+    let mut result = ConvertResult {
         code: printer.output,
         mappings: printer.mappings,
         frontmatter: printer.frontmatter_range,
@@ -71,5 +73,14 @@ pub fn convert_to_tsx(source: &str, options: ConvertOptions) -> ConvertResult {
         scripts: printer.scripts,
         styles: printer.styles,
         has_parse_errors,
+    };
+
+    if options.sourcemap == SourceMapMode::Inline {
+        let source_name = options.filename.as_deref().unwrap_or(DEFAULT_SOURCE_NAME);
+        let comment = result.source_map(source, source_name).to_inline_comment();
+        result.code.push('\n');
+        result.code.push_str(&comment);
     }
+
+    result
 }

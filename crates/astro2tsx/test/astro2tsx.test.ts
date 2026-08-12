@@ -66,3 +66,19 @@ test('source map carries astral characters through unchanged', () => {
 	assert.equal(map.sourcesContent[0], input);
 	assert.ok(map.mappings.split(';').length <= result.code.split('\n').length);
 });
+
+test('appends the inline source map comment by default', () => {
+	const { code, map } = convertToTsx('<p>Hi</p>');
+	const marker = '\n//# sourceMappingURL=data:application/json;charset=utf-8;base64,';
+	assert.ok(code.includes(marker));
+	const blob = code.slice(code.indexOf(marker) + marker.length);
+	assert.deepEqual(JSON.parse(Buffer.from(blob, 'base64').toString('utf8')), JSON.parse(map));
+});
+
+test("sourcemap: 'external' leaves the code without the comment", () => {
+	const inline = convertToTsx('<p>Hi</p>');
+	const external = convertToTsx('<p>Hi</p>', { sourcemap: 'external' });
+	assert.doesNotMatch(external.code, /sourceMappingURL/);
+	assert.equal(external.map, inline.map);
+	assert.ok(inline.code.startsWith(external.code));
+});

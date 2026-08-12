@@ -7,6 +7,7 @@ fn convert(input: &str) -> astro2tsx::ConvertResult {
         input,
         ConvertOptions {
             filename: Some("index.astro".to_string()),
+            ..Default::default()
         },
     )
 }

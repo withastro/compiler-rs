@@ -15,6 +15,8 @@ export interface ConvertToTsxOptions {
    * (e.g. `MyPage.astro` produces `MyPage__AstroComponent_`). Optional.
    */
   filename?: string
+  /** `"external"` omits the inline `//# sourceMappingURL=`; anything else appends it. */
+  sourcemap?: string
 }
 
 export interface ConvertToTsxResult {
