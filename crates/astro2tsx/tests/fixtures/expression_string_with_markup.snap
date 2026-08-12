@@ -1,0 +1,11 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+input_file: crates/astro2tsx/tests/fixtures/expression_string_with_markup.astro
+---
+/* @jsxImportSource astro */
+
+<Fragment>
+<div>{"<br/>"}</div>
+
+</Fragment>
+export default function __AstroComponent_(_props: Record<string, any>): any {}

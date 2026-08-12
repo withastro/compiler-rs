@@ -1,0 +1,11 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+input_file: crates/astro2tsx/tests/fixtures/multibyte.astro
+---
+/* @jsxImportSource astro */
+
+<Fragment>
+<h1>ツ</h1><p>foobar</p>
+
+</Fragment>
+export default function __AstroComponent_(_props: Record<string, any>): any {}

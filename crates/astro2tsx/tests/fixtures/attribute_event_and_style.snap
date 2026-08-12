@@ -1,0 +1,11 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+input_file: crates/astro2tsx/tests/fixtures/attribute_event_and_style.astro
+---
+/* @jsxImportSource astro */
+
+<Fragment>
+<div onclick="go()" style="color:red"></div>
+
+</Fragment>
+export default function __AstroComponent_(_props: Record<string, any>): any {}

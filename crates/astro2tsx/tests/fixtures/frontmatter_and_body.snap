@@ -1,0 +1,14 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+input_file: crates/astro2tsx/tests/fixtures/frontmatter_and_body.astro
+---
+/* @jsxImportSource astro */
+
+
+let value = 'world';
+
+<Fragment>
+<h1>Hello {value}</h1>
+
+</Fragment>
+export default function __AstroComponent_(_props: Record<string, any>): any {}

@@ -1,0 +1,16 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+input_file: crates/astro2tsx/tests/fixtures/crlf_frontmatter.astro
+---
+/* @jsxImportSource astro */
+
+
+import { Meta } from './Meta.astro';
+
+<Fragment>
+<div>
+<span>a</span>
+</div>
+
+</Fragment>
+export default function __AstroComponent_(_props: Record<string, any>): any {}
