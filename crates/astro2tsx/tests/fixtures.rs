@@ -231,6 +231,24 @@ fn only_adjacent_siblings_are_wrapped_in_a_fragment() {
 }
 
 #[test]
+fn html_comments_inside_expressions_become_jsx_comments() {
+    for input in [
+        "{list.map(() => <Component><!--Hi--></Component>)}",
+        "<div>{x && <span><!--hi--></span>}</div>",
+    ] {
+        let actual = convert(input);
+        assert!(
+            !actual.contains("<!--"),
+            "an html comment survived into TSX for {input:?}:\n{actual}"
+        );
+        assert!(
+            actual.contains("{/**"),
+            "no jsx comment emitted for {input:?}:\n{actual}"
+        );
+    }
+}
+
+#[test]
 fn get_static_paths_needs_a_real_export() {
     let mentioned = convert("---\n// see getStaticPaths in the docs\nexport const x = 1;\n---\n");
     assert!(
