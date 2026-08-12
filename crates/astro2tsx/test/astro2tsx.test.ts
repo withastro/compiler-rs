@@ -1,4 +1,7 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { strict as assert } from 'node:assert';
+import ts from 'typescript';
 import { test } from 'node:test';
 import { NO_ORIGINAL, convertToTsx } from '../index.js';
 
@@ -84,4 +87,44 @@ test("sourcemap: 'external' leaves the code without the comment", () => {
 	assert.doesNotMatch(external.code, /sourceMappingURL/);
 	assert.equal(external.map, inline.map);
 	assert.ok(inline.code.startsWith(external.code));
+});
+
+test('every clean-parse fixture emits syntactically valid TSX', async () => {
+	// Frontmatter is user JS emitted verbatim, so a fixture whose frontmatter is
+	// itself invalid TS legitimately produces invalid output.
+	const invalidUserCode = new Set(['props_generic_invalid']);
+
+	const dir = join(import.meta.dirname, '../tests/fixtures');
+	let checked = 0;
+	for (const file of readdirSync(dir)) {
+		if (!file.endsWith('.astro')) continue;
+		const name = file.slice(0, -'.astro'.length);
+		if (invalidUserCode.has(name)) continue;
+
+		let source = readFileSync(join(dir, file), 'utf8');
+		while (source.startsWith('// @config ')) {
+			source = source.slice(source.indexOf('\n') + 1);
+		}
+
+		const result = convertToTsx(source, { filename: `${name}.astro` });
+		if (result.hasParseErrors) continue;
+
+		const sourceFile = ts.createSourceFile(
+			`${name}.tsx`,
+			result.code,
+			ts.ScriptTarget.Latest,
+			false,
+			ts.ScriptKind.TSX,
+		);
+		const diagnostics = (
+			sourceFile as unknown as { parseDiagnostics: { messageText: unknown; start: number }[] }
+		).parseDiagnostics;
+		assert.deepEqual(
+			diagnostics.map((d) => `${name}: ${JSON.stringify(d.messageText)} at ${d.start}`),
+			[],
+			`invalid TSX emitted for ${name}:\n${result.code}`,
+		);
+		checked++;
+	}
+	assert.ok(checked > 50, `expected to check most fixtures, checked ${checked}`);
 });

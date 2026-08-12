@@ -120,8 +120,9 @@ impl<'a> LineIndex<'a> {
     }
 }
 
-/// `mappings` must ascend by generated offset; `source` is embedded as
-/// `sourcesContent` so the map stands alone.
+/// `mappings` must ascend by generated offset. Each mapping opens a run that
+/// lasts until the next one; mapped runs re-emit a segment at every generated
+/// line start they span, since source-map columns reset per line.
 pub(crate) fn encode(
     source: &str,
     generated: &str,
@@ -132,13 +133,31 @@ pub(crate) fn encode(
     let source_id = builder.add_source_and_content(source_name, source);
     let mut source_lines = LineIndex::new(source);
     let mut generated_lines = LineIndex::new(generated);
+    let line_starts = generated_lines.line_starts.clone();
 
-    for mapping in mappings {
+    for (index, mapping) in mappings.iter().enumerate() {
+        let run_end = mappings
+            .get(index + 1)
+            .map(|next| next.generated)
+            .unwrap_or(generated.len() as u32);
+
         let (dst_line, dst_col) = generated_lines.locate(mapping.generated);
         match mapping.original {
             Some(original) => {
                 let (src_line, src_col) = source_lines.locate(original);
                 builder.add_token(dst_line, dst_col, src_line, src_col, Some(source_id), None);
+
+                let first_line_start =
+                    line_starts.partition_point(|&start| start <= mapping.generated as usize);
+                for &line_start in &line_starts[first_line_start..] {
+                    if line_start as u32 >= run_end {
+                        break;
+                    }
+                    let advanced = original + (line_start as u32 - mapping.generated);
+                    let (dst_line, dst_col) = generated_lines.locate(line_start as u32);
+                    let (src_line, src_col) = source_lines.locate(advanced);
+                    builder.add_token(dst_line, dst_col, src_line, src_col, Some(source_id), None);
+                }
             }
             None => builder.add_token(dst_line, dst_col, 0, 0, None, None),
         }

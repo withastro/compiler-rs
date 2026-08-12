@@ -31,10 +31,13 @@ importers:
     devDependencies:
       '@napi-rs/cli':
         specifier: ^3
-        version: 3.5.1(@emnapi/runtime@1.8.1)(@types/node@22.19.9)(node-addon-api@7.1.1)
+        version: 3.5.1(@emnapi/runtime@1.11.1)(@types/node@22.19.9)(node-addon-api@7.1.1)
       '@types/node':
         specifier: ^22
         version: 22.19.9
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
 
   crates/astro_napi:
     devDependencies:
@@ -2329,6 +2332,37 @@ snapshots:
       fs-extra: 8.1.0
       globby: 11.1.0
       read-yaml-file: 1.1.0
+
+  '@napi-rs/cli@3.5.1(@emnapi/runtime@1.11.1)(@types/node@22.19.9)(node-addon-api@7.1.1)':
+    dependencies:
+      '@inquirer/prompts': 8.2.0(@types/node@22.19.9)
+      '@napi-rs/cross-toolchain': 1.0.3
+      '@napi-rs/wasm-tools': 1.0.1
+      '@octokit/rest': 22.0.1
+      clipanion: 4.0.0-rc.4(typanion@3.14.0)
+      colorette: 2.0.20
+      emnapi: 1.8.1(node-addon-api@7.1.1)
+      es-toolkit: 1.44.0
+      js-yaml: 4.1.1
+      obug: 2.1.1
+      semver: 7.7.3
+      typanion: 3.14.0
+    optionalDependencies:
+      '@emnapi/runtime': 1.11.1
+    transitivePeerDependencies:
+      - '@napi-rs/cross-toolchain-arm64-target-aarch64'
+      - '@napi-rs/cross-toolchain-arm64-target-armv7'
+      - '@napi-rs/cross-toolchain-arm64-target-ppc64le'
+      - '@napi-rs/cross-toolchain-arm64-target-s390x'
+      - '@napi-rs/cross-toolchain-arm64-target-x86_64'
+      - '@napi-rs/cross-toolchain-x64-target-aarch64'
+      - '@napi-rs/cross-toolchain-x64-target-armv7'
+      - '@napi-rs/cross-toolchain-x64-target-ppc64le'
+      - '@napi-rs/cross-toolchain-x64-target-s390x'
+      - '@napi-rs/cross-toolchain-x64-target-x86_64'
+      - '@types/node'
+      - node-addon-api
+      - supports-color
 
   '@napi-rs/cli@3.5.1(@emnapi/runtime@1.8.1)(@types/node@22.19.9)(node-addon-api@7.1.1)':
     dependencies:

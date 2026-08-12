@@ -20,4 +20,4 @@ input_file: crates/astro2tsx/tests/fixtures/expression_empty.astro
 </Fragment>
 export default function __AstroComponent_(_props: Record<string, any>): any {}
 
-//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiaW5wdXQuYXN0cm8iXSwic291cmNlc0NvbnRlbnQiOlsiPGRpdj57fTwvZGl2PlxuIl0sIm1hcHBpbmdzIjoiQTs7QTtBQUFBLENBQUMsR0FBRyxDQUFHLEVBQUUsR0FBRyxDQUFDO0FBQ2I7QSJ9
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiaW5wdXQuYXN0cm8iXSwic291cmNlc0NvbnRlbnQiOlsiPGRpdj57fTwvZGl2PlxuIl0sIm1hcHBpbmdzIjoiQTs7O0FBQUEsS0FBTztBQUNQO0EifQ==
