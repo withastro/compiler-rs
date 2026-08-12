@@ -26,4 +26,4 @@ input_file: crates/astro2tsx/tests/fixtures/frontmatter_empty.astro
 </Fragment>
 export default function __AstroComponent_(_props: Record<string, any>): any {}
 
-//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiaW5wdXQuYXN0cm8iXSwic291cmNlc0NvbnRlbnQiOlsiLS0tXG4tLS1cbjxkaXY+PC9kaXY+XG4iXSwibWFwcGluZ3MiOiJBOztBOztBQUNHO0FBQ0g7QUFDQTtBIn0=
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiaW5wdXQuYXN0cm8iXSwic291cmNlc0NvbnRlbnQiOlsiLS0tXG4tLS1cbjxkaXY+PC9kaXY+XG4iXSwibWFwcGluZ3MiOiJBOztBQUFHO0E7QUFDQTtBQUNIO0FBQ0E7QSJ9
