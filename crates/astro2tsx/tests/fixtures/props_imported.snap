@@ -34,3 +34,16 @@ generated_start..generated_end xpoints -> original; `-` is unmapped
 69..81 x2 -> -
 81..94 x8 -> 46
 94..419 x1 -> -
+
+--- source map v3 (paste into any source map viewer) ---
+{
+  "version": 3,
+  "sources": [
+    "input.astro"
+  ],
+  "sourcesContent": [
+    "---\nimport type { Props } from './types';\n---\n<div></div>\n"
+  ],
+  "names": [],
+  "mappings": "A;;AAAA,AAAG;AACH,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC;A;A;AAErC,CAAC,GAAG,CAAC,EAAE,GAAG,CAAC;AACX;A"
+}

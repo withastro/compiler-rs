@@ -30,3 +30,16 @@ generated_start..generated_end xpoints -> original; `-` is unmapped
 70..82 x2 -> -
 82..114 x20 -> 48
 114..205 x1 -> -
+
+--- source map v3 (paste into any source map viewer) ---
+{
+  "version": 3,
+  "sources": [
+    "input.astro"
+  ],
+  "sourcesContent": [
+    "---\r\nimport { Meta } from './Meta.astro';\r\n---\r\n<div>\r\n<span>a</span>\r\n</div>\r\n"
+  ],
+  "names": [],
+  "mappings": "A;;AAAA,AAAG,CAAC;AACJ,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC;A;A;AAErC,CAAC,GAAG,CAAC,CAAC;AACN,CAAC,IAAI,CAAC,CAAC,EAAE,IAAI,CAAC,CAAC;AACf,EAAE,GAAG,CAAC,CAAC;AACP;A"
+}

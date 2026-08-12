@@ -8,7 +8,9 @@
 use std::fmt::Write as _;
 use std::fs;
 
-use astro2tsx::{ConvertOptions, ConvertResult, ExtractedTag, Mapping, convert_to_tsx};
+use astro2tsx::{
+    ConvertOptions, ConvertResult, DEFAULT_SOURCE_NAME, ExtractedTag, Mapping, convert_to_tsx,
+};
 
 /// Parse `// @config` directives from the top of a fixture file.
 ///
@@ -86,7 +88,7 @@ fn write_tags(out: &mut String, label: &str, tags: &[ExtractedTag]) {
     }
 }
 
-fn report(result: &ConvertResult) -> String {
+fn report(source: &str, source_name: &str, result: &ConvertResult) -> String {
     let mut out = String::new();
 
     out.push_str(&result.code);
@@ -125,6 +127,11 @@ fn report(result: &ConvertResult) -> String {
         );
     }
 
+    let map = result.source_map(source, source_name);
+    out.push_str("\n--- source map v3 (paste into any source map viewer) ---\n");
+    out.push_str(&serde_json::to_string_pretty(&map).unwrap());
+    out.push('\n');
+
     out
 }
 
@@ -134,7 +141,11 @@ fn snapshots() {
         let raw = fs::read_to_string(path).unwrap();
         let name = path.file_stem().unwrap().to_str().unwrap();
         let (source, options) = parse_fixture(&raw);
-        let output = report(&convert_to_tsx(&source, options));
+        let source_name = options
+            .filename
+            .clone()
+            .unwrap_or_else(|| DEFAULT_SOURCE_NAME.to_string());
+        let output = report(&source, &source_name, &convert_to_tsx(&source, options));
 
         insta::with_settings!({
             snapshot_path => path.parent().unwrap(),

@@ -22,3 +22,16 @@ generated_start..generated_end xpoints -> original; `-` is unmapped
 0..41 x2 -> -
 41..68 x21 -> 0
 68..159 x1 -> -
+
+--- source map v3 (paste into any source map viewer) ---
+{
+  "version": 3,
+  "sources": [
+    "input.astro"
+  ],
+  "sourcesContent": [
+    "<h1>ツ</h1><p>foobar</p>\n"
+  ],
+  "names": [],
+  "mappings": "A;;A;AAAA,CAAC,EAAE,CAAC,CAAC,EAAE,EAAE,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,CAAC,EAAE,CAAC,CAAC;AACvB;A"
+}
