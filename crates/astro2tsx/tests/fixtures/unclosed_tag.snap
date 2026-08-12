@@ -19,4 +19,5 @@ input_file: crates/astro2tsx/tests/fixtures/unclosed_tag.astro
 
 </Fragment>
 export default function __AstroComponent_(_props: Record<string, any>): any {}
+
 //# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJzb3VyY2VzIjpbImlucHV0LmFzdHJvIl0sInNvdXJjZXNDb250ZW50IjpbIjxjb21wb25lbnRzLlxuIl0sIm5hbWVzIjpbXSwibWFwcGluZ3MiOiJBOztBO0FBQUEsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUMsQ0FBQyxDQUFDLENBQUM7QUFDWjtBIn0=
