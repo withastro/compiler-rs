@@ -42,8 +42,6 @@ export interface ConvertToTsxResult {
   generatedOffsets: Uint32Array
   sourceOffsets: Uint32Array
   lengths: Uint32Array
-  /** Source Map v3 JSON for `code`, with `sourcesContent` embedded. */
-  map: string
   /** Range of the frontmatter section within `code`. */
   frontmatter: Range
   /** Range of the `<Fragment>` body within `code`. */
@@ -103,3 +101,10 @@ export interface Range {
   start: number
   end: number
 }
+
+/**
+ * Source Map v3 JSON mapping the emitted TSX back to `source`, with
+ * `sourcesContent` embedded. Separate from [`convert_to_tsx`] because
+ * editors map through the offset arrays and never pay for the encoding.
+ */
+export declare function sourceMap(source: string, options?: ConvertToTsxOptions | undefined | null): string

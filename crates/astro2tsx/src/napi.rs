@@ -100,8 +100,6 @@ pub struct ConvertToTsxResult {
     pub generated_offsets: Uint32Array,
     pub source_offsets: Uint32Array,
     pub lengths: Uint32Array,
-    /// Source Map v3 JSON for `code`, with `sourcesContent` embedded.
-    pub map: String,
     /// Range of the frontmatter section within `code`.
     pub frontmatter: Range,
     /// Range of the `<Fragment>` body within `code`.
@@ -115,6 +113,32 @@ pub struct ConvertToTsxResult {
     pub has_parse_errors: bool,
 }
 
+fn convert_options(options: Option<ConvertToTsxOptions>) -> ConvertOptions {
+    let options = options.unwrap_or_default();
+    ConvertOptions {
+        sourcemap: match options.sourcemap.as_deref() {
+            Some("external") => SourceMapMode::External,
+            _ => SourceMapMode::Inline,
+        },
+        filename: options.filename,
+    }
+}
+
+/// Source Map v3 JSON mapping the emitted TSX back to `source`, with
+/// `sourcesContent` embedded. Separate from [`convert_to_tsx`] because
+/// editors map through the offset arrays and never pay for the encoding.
+#[napi(js_name = "sourceMap")]
+pub fn source_map(source: String, options: Option<ConvertToTsxOptions>) -> String {
+    let options = convert_options(options);
+    let source_name = options
+        .filename
+        .clone()
+        .unwrap_or_else(|| DEFAULT_SOURCE_NAME.to_string());
+    convert_rs(&source, options)
+        .source_map(&source, &source_name)
+        .to_json_string()
+}
+
 /// Convert an Astro source file to TSX for tsserver intellisense.
 ///
 /// The conversion is error-tolerant: malformed input produces a
@@ -122,23 +146,7 @@ pub struct ConvertToTsxResult {
 /// set to `true` when the parser surfaced one or more diagnostics.
 #[napi(js_name = "convertToTsx")]
 pub fn convert_to_tsx(source: String, options: Option<ConvertToTsxOptions>) -> ConvertToTsxResult {
-    let opts = options.unwrap_or_default();
-    let source_name = opts
-        .filename
-        .clone()
-        .unwrap_or_else(|| DEFAULT_SOURCE_NAME.to_string());
-    let result = convert_rs(
-        &source,
-        ConvertOptions {
-            filename: opts.filename,
-            sourcemap: match opts.sourcemap.as_deref() {
-                Some("external") => SourceMapMode::External,
-                _ => SourceMapMode::Inline,
-            },
-        },
-    );
-    let map = result.source_map(&source, &source_name).to_json_string();
-
+    let result = convert_rs(&source, convert_options(options));
     let source_index = Utf16Index::new(&source);
     let generated_index = Utf16Index::new(&result.code);
     let code_len = result.code.len() as u32;
@@ -215,7 +223,6 @@ pub fn convert_to_tsx(source: String, options: Option<ConvertToTsxOptions>) -> C
             })
             .collect(),
         code: result.code,
-        map,
         generated_offsets: Uint32Array::new(generated_offsets),
         source_offsets: Uint32Array::new(source_offsets),
         lengths: Uint32Array::new(lengths),
