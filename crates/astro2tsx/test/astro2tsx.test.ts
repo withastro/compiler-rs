@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { strict as assert } from 'node:assert';
 import ts from 'typescript';
 import { test } from 'node:test';
-import { convertToTsx } from '../index.js';
+import { convertToTsx, sourceMap } from '../index.js';
 
 test('emits the TSX prefix and a Fragment-wrapped body', () => {
 	const result = convertToTsx('<h1>Hello {value}</h1>');
@@ -89,7 +89,7 @@ test('mapped runs interpolate to exact source positions, Volar-style', () => {
 
 test('returns a self-contained source map v3', () => {
 	const input = '---\nlet x = 1;\n---\n<p>Hi</p>';
-	const map = JSON.parse(convertToTsx(input).map);
+	const map = JSON.parse(sourceMap(input));
 	assert.equal(map.version, 3);
 	assert.deepEqual(map.sources, ['input.astro']);
 	assert.deepEqual(map.sourcesContent, [input]);
@@ -98,12 +98,13 @@ test('returns a self-contained source map v3', () => {
 });
 
 test('names the source after the filename option', () => {
-	const map = JSON.parse(convertToTsx('<p></p>', { filename: 'Index.astro' }).map);
+	const map = JSON.parse(sourceMap('<p></p>', { filename: 'Index.astro' }));
 	assert.deepEqual(map.sources, ['Index.astro']);
 });
 
 test('appends the inline source map comment by default', () => {
-	const { code, map } = convertToTsx('<p>Hi</p>');
+	const { code } = convertToTsx('<p>Hi</p>');
+	const map = sourceMap('<p>Hi</p>');
 	const marker = '\n//# sourceMappingURL=data:application/json;charset=utf-8;base64,';
 	assert.ok(code.includes(marker));
 	const blob = code.slice(code.indexOf(marker) + marker.length);
@@ -114,7 +115,6 @@ test("sourcemap: 'external' leaves the code without the comment", () => {
 	const inline = convertToTsx('<p>Hi</p>');
 	const external = convertToTsx('<p>Hi</p>', { sourcemap: 'external' });
 	assert.doesNotMatch(external.code, /sourceMappingURL/);
-	assert.equal(external.map, inline.map);
 	assert.ok(inline.code.startsWith(external.code));
 });
 
