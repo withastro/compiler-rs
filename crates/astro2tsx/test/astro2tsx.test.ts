@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { strict as assert } from 'node:assert';
 import ts from 'typescript';
 import { test } from 'node:test';
-import { convertToTsx, sourceMap } from '../index.js';
+import { convertToTsx } from '../index.js';
 
 test('emits the TSX prefix and a Fragment-wrapped body', () => {
 	const result = convertToTsx('<h1>Hello {value}</h1>');
@@ -89,7 +89,7 @@ test('mapped runs interpolate to exact source positions, Volar-style', () => {
 
 test('returns a self-contained source map v3', () => {
 	const input = '---\nlet x = 1;\n---\n<p>Hi</p>';
-	const map = JSON.parse(sourceMap(input));
+	const map = JSON.parse(convertToTsx(input).map!);
 	assert.equal(map.version, 3);
 	assert.deepEqual(map.sources, ['input.astro']);
 	assert.deepEqual(map.sourcesContent, [input]);
@@ -98,17 +98,16 @@ test('returns a self-contained source map v3', () => {
 });
 
 test('names the source after the filename option', () => {
-	const map = JSON.parse(sourceMap('<p></p>', { filename: 'Index.astro' }));
+	const map = JSON.parse(convertToTsx('<p></p>', { filename: 'Index.astro' }).map!);
 	assert.deepEqual(map.sources, ['Index.astro']);
 });
 
 test('appends the inline source map comment by default', () => {
-	const { code } = convertToTsx('<p>Hi</p>');
-	const map = sourceMap('<p>Hi</p>');
+	const { code, map } = convertToTsx('<p>Hi</p>');
 	const marker = '\n//# sourceMappingURL=data:application/json;charset=utf-8;base64,';
 	assert.ok(code.includes(marker));
 	const blob = code.slice(code.indexOf(marker) + marker.length);
-	assert.deepEqual(JSON.parse(Buffer.from(blob, 'base64').toString('utf8')), JSON.parse(map));
+	assert.deepEqual(JSON.parse(Buffer.from(blob, 'base64').toString('utf8')), JSON.parse(map!));
 });
 
 test("sourcemap: 'external' leaves the code without the comment", () => {
@@ -193,4 +192,18 @@ test('reports frontmatter status and positioned diagnostics', () => {
 		assert.equal(diagnostic.severity, 1);
 		assert.ok(diagnostic.position.end >= diagnostic.position.start);
 	}
+});
+
+test('sourcemap: false skips building the map', () => {
+	const source = '---\nconst x = 1;\n---\n<p>{x}</p>';
+	const skipped = convertToTsx(source, { sourcemap: false });
+	assert.equal(skipped.map, undefined);
+	assert.doesNotMatch(skipped.code, /sourceMappingURL/);
+
+	// Opting out must not change the code or the offsets editors navigate by.
+	const external = convertToTsx(source, { sourcemap: 'external' });
+	assert.equal(skipped.code, external.code);
+	assert.deepEqual(Array.from(skipped.generatedOffsets), Array.from(external.generatedOffsets));
+	assert.deepEqual(Array.from(skipped.lengths), Array.from(external.lengths));
+	assert.ok(external.map);
 });

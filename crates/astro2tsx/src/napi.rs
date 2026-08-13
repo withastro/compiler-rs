@@ -4,6 +4,7 @@
 //! Every offset crossing this boundary is in UTF-16 code units, because JS
 //! consumers index strings that way.
 
+use napi::Either;
 use napi::bindgen_prelude::Uint32Array;
 use napi_derive::napi;
 
@@ -86,8 +87,10 @@ pub struct ConvertToTsxOptions {
     /// Filename used to derive the default-exported component identifier
     /// (e.g. `MyPage.astro` produces `MyPage__AstroComponent_`). Optional.
     pub filename: Option<String>,
-    /// `"external"` omits the inline `//# sourceMappingURL=`; anything else appends it.
-    pub sourcemap: Option<String>,
+    /// `false` skips building the map entirely, `"external"` returns it in
+    /// `map` without touching `code`, and `true` / `"inline"` (the default)
+    /// also appends a `//# sourceMappingURL=` comment.
+    pub sourcemap: Option<Either<bool, String>>,
 }
 
 #[napi(object)]
@@ -104,6 +107,9 @@ pub struct ConvertToTsxResult {
     pub frontmatter: Range,
     /// Range of the `<Fragment>` body within `code`.
     pub body: Range,
+    /// Source Map v3 JSON for `code`, with `sourcesContent` embedded. `None`
+    /// when the caller opted out with `sourcemap: false`.
+    pub map: Option<String>,
     pub frontmatter_status: AstroFrontmatterStatus,
     /// Range of the frontmatter in the original source, fences included.
     pub frontmatter_source: Range,
@@ -113,30 +119,23 @@ pub struct ConvertToTsxResult {
     pub has_parse_errors: bool,
 }
 
-fn convert_options(options: Option<ConvertToTsxOptions>) -> ConvertOptions {
-    let options = options.unwrap_or_default();
-    ConvertOptions {
-        sourcemap: match options.sourcemap.as_deref() {
-            Some("external") => SourceMapMode::External,
-            _ => SourceMapMode::Inline,
-        },
-        filename: options.filename,
-    }
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum MapRequest {
+    Skip,
+    External,
+    Inline,
 }
 
-/// Source Map v3 JSON mapping the emitted TSX back to `source`, with
-/// `sourcesContent` embedded. Separate from [`convert_to_tsx`] because
-/// editors map through the offset arrays and never pay for the encoding.
-#[napi(js_name = "sourceMap")]
-pub fn source_map(source: String, options: Option<ConvertToTsxOptions>) -> String {
-    let options = convert_options(options);
-    let source_name = options
-        .filename
-        .clone()
-        .unwrap_or_else(|| DEFAULT_SOURCE_NAME.to_string());
-    convert_rs(&source, options)
-        .source_map(&source, &source_name)
-        .to_json_string()
+fn map_request(sourcemap: Option<&Either<bool, String>>) -> MapRequest {
+    match sourcemap {
+        Some(Either::A(false)) => MapRequest::Skip,
+        Some(Either::B(mode)) => match mode.as_str() {
+            "none" | "false" => MapRequest::Skip,
+            "external" => MapRequest::External,
+            _ => MapRequest::Inline,
+        },
+        _ => MapRequest::Inline,
+    }
 }
 
 /// Convert an Astro source file to TSX for tsserver intellisense.
@@ -146,7 +145,20 @@ pub fn source_map(source: String, options: Option<ConvertToTsxOptions>) -> Strin
 /// set to `true` when the parser surfaced one or more diagnostics.
 #[napi(js_name = "convertToTsx")]
 pub fn convert_to_tsx(source: String, options: Option<ConvertToTsxOptions>) -> ConvertToTsxResult {
-    let result = convert_rs(&source, convert_options(options));
+    let options = options.unwrap_or_default();
+    let request = map_request(options.sourcemap.as_ref());
+    let source_name = options
+        .filename
+        .clone()
+        .unwrap_or_else(|| DEFAULT_SOURCE_NAME.to_string());
+    // The comment is appended below, once, from the map this function builds.
+    let mut result = convert_rs(
+        &source,
+        ConvertOptions {
+            filename: options.filename,
+            sourcemap: SourceMapMode::External,
+        },
+    );
     let source_index = Utf16Index::new(&source);
     let generated_index = Utf16Index::new(&result.code);
     let code_len = result.code.len() as u32;
@@ -177,7 +189,22 @@ pub fn convert_to_tsx(source: String, options: Option<ConvertToTsxOptions>) -> C
         lengths.push(length);
     }
 
+    let map = match request {
+        MapRequest::Skip => None,
+        _ => {
+            let document = result.source_map(&source, &source_name);
+            if request == MapRequest::Inline {
+                result.code.push('\n');
+                result
+                    .code
+                    .push_str(&crate::sourcemap::to_inline_comment(&document));
+            }
+            Some(document.to_json_string())
+        }
+    };
+
     ConvertToTsxResult {
+        map,
         frontmatter: Range {
             start: generated_index.convert(result.frontmatter_range.start),
             end: generated_index.convert(result.frontmatter_range.end),

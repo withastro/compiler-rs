@@ -27,8 +27,12 @@ export interface ConvertToTsxOptions {
    * (e.g. `MyPage.astro` produces `MyPage__AstroComponent_`). Optional.
    */
   filename?: string
-  /** `"external"` omits the inline `//# sourceMappingURL=`; anything else appends it. */
-  sourcemap?: string
+  /**
+   * `false` skips building the map entirely, `"external"` returns it in
+   * `map` without touching `code`, and `true` / `"inline"` (the default)
+   * also appends a `//# sourceMappingURL=` comment.
+   */
+  sourcemap?: boolean | string
 }
 
 export interface ConvertToTsxResult {
@@ -46,6 +50,11 @@ export interface ConvertToTsxResult {
   frontmatter: Range
   /** Range of the `<Fragment>` body within `code`. */
   body: Range
+  /**
+   * Source Map v3 JSON for `code`, with `sourcesContent` embedded. `None`
+   * when the caller opted out with `sourcemap: false`.
+   */
+  map?: string
   frontmatterStatus: AstroFrontmatterStatus
   /** Range of the frontmatter in the original source, fences included. */
   frontmatterSource: Range
@@ -101,10 +110,3 @@ export interface Range {
   start: number
   end: number
 }
-
-/**
- * Source Map v3 JSON mapping the emitted TSX back to `source`, with
- * `sourcesContent` embedded. Separate from [`convert_to_tsx`] because
- * editors map through the offset arrays and never pay for the encoding.
- */
-export declare function sourceMap(source: string, options?: ConvertToTsxOptions | undefined | null): string
