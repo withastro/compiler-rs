@@ -87,7 +87,7 @@ pub(crate) fn render_root(printer: &mut Printer, root: HtmlRoot, options: &Conve
             prev_end = u32::from(element_range.end());
         }
         emit_source_gap(printer, prev_end, printer.source.len() as u32);
-        // One byte past EOF, so trailing whitespace still has a mapping.
+        // Anchored at EOF so trailing whitespace still has a mapping.
         printer.map_to_offset(printer.source.len() as u32);
         printer.write("\n");
 
@@ -256,7 +256,6 @@ fn emit_frontmatter(
             printer.write("\n");
         }
         AnyAstroFrontmatterElement::AstroBogusFrontmatter(_) => {
-            // Recovery node: every byte maps to offset 0, not to its own position.
             printer.map_to_offset(0);
             printer.write(frontmatter.syntax().text_trimmed().to_string().as_str());
         }
@@ -470,8 +469,10 @@ fn render_html_element(printer: &mut Printer, node: HtmlElement) {
     printer.map_to_offset(r_angle_start);
     printer.write(">");
 
-    let is_script = tag_name.eq_ignore_ascii_case("script");
-    let is_style = tag_name.eq_ignore_ascii_case("style");
+    // `<Script>` is a component, not the HTML element, so match the node kind.
+    let is_html_tag = matches!(name, AnyHtmlTagName::HtmlTagName(_));
+    let is_script = is_html_tag && tag_name.eq_ignore_ascii_case("script");
+    let is_style = is_html_tag && tag_name.eq_ignore_ascii_case("style");
 
     let children = node.children();
     let body_start = printer.position();
@@ -522,8 +523,6 @@ fn render_html_element(printer: &mut Printer, node: HtmlElement) {
     let body_end = printer.position();
 
     if is_script || is_style {
-        // Capture the inner text range relative to the *original* source for
-        // downstream consumers — `tsxRanges.scripts[].position` etc.
         let inner_range = inner_range(&node);
         if let Some((start, end)) = inner_range {
             let content =
@@ -608,7 +607,9 @@ pub(crate) fn script_label_for_type(type_value: Option<&str>) -> &'static str {
 }
 
 fn style_lang_label(attrs: &[AnyHtmlAttribute]) -> String {
-    find_attr_value(attrs, "lang").unwrap_or_else(|| "css".to_string())
+    find_attr_value(attrs, "lang")
+        .filter(|lang| !lang.is_empty())
+        .unwrap_or_else(|| "css".to_string())
 }
 
 fn find_attr_value(attrs: &[AnyHtmlAttribute], name: &str) -> Option<String> {
@@ -622,7 +623,7 @@ fn find_attr_value(attrs: &[AnyHtmlAttribute], name: &str) -> Option<String> {
         let Ok(token) = attr_name.value_token() else {
             continue;
         };
-        if token.text_trimmed() != name {
+        if !token.text_trimmed().eq_ignore_ascii_case(name) {
             continue;
         }
         let Some(initializer) = attr_node.initializer() else {
@@ -648,7 +649,6 @@ fn attribute_key(attr: &AnyHtmlAttribute) -> Option<String> {
             Some(attr_name.value_token().ok()?.text_trimmed().to_string())
         }
         AnyHtmlAttribute::AnyAstroDirective(directive) => {
-            // Reconstruct the `kind:name` form (`is:raw`, `client:load`).
             let prefix = match directive {
                 AnyAstroDirective::AstroIsDirective(_) => "is",
                 AnyAstroDirective::AstroClientDirective(_) => "client",
@@ -709,8 +709,13 @@ fn render_self_closing_element(printer: &mut Printer, node: HtmlSelfClosingEleme
         .map(|attr| u32::from(attr.range().end()))
         .unwrap_or_else(|| u32::from(name.range().end()));
     emit_intra_tag_space(printer, attrs_end, pre_slash);
+    match node.slash_token() {
+        Some(slash) => printer.map_to_offset(range_start(slash.text_trimmed_range())),
+        None => printer.map_nil(),
+    }
+    printer.write("/");
     printer.map_to_offset(r_angle_start);
-    printer.write("/>");
+    printer.write(">");
 }
 
 /// Renders an `HtmlElement` whose tag name is missing — JSX's Fragment
@@ -909,37 +914,44 @@ fn emit_html_attribute(printer: &mut Printer, attr_node: &HtmlAttribute) {
                 printer.write("}");
                 return;
             }
-            // The token includes the surrounding quotes. Strip them so we
-            // can re-emit a TSX-safe value.
-            let inner = if (raw.starts_with('"') && raw.ends_with('"'))
-                || (raw.starts_with('\'') && raw.ends_with('\''))
-            {
-                &raw[1..raw.len() - 1]
+            let token_start = u32::from(value_token.text_trimmed_range().start());
+            // Astro allows unquoted values, so the token may carry no quotes to strip.
+            let quoted = (raw.starts_with('"') && raw.ends_with('"'))
+                || (raw.starts_with('\'') && raw.ends_with('\''));
+            let (inner, value_start) = if quoted {
+                (&raw[1..raw.len() - 1], token_start + 1)
             } else {
-                raw.as_str()
+                (raw.as_str(), token_start)
             };
-            let value_start = u32::from(value_token.text_trimmed_range().start()) + 1;
             let inner_end = value_start + inner.len() as u32;
-            let encoded = encode_double_quote(inner);
 
             printer.map_to_offset(eq_start);
             printer.write("=");
-            printer.map_to_offset(value_start - 1);
+            if quoted {
+                printer.map_to_offset(token_start);
+            } else {
+                printer.map_nil();
+            }
             printer.write("\"");
             let generated_start = printer.position();
-            printer.write_with_mapping(&encoded, value_start);
+            printer.write_attribute_value_with_mapping(inner, value_start);
             let generated_end = printer.position();
-            printer.map_to_offset(inner_end);
+            if quoted {
+                printer.map_to_offset(inner_end);
+            } else {
+                printer.map_nil();
+            }
             printer.write("\"");
 
-            if is_html_event_attribute(&key_text) {
+            let lower_key = key_text.to_ascii_lowercase();
+            if is_html_event_attribute(&lower_key) {
                 printer.add_event_attribute(
                     GeneratedRange::new(generated_start, generated_end),
                     SourceRange::new(value_start, inner_end),
                     inner.to_string(),
                 );
             }
-            if key_text == "style" {
+            if lower_key == "style" {
                 printer.add_style_attribute(
                     GeneratedRange::new(generated_start, generated_end),
                     SourceRange::new(value_start, inner_end),

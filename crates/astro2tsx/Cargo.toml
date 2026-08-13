@@ -29,9 +29,14 @@ napi-derive   = { workspace = true }
 oxc_sourcemap = { workspace = true }
 
 [dev-dependencies]
+divan      = { workspace = true }
 insta      = { workspace = true, features = ["glob", "serde"] }
 serde      = { version = "1", features = ["derive"] }
 serde_json = "1"
 
 [build-dependencies]
 napi-build = { workspace = true }
+
+[[bench]]
+name    = "convert"
+harness = false

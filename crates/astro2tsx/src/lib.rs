@@ -86,6 +86,8 @@ pub fn convert_to_tsx(source: &str, options: ConvertOptions) -> ConvertResult {
         .collect();
     diagnostics.extend(printer.diagnostics);
     diagnostics.sort_by_key(|diagnostic| (diagnostic.source.start, diagnostic.source.end));
+    // The parser can report the same recovery twice for one construct.
+    diagnostics.dedup();
 
     let mut result = ConvertResult {
         code: printer.output,
