@@ -21,7 +21,7 @@
     "build": "napi build --esm --platform --release",
     "build-dev": "napi build --esm --platform",
     "prepublishOnly": "napi prepublish -t npm",
-    "test": "node --import tsx --test ./test/*.test.ts",
+    "test": "node --import tsx --test ./__test__/*.test.ts",
     "version": "napi version"
   },
   "devDependencies": {

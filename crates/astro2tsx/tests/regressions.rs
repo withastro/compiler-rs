@@ -330,3 +330,45 @@ fn diagnostics_carry_positions_pointing_at_the_problem() {
         assert!(diagnostic.source.start <= diagnostic.source.end);
     }
 }
+
+#[test]
+fn tolerates_line_separators() {
+    for input in [
+        "\u{2028}",
+        "something\u{2029}something",
+        "something\u{2028}\u{2029}",
+        "\u{2028}\u{2029}\u{2028}",
+    ] {
+        let actual = convert(input);
+        assert!(
+            actual.starts_with(PREFIX),
+            "input {input:?} produced no usable output"
+        );
+    }
+}
+
+#[test]
+fn handles_non_latin_identifiers() {
+    let frontmatter = "var π = Math.PI;\nvar ಠ_ಠ = eval;\nvar ლ_ಠ益ಠ_ლ = 42;\nvar λ = function() {};\nvar Ꙭൽↈⴱ = 'huh';\nvar 〱〱 = 2;\nvar Ⅳ = 4;";
+    let input = format!("---\n{frontmatter}\n---\n\n<div></div>\n");
+    let actual = convert(&input);
+    assert!(
+        actual.contains(frontmatter),
+        "non-latin frontmatter was not round-tripped verbatim:\n{actual}"
+    );
+}
+
+#[test]
+fn handles_complex_generics() {
+    let input = "---\nimport type { GetStaticPaths, MDXInstance } from \"$data/shared\";\n\nexport const getStaticPaths: GetStaticPaths = async () => {\n  const articles = await Astro.glob<Article>(\"/content/articles/**/*.mdx\");\n  return articles.map((article) => {\n    return { params: { slug: getSlugFromFile(article.file) } };\n  });\n};\n\nexport interface Props {\n  article: MDXInstance<Article>;\n}\n\nconst { article } = Astro.props;\n---\n\n<ArticleLayout article={article} />";
+    let result = convert_to_tsx(input, ConvertOptions::default());
+    assert!(
+        result.code.contains("MDXInstance<Article>"),
+        "complex generics were not preserved:\n{}",
+        result.code
+    );
+    assert!(
+        !result.has_parse_errors,
+        "complex generics should parse cleanly"
+    );
+}
