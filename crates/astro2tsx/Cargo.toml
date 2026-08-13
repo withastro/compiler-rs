@@ -23,10 +23,12 @@ biome_parser      = { workspace = true }
 biome_js_syntax   = { workspace = true }
 biome_languages   = { workspace = true }
 biome_rowan       = { workspace = true }
+biome_string_case = { workspace = true }
 
 napi          = { workspace = true }
 napi-derive   = { workspace = true }
 oxc_sourcemap = { workspace = true }
+oxc_syntax    = { workspace = true }
 
 [dev-dependencies]
 divan      = { workspace = true }
