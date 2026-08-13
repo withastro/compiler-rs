@@ -1,8 +1,9 @@
 //! Emits a parsed expression body: JS verbatim, JSX normalized like the HTML renderer.
 
 use biome_js_syntax::{
-    AnyJsxAttribute, AnyJsxAttributeValue, JsLanguage, JsSyntaxKind, JsxAttribute,
-    JsxAttributeList, JsxElement, JsxFragment, JsxSelfClosingElement, JsxString, JsxText,
+    AnyJsxAttribute, AnyJsxAttributeValue, AnyJsxElementName, JsLanguage, JsSyntaxKind,
+    JsxAttribute, JsxAttributeList, JsxElement, JsxFragment, JsxSelfClosingElement, JsxString,
+    JsxText,
 };
 use biome_rowan::{AstNode, AstNodeList, SyntaxNode, SyntaxToken, SyntaxTriviaPiece, TextSize};
 
@@ -141,12 +142,17 @@ enum ChildrenMode {
     RawTemplate,
 }
 
-fn children_mode(name: &str, attributes: &JsxAttributeList) -> ChildrenMode {
-    if name.eq_ignore_ascii_case("script") {
-        return ChildrenMode::ExcludedScript;
-    }
-    if name.eq_ignore_ascii_case("style") {
-        return ChildrenMode::ExcludedStyle;
+fn children_mode(name: Option<&AnyJsxElementName>, attributes: &JsxAttributeList) -> ChildrenMode {
+    // `<Script>` is a component reference, not the HTML element.
+    if let Some(AnyJsxElementName::JsxName(intrinsic)) = name
+        && let Ok(token) = intrinsic.value_token()
+    {
+        if token.text_trimmed().eq_ignore_ascii_case("script") {
+            return ChildrenMode::ExcludedScript;
+        }
+        if token.text_trimmed().eq_ignore_ascii_case("style") {
+            return ChildrenMode::ExcludedStyle;
+        }
     }
     let is_raw = attributes
         .iter()
@@ -163,11 +169,7 @@ fn emit_jsx_element(printer: &mut Printer, element: &JsxElement, base: u32) {
         emit_verbatim(printer, element.syntax(), base);
         return;
     };
-    let name_text = opening
-        .name()
-        .map(|name| name.syntax().text_trimmed().to_string())
-        .unwrap_or_default();
-    let mode = children_mode(&name_text, &opening.attributes());
+    let mode = children_mode(opening.name().ok().as_ref(), &opening.attributes());
 
     if let Ok(l_angle) = opening.l_angle_token() {
         emit_token(printer, &l_angle, base, false);
@@ -509,7 +511,10 @@ fn jsx_attribute_string(attributes: &JsxAttributeList, name: &str) -> Option<Str
         let AnyJsxAttribute::JsxAttribute(attribute) = attr else {
             continue;
         };
-        if attribute.name().ok()?.syntax().text_trimmed() != name {
+        let Ok(attribute_name) = attribute.name() else {
+            continue;
+        };
+        if attribute_name.syntax().text_trimmed() != name {
             continue;
         }
         let Some(initializer) = attribute.initializer() else {

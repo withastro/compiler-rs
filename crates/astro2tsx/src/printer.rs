@@ -142,6 +142,21 @@ impl<'a> Printer<'a> {
         }
     }
 
+    /// Attribute-value escaping; `&quot;` maps wholly to the quote it replaces
+    /// so the characters after it keep their own positions.
+    pub(crate) fn write_attribute_value_with_mapping(&mut self, text: &str, original_start: u32) {
+        let mut original = original_start;
+        for ch in text.chars() {
+            if ch == '"' {
+                self.write_mapped_str("&quot;", original);
+            } else {
+                self.map_to_offset(original);
+                self.output.push(ch);
+            }
+            original += ch.len_utf8() as u32;
+        }
+    }
+
     fn write_mapped_str(&mut self, text: &str, original: u32) {
         for ch in text.chars() {
             self.map_to_offset(original);

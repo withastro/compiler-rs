@@ -48,7 +48,8 @@ pub(crate) fn tsx_component_name(filename: Option<&str>) -> String {
     if basename.is_empty() {
         return PLACEHOLDER.to_string();
     }
-    let camel = to_camel_case(basename);
+    // A dynamic route (`[slug].astro`) still names its component after the param.
+    let camel = to_camel_case(basename.trim_matches(['[', ']', '.']));
     if is_ascii_identifier(&camel) {
         format!("{camel}{PLACEHOLDER}")
     } else {
@@ -198,17 +199,11 @@ fn is_valid_first_ident_char(ch: char) -> bool {
     ch == '$' || ch == '_' || ch.is_alphabetic()
 }
 
-/// Detects the script `type` attribute family. Inline, json and unknown
-/// payloads are wrapped in `{\`...\`}` so they parse as TSX template strings,
-/// while module and classic scripts are emitted as `{() => { ... }}` bodies.
+/// The family a script's `type` attribute puts it in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ScriptKind {
-    /// `type="module"`, or no `type` at all — printed as `{() => { ... }}` so
-    /// the body is type-checked as JS.
     Script,
-    /// JSON-like type — printed as `{\`...\`}`.
     Json,
-    /// Any other type attribute — also printed as `{\`...\`}`.
     Unknown,
 }
 

@@ -23,38 +23,38 @@ mod components {
 
     #[divan::bench]
     fn favicon(bencher: divan::Bencher<'_, '_>) {
-        bench_convert(bencher, include_str!("../fixtures/Favicon.astro"));
+        bench_convert(bencher, include_str!("fixtures/Favicon.astro"));
     }
 
     #[divan::bench]
     fn pill_link(bencher: divan::Bencher<'_, '_>) {
-        bench_convert(bencher, include_str!("../fixtures/PillLink.astro"));
+        bench_convert(bencher, include_str!("fixtures/PillLink.astro"));
     }
 
     #[divan::bench]
     fn social_links(bencher: divan::Bencher<'_, '_>) {
-        bench_convert(bencher, include_str!("../fixtures/SocialLinks.astro"));
+        bench_convert(bencher, include_str!("fixtures/SocialLinks.astro"));
     }
 
     #[divan::bench]
     fn header_drop_down(bencher: divan::Bencher<'_, '_>) {
-        bench_convert(bencher, include_str!("../fixtures/HeaderDropDown.astro"));
+        bench_convert(bencher, include_str!("fixtures/HeaderDropDown.astro"));
     }
 
     #[divan::bench]
     fn seo(bencher: divan::Bencher<'_, '_>) {
-        bench_convert(bencher, include_str!("../fixtures/SEO.astro"));
+        bench_convert(bencher, include_str!("fixtures/SEO.astro"));
     }
 
     #[divan::bench]
     fn expression_heavy(bencher: divan::Bencher<'_, '_>) {
-        bench_convert(bencher, include_str!("../fixtures/ExpressionHeavy.astro"));
+        bench_convert(bencher, include_str!("fixtures/ExpressionHeavy.astro"));
     }
 }
 
 /// Repeats the section so the input grows without its shape changing.
 fn build_page(sections: usize) -> String {
-    let fixture = include_str!("../fixtures/ExpressionHeavy.astro");
+    let fixture = include_str!("fixtures/ExpressionHeavy.astro");
     let (frontmatter, body) = fixture
         .rsplit_once("---\n")
         .expect("fixture has a frontmatter fence");

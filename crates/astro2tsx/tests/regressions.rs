@@ -372,3 +372,88 @@ fn handles_complex_generics() {
         "complex generics should parse cleanly"
     );
 }
+
+#[test]
+fn malformed_input_never_panics_in_the_parser() {
+    for input in ["<div></{<//", "<a></", "</", "<//", "<div></{", "{<//}"] {
+        let result = convert_to_tsx(input, ConvertOptions::default());
+        assert!(result.code.starts_with(PREFIX), "no output for {input:?}");
+    }
+}
+
+#[test]
+fn frontmatter_survives_closing_tags_in_its_code() {
+    for input in [
+        "---\nconst a = \"</script>\";\n---\n<p>x</p>",
+        "---\nconst a = `</style>`;\n---\n<p>x</p>",
+        "---\n// </script> in a comment\n---\n<p>x</p>",
+    ] {
+        let result = convert_to_tsx(input, ConvertOptions::default());
+        assert_eq!(
+            result.frontmatter.status,
+            astro2tsx::FrontmatterStatus::Closed,
+            "frontmatter ended early for {input:?}"
+        );
+        assert!(result.diagnostics.is_empty(), "{:?}", result.diagnostics);
+        assert!(result.code.contains("<p>x</p>"), "body lost for {input:?}");
+    }
+}
+
+#[test]
+fn components_are_never_treated_as_html_script_or_style() {
+    for input in [
+        "<Script>alert(1)</Script>",
+        "<Style>.a{color:red}</Style>",
+        "{cond && <Script>alert(1)</Script>}",
+    ] {
+        let result = convert_to_tsx(input, ConvertOptions::default());
+        assert!(
+            result.scripts.is_empty() && result.styles.is_empty(),
+            "{input:?}"
+        );
+        assert!(
+            result.code.contains("alert(1)") || result.code.contains("color:red"),
+            "component body was dropped for {input:?}:\n{}",
+            result.code
+        );
+    }
+}
+
+#[test]
+fn extracted_tag_sources_slice_to_their_content() {
+    let source = "---\nconst x = 1;\n---\n<style>.a{color:red}</style>\n<div onclick=\"go()\" style=color:red data-x='a\"b'></div>\n<script>run();</script>";
+    let result = convert_to_tsx(source, ConvertOptions::default());
+    assert!(!result.scripts.is_empty() && !result.styles.is_empty());
+    for tag in result.scripts.iter().chain(result.styles.iter()) {
+        assert_eq!(
+            &source[tag.source.start as usize..tag.source.end as usize],
+            tag.content,
+            "{tag:?} does not slice back to its content"
+        );
+    }
+}
+
+/// Distinct names per route file; the language server keys auto-imports on them.
+#[test]
+fn dynamic_routes_keep_their_component_name() {
+    for (filename, expected) in [
+        ("src/pages/[slug].astro", "Slug__AstroComponent_"),
+        ("src/pages/my-comp.astro", "MyComp__AstroComponent_"),
+        // Names that cannot be identifiers fall back to the bare placeholder.
+        ("src/pages/404.astro", "__AstroComponent_"),
+        ("src/pages/[...path].astro", "__AstroComponent_"),
+    ] {
+        let code = convert_to_tsx(
+            "<div/>",
+            ConvertOptions {
+                filename: Some(filename.to_string()),
+                ..Default::default()
+            },
+        )
+        .code;
+        assert!(
+            code.contains(&format!("function {expected}(")),
+            "{filename} did not produce {expected}:\n{code}"
+        );
+    }
+}

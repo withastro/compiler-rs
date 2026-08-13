@@ -178,9 +178,9 @@ pub fn convert_to_tsx(source: String, options: Option<ConvertToTsxOptions>) -> C
             .unwrap_or(code_len);
         let generated = generated_index.convert(mapping.generated);
         let source = source_index.convert(original);
-        // Runs are verbatim copies, so one UTF-16 length serves both sides.
-        // The printer maps trailing output one past EOF, so clamp to the source.
-        let length = (generated_index.convert(run_end) - generated).min(source_len - source);
+        // Escapes are ASCII on both sides, so one UTF-16 length serves both.
+        let length =
+            (generated_index.convert(run_end) - generated).min(source_len.saturating_sub(source));
         if length == 0 {
             continue;
         }
