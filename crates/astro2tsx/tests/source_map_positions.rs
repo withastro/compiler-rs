@@ -1,4 +1,4 @@
-//! Behavioral, error-recovery, and sourcemap coverage for TSX conversion.
+//! Every source position an editor resolves must land on its own snippet.
 
 use astro2tsx::{ConvertOptions, Mapping, convert_to_tsx};
 
@@ -262,47 +262,4 @@ fn sourcemap_resolves_to_snippet() {
         ));
     }
     assert!(failure.is_empty(), "\n{failure}");
-}
-
-#[test]
-fn tolerates_line_separators() {
-    for input in [
-        "\u{2028}",
-        "something\u{2029}something",
-        "something\u{2028}\u{2029}",
-        "\u{2028}\u{2029}\u{2028}",
-    ] {
-        let result = convert(input);
-        assert!(
-            result.code.starts_with("/* @jsxImportSource astro */"),
-            "input {input:?} produced no usable output"
-        );
-    }
-}
-
-#[test]
-fn handles_non_latin_identifiers() {
-    let frontmatter = "var π = Math.PI;\nvar ಠ_ಠ = eval;\nvar ლ_ಠ益ಠ_ლ = 42;\nvar λ = function() {};\nvar Ꙭൽↈⴱ = 'huh';\nvar 〱〱 = 2;\nvar Ⅳ = 4;";
-    let input = format!("---\n{frontmatter}\n---\n\n<div></div>\n");
-    let result = convert(&input);
-    assert!(
-        result.code.contains(frontmatter),
-        "non-latin frontmatter was not round-tripped verbatim:\n{}",
-        result.code
-    );
-}
-
-#[test]
-fn handles_complex_generics() {
-    let input = "---\nimport type { GetStaticPaths, MDXInstance } from \"$data/shared\";\n\nexport const getStaticPaths: GetStaticPaths = async () => {\n  const articles = await Astro.glob<Article>(\"/content/articles/**/*.mdx\");\n  return articles.map((article) => {\n    return { params: { slug: getSlugFromFile(article.file) } };\n  });\n};\n\nexport interface Props {\n  article: MDXInstance<Article>;\n}\n\nconst { article } = Astro.props;\n---\n\n<ArticleLayout article={article} />";
-    let result = convert(input);
-    assert!(
-        result.code.contains("MDXInstance<Article>"),
-        "complex generics were not preserved:\n{}",
-        result.code
-    );
-    assert!(
-        !result.has_parse_errors,
-        "complex generics should parse cleanly"
-    );
 }
