@@ -457,3 +457,19 @@ fn dynamic_routes_keep_their_component_name() {
         );
     }
 }
+
+#[test]
+fn unicode_filenames_still_name_their_component() {
+    let code = convert_to_tsx(
+        "<div/>",
+        ConvertOptions {
+            filename: Some("src/components/Ünicorn.astro".to_string()),
+            ..Default::default()
+        },
+    )
+    .code;
+    assert!(
+        code.contains("function Ünicorn__AstroComponent_("),
+        "{code}"
+    );
+}
