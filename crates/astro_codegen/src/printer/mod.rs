@@ -1323,13 +1323,10 @@ impl<'a> AstroCodegen<'a> {
     /// parent).  When compact is disabled, it falls through to `print_jsx_child`.
     fn print_jsx_children_compact(&mut self, children: &[JSXChild<'a>]) {
         let refs: Vec<&JSXChild<'a>> = children.iter().collect();
-        self.print_jsx_children_compact_refs(&refs);
+        self.print_jsx_children_compact_refs(&refs, false);
     }
 
-    /// Reference-slice variant of [`Self::print_jsx_children_compact`]: slot
-    /// bodies hold their children as `Vec<&JSXChild>`, so they route here to get
-    /// the same whitespace collapsing as regular element children.
-    fn print_jsx_children_compact_refs(&mut self, children: &[&JSXChild<'a>]) {
+    fn print_jsx_children_compact_refs(&mut self, children: &[&JSXChild<'a>], in_slot_body: bool) {
         let compact = self.options.compact;
 
         // Pre-compute which children will be extracted (produce no output),
@@ -1384,6 +1381,11 @@ impl<'a> AstroCodegen<'a> {
                     && text.value.as_str().chars().all(|c| c.is_ascii_whitespace())
                     && is_edge_whitespace(children, &invisible, i)
                 {
+                    continue;
+                }
+                // A component may render `<slot />` into a whitespace-sensitive context.
+                if in_slot_body && compact == CompactMode::Jsx && !text.value.trim().is_empty() {
+                    self.print_jsx_child(child);
                     continue;
                 }
                 let is_lone = visible_count == 1;

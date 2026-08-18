@@ -356,17 +356,13 @@ impl<'a> AstroCodegen<'a> {
         self.print("`");
     }
 
-    /// Emit slot body children. Under compact mode they route through the shared
-    /// whitespace-collapsing path so slotted content is trimmed like regular
-    /// template children; with compact disabled they are emitted verbatim, which
-    /// is what the Go compiler does for slot whitespace.
     fn print_slot_children(&mut self, children: &[&JSXChild<'a>]) {
         if self.options.compact == CompactMode::Disabled {
             for child in children {
                 self.print_jsx_child(child);
             }
         } else {
-            self.print_jsx_children_compact_refs(children);
+            self.print_jsx_children_compact_refs(children, true);
         }
     }
 
