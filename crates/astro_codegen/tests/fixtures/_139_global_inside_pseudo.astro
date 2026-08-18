@@ -1,0 +1,13 @@
+<h4></h4>
+<h3></h3>
+<style>
+h3:has(+ :global(h4)) {
+	color: red;
+}
+h3:is(:global(h4), span) {
+	color: blue;
+}
+h4:is(:global(h4)) {
+	color: green;
+}
+</style>

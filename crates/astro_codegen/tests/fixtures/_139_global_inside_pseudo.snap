@@ -1,0 +1,18 @@
+---
+source: crates/astro_codegen/tests/snapshots.rs
+input_file: crates/astro_codegen/tests/fixtures/_139_global_inside_pseudo.astro
+---
+import { render as $$render, createComponent as $$createComponent, maybeRenderHead as $$maybeRenderHead, createMetadata as $$createMetadata } from "http://localhost:3000/";
+import "<stdin>?astro&type=style&index=0&lang.css";
+export const $$metadata = $$createMetadata(import.meta.url, {
+	modules: [],
+	hydratedComponents: [],
+	clientOnlyComponents: [],
+	hydrationDirectives: new Set([]),
+	hoisted: []
+});
+const $$Component = $$createComponent(($$result, $$props, $$slots) => {
+	return $$render`${$$maybeRenderHead($$result)}<h4 class="astro-hpexjp6u"></h4>
+<h3 class="astro-hpexjp6u"></h3>`;
+}, undefined, undefined);
+export default $$Component;
