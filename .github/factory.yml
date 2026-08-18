@@ -1,0 +1,11 @@
+version: 1
+
+review:
+  trigger:
+    label: ai-review
+
+triage:
+  enabled: true
+  skill: .agents/skills/triage
+  previewRelease:
+    workflow: factory-preview.yml

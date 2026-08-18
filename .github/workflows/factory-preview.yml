@@ -1,0 +1,135 @@
+# Preview release workflow for factory triage preview releases.
+#
+# The factory dispatches this workflow on the DEFAULT BRANCH and passes the
+# agent-authored fix branch as an input, so this definition always stays
+# maintainer-controlled. It builds the fix branch, publishes an installable
+# build to pkg.pr.new, and reports the result by creating a check run named
+# `factory/preview-release` on the built commit whose summary contains a fenced
+# ```json block of `{"packages":[{"name":"...","url":"..."}]}`.
+#
+# This repository ships a native NAPI addon, so the preview is a single-platform
+# build (linux x64 gnu, the runner's platform). A reporter can install and test
+# the preview on that platform; other platforms are not built here.
+#
+# The work is split across two jobs on purpose. `publish` runs the fix branch's
+# build scripts, so it gets no `checks: write`; `report` holds that permission
+# and never checks out untrusted code.
+
+name: Factory preview release
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: Fix branch to publish a preview release for
+        required: true
+      issue:
+        description: Issue number the fix belongs to
+        required: false
+
+permissions: {}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # pkg.pr.new authenticates with Actions OIDC
+    outputs:
+      sha: ${{ steps.resolve.outputs.sha }}
+      packages: ${{ steps.collect.outputs.packages }}
+      conclusion: ${{ steps.collect.outputs.conclusion }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.branch }}
+          persist-credentials: false
+
+      # Resolved before anything can fail, so the report job below always has a
+      # commit to attach its check run to.
+      - id: resolve
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # These steps execute code from the fix branch.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build native addon
+        run: pnpm --filter ./crates/astro_napi run build
+
+      - name: Build @astrojs/compiler-rs
+        run: pnpm run build:compiler
+
+      # The napi loader prefers a local `.node` next to index.js, so packing it
+      # into the binding tarball makes the single-platform preview installable
+      # without the platform sub-packages a full release would publish.
+      - name: Include native binary in the binding package
+        run: npm pkg set 'files[]'='astro.linux-x64-gnu.node'
+        working-directory: crates/astro_napi
+
+      - name: Publish preview packages
+        id: publish
+        run: >-
+          npx pkg-pr-new@0 publish --json /tmp/pkg-pr-new.json --comment=off
+          './crates/astro_napi' './packages/compiler'
+
+      - name: Collect published packages
+        id: collect
+        if: always()
+        env:
+          OUTCOME: ${{ steps.publish.outcome }}
+        run: |
+          node --input-type=module -e '
+            import { appendFileSync, readFileSync } from "node:fs";
+            let packages = [];
+            try {
+              const report = JSON.parse(readFileSync("/tmp/pkg-pr-new.json", "utf8"));
+              packages = (report.packages ?? []).map((entry) => ({
+                name: entry.name,
+                url: entry.url,
+              }));
+            } catch {
+              // Publishing failed; report an empty package list.
+            }
+            const conclusion =
+              process.env.OUTCOME === "success" && packages.length > 0 ? "success" : "failure";
+            appendFileSync(process.env.GITHUB_OUTPUT, `packages=${JSON.stringify({ packages })}\n`);
+            appendFileSync(process.env.GITHUB_OUTPUT, `conclusion=${conclusion}\n`);
+          '
+
+  report:
+    runs-on: ubuntu-latest
+    needs: publish
+    if: always() && needs.publish.result != 'cancelled'
+    permissions:
+      checks: write
+    steps:
+      - name: Report preview release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          HEAD_SHA: ${{ needs.publish.outputs.sha }}
+          PACKAGES: ${{ needs.publish.outputs.packages }}
+          CONCLUSION: ${{ needs.publish.outputs.conclusion || 'failure' }}
+        run: |
+          PAYLOAD="${PACKAGES}"
+          if [ -z "$PAYLOAD" ]; then PAYLOAD='{"packages":[]}'; fi
+          SUMMARY=$(printf '```json\n%s\n```' "$PAYLOAD")
+          gh api "repos/${GITHUB_REPOSITORY}/check-runs" \
+            -f name='factory/preview-release' \
+            -f head_sha="$HEAD_SHA" \
+            -f status=completed \
+            -f conclusion="$CONCLUSION" \
+            -f 'output[title]=Preview release' \
+            -f "output[summary]=$SUMMARY"

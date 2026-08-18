@@ -45,25 +45,34 @@ impl<'i> Visitor<'i> for GlobalSelectorVisitor {
     fn visit_selector_list(&mut self, selectors: &mut SelectorList<'i>) -> Result<(), Self::Error> {
         // Rebuild the rule's top-level selector list, expanding any `:global()` that wraps a
         // selector list into one selector per item (`.x :global(ul, ol)` becomes the two
-        // selectors `.x :global(ul)` and `.x :global(ol)`). Arguments of `:not()`/`:is()`/
-        // `:has()` are not traversed, so a nested `:global(...)` stays opaque and is emitted
-        // verbatim.
-        let mut expanded: Vec<Selector<'i>> = Vec::with_capacity(selectors.0.len());
-        for selector in selectors.0.iter() {
-            // Both passes below flatten and rebuild the whole selector, so skip them unless
-            // there is actually a `:global()` to handle — most selectors have none.
-            if !selector_contains_global(selector) {
-                expanded.push(selector.clone());
-                continue;
-            }
-            for mut normalized in expand_global_selector_lists(selector) {
-                hoist_global_leading_combinators(&mut normalized);
-                expanded.push(normalized);
-            }
-        }
+        // selectors `.x :global(ul)` and `.x :global(ol)`).
+        let expanded = normalize_global_selectors(&selectors.0, hoist_global_leading_combinators);
         selectors.0 = expanded.into();
         Ok(())
     }
+}
+
+/// Normalize every `:global()` in a list of selectors, expanding those that wrap a selector
+/// list into one selector per item. `hoist` anchors a combinator lifted out of a `:global()`,
+/// which differs between a rule's selector list and a functional pseudo-class argument.
+fn normalize_global_selectors<'i>(
+    selectors: &[Selector<'i>],
+    hoist: fn(&mut Selector<'i>),
+) -> Vec<Selector<'i>> {
+    let mut expanded: Vec<Selector<'i>> = Vec::with_capacity(selectors.len());
+    for selector in selectors {
+        // Both passes below flatten and rebuild the whole selector, so skip them unless
+        // there is actually a `:global()` to handle — most selectors have none.
+        if !selector_contains_global(selector) {
+            expanded.push(selector.clone());
+            continue;
+        }
+        for mut normalized in expand_global_selector_lists(selector) {
+            hoist(&mut normalized);
+            expanded.push(normalized);
+        }
+    }
+    expanded
 }
 
 /// Normalize `:global()` components in a single selector and distribute any that wrap a
@@ -101,7 +110,7 @@ fn expand_global_selector_lists<'i>(selector: &Selector<'i>) -> Vec<Selector<'i>
 fn normalize_component_options<'i>(component: Component<'i>) -> Vec<Component<'i>> {
     let Component::NonTSPseudoClass(PseudoClass::CustomFunction { name, arguments }) = &component
     else {
-        return vec![component];
+        return vec![normalize_nested_global_lists(component)];
     };
     if !name.eq_ignore_ascii_case("global") {
         return vec![component];
@@ -123,18 +132,65 @@ fn normalize_component_options<'i>(component: Component<'i>) -> Vec<Component<'i
     vec![normalize_component(component)]
 }
 
-/// Cheap, allocation-free check for a top-level `:global()` — the raw `CustomFunction`
-/// form or an already-normalized `Global`.
 fn selector_contains_global(selector: &Selector<'_>) -> bool {
     selector
         .iter_raw_match_order()
-        .any(|component| match component {
-            Component::NonTSPseudoClass(PseudoClass::CustomFunction { name, .. }) => {
-                name.eq_ignore_ascii_case("global")
-            }
-            Component::NonTSPseudoClass(PseudoClass::Global { .. }) => true,
-            _ => false,
-        })
+        .any(component_contains_global)
+}
+
+fn component_contains_global(component: &Component<'_>) -> bool {
+    match component {
+        Component::NonTSPseudoClass(PseudoClass::CustomFunction { name, .. }) => {
+            name.eq_ignore_ascii_case("global")
+        }
+        Component::NonTSPseudoClass(PseudoClass::Global { .. }) => true,
+        Component::Is(list)
+        | Component::Where(list)
+        | Component::Has(list)
+        | Component::Negation(list) => list.iter().any(selector_contains_global),
+        Component::Any(_, list) => list.iter().any(selector_contains_global),
+        Component::Slotted(selector) => selector_contains_global(selector),
+        Component::Host(Some(selector)) => selector_contains_global(selector),
+        _ => false,
+    }
+}
+
+fn normalize_nested_global_lists<'i>(component: Component<'i>) -> Component<'i> {
+    if !component_contains_global(&component) {
+        return component;
+    }
+    match component {
+        Component::Is(list) => Component::Is(normalize_nested_global_list(&list)),
+        Component::Where(list) => Component::Where(normalize_nested_global_list(&list)),
+        Component::Has(list) => Component::Has(normalize_nested_global_list(&list)),
+        Component::Negation(list) => Component::Negation(normalize_nested_global_list(&list)),
+        Component::Any(prefix, list) => Component::Any(prefix, normalize_nested_global_list(&list)),
+        Component::Slotted(selector) => {
+            Component::Slotted(normalize_nested_global_selector(selector))
+        }
+        Component::Host(Some(selector)) => {
+            Component::Host(Some(normalize_nested_global_selector(selector)))
+        }
+        other => other,
+    }
+}
+
+fn normalize_nested_global_list<'i>(selectors: &[Selector<'i>]) -> Box<[Selector<'i>]> {
+    normalize_global_selectors(selectors, hoist_nested_global_leading_combinators).into()
+}
+
+/// `:host()` and `::slotted()` hold a single selector, so a `:global()` list inside them has
+/// nowhere to expand to — leave such a selector untouched rather than dropping items.
+fn normalize_nested_global_selector<'i>(selector: Selector<'i>) -> Selector<'i> {
+    let mut normalized = normalize_global_selectors(
+        std::slice::from_ref(&selector),
+        hoist_nested_global_leading_combinators,
+    );
+    if normalized.len() == 1 {
+        normalized.remove(0)
+    } else {
+        selector
+    }
 }
 
 fn normalize_global_pseudos(selector: &mut Selector<'_>) {
@@ -158,7 +214,7 @@ fn normalize_component(component: Component<'_>) -> Component<'_> {
                 })
             }
         }
-        other => other,
+        other => normalize_nested_global_lists(other),
     }
 }
 
@@ -327,6 +383,25 @@ fn token_list_to_css(tokens: &TokenList<'_>) -> String {
 }
 
 fn hoist_global_leading_combinators<'i>(selector: &mut Selector<'i>) {
+    let flat = hoisted_global_components(selector);
+    if !flat.is_empty() {
+        *selector = flat.into();
+    }
+}
+
+/// A functional pseudo-class argument has no preceding compound for a hoisted combinator to
+/// attach to, so it is anchored to `:scope` (`:has(:global(> .a))` → `:has(:scope > .a)`).
+fn hoist_nested_global_leading_combinators<'i>(selector: &mut Selector<'i>) {
+    let mut flat = hoisted_global_components(selector);
+    if matches!(flat.first(), Some(Component::Combinator(_))) {
+        flat.insert(0, Component::Scope);
+    }
+    if !flat.is_empty() {
+        *selector = flat.into();
+    }
+}
+
+fn hoisted_global_components<'i>(selector: &mut Selector<'i>) -> Vec<Component<'i>> {
     for component in selector.iter_mut_raw_match_order() {
         if let Component::NonTSPseudoClass(PseudoClass::Global { selector: inner }) = component {
             hoist_global_leading_combinators(inner);
@@ -364,9 +439,7 @@ fn hoist_global_leading_combinators<'i>(selector: &mut Selector<'i>) {
         index += 1;
     }
 
-    if !flat.is_empty() {
-        *selector = flat.into();
-    }
+    flat
 }
 
 fn split_selector_leading_combinator<'i>(
@@ -1761,23 +1834,90 @@ mod tests {
     }
 
     #[test]
-    fn test_global_nested_in_pseudo_class_stays_literal() {
-        // Like Go: `:global()` inside another pseudo-class stays literal; the subject is scoped.
+    fn test_global_nested_in_pseudo_class_is_stripped() {
         assert_eq!(
             scope(".a:not(:global(.foo)){}"),
-            ".a:where(.astro-xxxxxx):not(:global(.foo)) {\n}\n"
+            ".a:where(.astro-xxxxxx):not(.foo) {\n}\n"
         );
         assert_eq!(
             scope(".a:is(:global(.foo), .bar){}"),
-            ".a:where(.astro-xxxxxx):is(:global(.foo), .bar) {\n}\n"
+            ".a:where(.astro-xxxxxx):is(.foo, .bar) {\n}\n"
+        );
+        assert_eq!(
+            scope(".a:where(:global(.foo)){}"),
+            ".a:where(.astro-xxxxxx):where(.foo) {\n}\n"
         );
         assert_eq!(
             scope(".a:has(:global(.child)){}"),
-            ".a:where(.astro-xxxxxx):has(:global(.child)) {\n}\n"
+            ".a:where(.astro-xxxxxx):has(.child) {\n}\n"
+        );
+        assert_eq!(
+            scope(".a:-webkit-any(:global(.foo)){}"),
+            ".a:where(.astro-xxxxxx):-webkit-any(.foo) {\n}\n"
         );
         assert_eq!(
             scope_attribute(".button:not(:global(.disabled)){}"),
-            ".button[data-astro-cid-xxxxxx]:not(:global(.disabled)) {\n}\n"
+            ".button[data-astro-cid-xxxxxx]:not(.disabled) {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_nested_in_pseudo_class_leaves_argument_unscoped() {
+        assert_eq!(
+            scope(".a:has(.child){}"),
+            ".a:where(.astro-xxxxxx):has(.child) {\n}\n"
+        );
+        assert_eq!(
+            scope(".a:has(:global(.b) .c){}"),
+            ".a:where(.astro-xxxxxx):has(.b .c) {\n}\n"
+        );
+        assert_eq!(
+            scope(".a:is(:global(.b), .c) .d{}"),
+            ".a:where(.astro-xxxxxx):is(.b, .c) .d:where(.astro-xxxxxx) {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_nested_in_pseudo_class_selector_list() {
+        assert_eq!(
+            scope(".a:has(:global(.b, .c)){}"),
+            ".a:where(.astro-xxxxxx):has(.b, .c) {\n}\n"
+        );
+        assert_eq!(
+            scope(".a:not(:global(.b, .c)){}"),
+            ".a:where(.astro-xxxxxx):not(.b, .c) {\n}\n"
+        );
+        assert_eq!(
+            scope(".a:is(:global(.b, .c), .d){}"),
+            ".a:where(.astro-xxxxxx):is(.b, .c, .d) {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_nested_in_pseudo_class_deeply() {
+        assert_eq!(
+            scope(".a:not(:is(:global(.b), .c)){}"),
+            ".a:where(.astro-xxxxxx):not(:is(.b, .c)) {\n}\n"
+        );
+        assert_eq!(
+            scope(".panel :global(> .item:not(:global(.hidden))){}"),
+            ".panel:where(.astro-xxxxxx) > .item:not(.hidden) {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_nested_in_pseudo_class_keeps_surroundings() {
+        assert_eq!(
+            scope(".a:has(:global(.b))::after{}"),
+            ".a:where(.astro-xxxxxx):has(.b):after {\n}\n"
+        );
+        assert_eq!(
+            scope(".a:has(:global(.b)) > .c{}"),
+            ".a:where(.astro-xxxxxx):has(.b) > .c:where(.astro-xxxxxx) {\n}\n"
+        );
+        assert_eq!(
+            scope("@media (min-width: 640px) { .a:has(+ :global(h4)) {} }"),
+            "@media (width >= 640px) {\n  .a:where(.astro-xxxxxx):has( + h4) {\n  }\n}\n"
         );
     }
 
@@ -1800,15 +1940,35 @@ mod tests {
     }
 
     #[test]
-    fn test_global_inside_has_stays_literal() {
-        // Even a leading combinator inside `:global()` here stays verbatim (not hoisted).
+    fn test_global_inside_has_with_combinator() {
         assert_eq!(
-            scope(".a:has(:global(> .child)){}"),
-            ".a:where(.astro-xxxxxx):has(:global(> .child)) {\n}\n"
+            scope_attribute("h3:has(+ :global(h4)){color:red}"),
+            "h3[data-astro-cid-xxxxxx]:has( + h4) {\n  color: red;\n}\n"
         );
         assert_eq!(
             scope(".a:has(> :global(.child)){}"),
-            ".a:where(.astro-xxxxxx):has( > :global(.child)) {\n}\n"
+            ".a:where(.astro-xxxxxx):has( > .child) {\n}\n"
+        );
+        assert_eq!(
+            scope(".a:has(~ :global(.sib)){}"),
+            ".a:where(.astro-xxxxxx):has( ~ .sib) {\n}\n"
+        );
+        // A combinator inside the `:global()` is hoisted out of it just the same.
+        assert_eq!(
+            scope(".a:has(:global(> .child)){}"),
+            ".a:where(.astro-xxxxxx):has( > .child) {\n}\n"
+        );
+        assert_eq!(
+            scope(".a:has(:global(> .b, ~ .c)){}"),
+            ".a:where(.astro-xxxxxx):has( > .b,  ~ .c) {\n}\n"
+        );
+    }
+
+    #[test]
+    fn test_global_empty_inside_pseudo_class_stays_literal() {
+        assert_eq!(
+            scope(".a:has(:global()){}"),
+            ".a:where(.astro-xxxxxx):has(:global()) {\n}\n"
         );
     }
 
