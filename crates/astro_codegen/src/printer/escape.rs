@@ -48,6 +48,88 @@ pub fn escape_double_quotes(s: &str) -> std::borrow::Cow<'_, str> {
     std::borrow::Cow::Owned(s.cow_replace('\r', "\\r").into_owned())
 }
 
+/// Escape for a `"..."` JS string literal, leaving authored escapes for the runtime to resolve.
+///
+/// A backslash opening no escape is doubled instead, so `pattern="^a\.b$"` stays a working regex.
+//
+// Escape table adapted from oxc's lexer (`crates/oxc_parser/src/lexer/unicode.rs`).
+// oxc is MIT licensed:
+//   Copyright (c) 2024-present VoidZero Inc. & Contributors
+//   Copyright (c) 2023 Boshen
+pub fn escape_double_quotes_keeping_escapes(s: &str) -> std::borrow::Cow<'_, str> {
+    let mut out: Option<String> = None;
+    let mut copied = 0;
+    let mut cursor = 0;
+    let bytes = s.as_bytes();
+
+    while cursor < bytes.len() {
+        let replacement = match bytes[cursor] {
+            b'\\' => match escape_len(&s[cursor + 1..]) {
+                Some(len) => {
+                    cursor += 1 + len;
+                    continue;
+                }
+                None => "\\\\",
+            },
+            b'"' => "\\\"",
+            b'\n' => "\\n",
+            b'\r' => "\\r",
+            _ => {
+                cursor += 1;
+                continue;
+            }
+        };
+        let buf = out.get_or_insert_with(|| String::with_capacity(s.len()));
+        buf.push_str(&s[copied..cursor]);
+        buf.push_str(replacement);
+        cursor += 1;
+        copied = cursor;
+    }
+
+    match out {
+        Some(mut buf) => {
+            buf.push_str(&s[copied..]);
+            std::borrow::Cow::Owned(buf)
+        }
+        None => std::borrow::Cow::Borrowed(s),
+    }
+}
+
+/// The byte length of the escape opened after a `\`, or `None` where JavaScript defines none.
+///
+/// Legacy octal (`\1`) reads as undefined so regex backreferences keep their backslash.
+fn escape_len(s: &str) -> Option<usize> {
+    let c = s.chars().next()?;
+    match c {
+        '\n' | '\u{2028}' | '\u{2029}' => Some(c.len_utf8()),
+        '\r' => Some(if s.as_bytes().get(1) == Some(&b'\n') {
+            2
+        } else {
+            1
+        }),
+        'n' | 'r' | 't' | 'b' | 'f' | 'v' | '\\' | '\'' | '"' | '`' => Some(1),
+        '0' if !s.as_bytes().get(1).is_some_and(u8::is_ascii_digit) => Some(1),
+        'x' => is_hex(s.get(1..3)?).then_some(3),
+        'u' => unicode_escape_len(s.get(1..)?),
+        _ => None,
+    }
+}
+
+fn unicode_escape_len(s: &str) -> Option<usize> {
+    let Some(braced) = s.strip_prefix('{') else {
+        return is_hex(s.get(..4)?).then_some(4);
+    };
+    let end = braced.find('}')?;
+    let digits = braced.get(..end)?;
+    // Out of range is a syntax error rather than a lone surrogate, so it must not reach the output.
+    let in_range = u32::from_str_radix(digits, 16).is_ok_and(|value| value <= 0x10_FFFF);
+    (is_hex(digits) && in_range).then_some(end + 2)
+}
+
+fn is_hex(s: &str) -> bool {
+    !s.is_empty() && s.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
 /// Escape single quotes for embedding inside a `'...'` string.
 ///
 /// Only escapes `'` — see [`escape_double_quotes`] for rationale on
@@ -321,6 +403,114 @@ mod tests {
         assert_eq!(
             escape_double_quotes("some-class\n  another-class"),
             "some-class\\n  another-class"
+        );
+    }
+
+    #[test]
+    fn keeping_escapes_leaves_authored_escapes_untouched() {
+        for input in [
+            "a\\nb",
+            "a\\rb",
+            "a\\tb",
+            "a\\bb",
+            "a\\fb",
+            "a\\vb",
+            "a\\\\b",
+            "a\\'b",
+            "a\\\"b",
+            "a\\`b",
+            "\\x41",
+            "\\u0041",
+            "\\u{1F600}",
+            "\\u00a0",
+            "\\uD83D\\uDE00",
+            "\\0",
+            "\\0a",
+        ] {
+            let result = escape_double_quotes_keeping_escapes(input);
+            assert_eq!(
+                &*result, input,
+                "{input:?} is already valid JS escape syntax"
+            );
+            assert!(
+                matches!(result, std::borrow::Cow::Borrowed(_)),
+                "{input:?} needs no change and must not allocate"
+            );
+        }
+    }
+
+    #[test]
+    fn keeping_escapes_doubles_undefined_sequences() {
+        for (input, expected) in [
+            ("^example\\.com$", "^example\\\\.com$"),
+            ("C:\\Users\\me", "C:\\\\Users\\\\me"),
+            ("(a)\\1", "(a)\\\\1"),
+            ("\\101", "\\\\101"),
+            ("a\\", "a\\\\"),
+            ("\\x4", "\\\\x4"),
+            ("\\xZZ", "\\\\xZZ"),
+            ("\\u12", "\\\\u12"),
+            ("\\u{}", "\\\\u{}"),
+            ("\\u{110000}", "\\\\u{110000}"),
+        ] {
+            assert_eq!(
+                &*escape_double_quotes_keeping_escapes(input),
+                expected,
+                "{input:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn keeping_escapes_escapes_quotes_and_raw_line_breaks() {
+        assert_eq!(
+            &*escape_double_quotes_keeping_escapes("say \"hi\""),
+            "say \\\"hi\\\""
+        );
+        assert_eq!(&*escape_double_quotes_keeping_escapes("a\nb"), "a\\nb");
+        assert_eq!(&*escape_double_quotes_keeping_escapes("a\rb"), "a\\rb");
+    }
+
+    #[test]
+    fn keeping_escapes_windows_path_needs_authored_doubling() {
+        assert_eq!(
+            &*escape_double_quotes_keeping_escapes("C:\\temp"),
+            "C:\\temp"
+        );
+        assert_eq!(
+            &*escape_double_quotes_keeping_escapes("C:\\\\temp"),
+            "C:\\\\temp"
+        );
+    }
+
+    #[test]
+    fn keeping_escapes_line_continuations_pass_through() {
+        assert_eq!(
+            &*escape_double_quotes_keeping_escapes("line\\\ncont"),
+            "line\\\ncont"
+        );
+        assert_eq!(
+            &*escape_double_quotes_keeping_escapes("line\\\r\ncont"),
+            "line\\\r\ncont"
+        );
+        assert_eq!(
+            &*escape_double_quotes_keeping_escapes("line\\\u{2028}cont"),
+            "line\\\u{2028}cont"
+        );
+    }
+
+    #[test]
+    fn keeping_escapes_consecutive_and_multibyte() {
+        assert_eq!(&*escape_double_quotes_keeping_escapes("\\n\\n"), "\\n\\n");
+        // an escaped backslash must not turn its neighbour into an escape
+        assert_eq!(&*escape_double_quotes_keeping_escapes("a\\\\nb"), "a\\\\nb");
+        assert_eq!(
+            &*escape_double_quotes_keeping_escapes("héllo\\né"),
+            "héllo\\né"
+        );
+        assert_eq!(
+            &*escape_double_quotes_keeping_escapes("héllo\\.é"),
+            "héllo\\\\.é"
         );
     }
 

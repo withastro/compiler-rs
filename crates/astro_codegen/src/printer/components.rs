@@ -6,7 +6,10 @@
 
 use super::AstroCodegen;
 use super::elements::ScopeId;
-use super::escape::{decode_html_entities, escape_double_quotes, escape_template_literal};
+use super::escape::{
+    decode_html_entities, escape_double_quotes, escape_double_quotes_keeping_escapes,
+    escape_template_literal,
+};
 use super::expr_to_string;
 use super::runtime;
 use super::whitespace::has_is_raw_attr;
@@ -447,7 +450,7 @@ impl<'a> AstroCodegen<'a> {
                                 if val.is_empty() {
                                     self.print_parts(["\"", sc, "\""]);
                                 } else {
-                                    let escaped = escape_double_quotes(val);
+                                    let escaped = escape_double_quotes_keeping_escapes(val);
                                     self.print_parts(["\"", &escaped, " ", sc, "\""]);
                                 }
                             }
@@ -640,7 +643,7 @@ impl<'a> AstroCodegen<'a> {
             None => self.print("true"),
             Some(JSXAttributeValue::StringLiteral(lit)) => {
                 self.print("\"");
-                self.print(&escape_double_quotes(lit.value.as_str()));
+                self.print(&escape_double_quotes_keeping_escapes(lit.value.as_str()));
                 self.print("\"");
             }
             Some(JSXAttributeValue::ExpressionContainer(expr)) => {
