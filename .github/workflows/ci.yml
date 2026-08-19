@@ -155,6 +155,11 @@ jobs:
           - host: ubuntu-latest
             target: wasm32-wasip1-threads
             build: pnpm run build --target wasm32-wasip1-threads
+            
+          # -- Linux ARM64 -- 
+          - host: ubuntu-latest
+            target: aarch64-linux-android
+            build: pnpm run build --target aarch64-linux-android --use-napi-cross
 
     name: Build - ${{ matrix.settings.target }}
     runs-on: ${{ matrix.settings.host }}
