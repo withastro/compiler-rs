@@ -1,0 +1,11 @@
+---
+source: crates/astro_codegen/tests/css_scoping_snapshots.rs
+expression: css
+---
+h3[data-astro-cid-3b6fdq76]:has( + h4) {
+  color: red;
+}
+
+.a[data-astro-cid-3b6fdq76]:is(.b, .c) {
+  color: #00f;
+}

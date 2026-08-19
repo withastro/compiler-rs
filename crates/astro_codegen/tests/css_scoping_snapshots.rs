@@ -82,6 +82,17 @@ fn global_selector_list_cartesian() {
     assert_css_snapshot!("global_selector_list_cartesian", css);
 }
 
+/// A `:global()` nested inside a functional pseudo-class has its wrapper stripped, while
+/// the pseudo-class argument itself stays unscoped.
+#[test]
+fn global_inside_functional_pseudo_class() {
+    let css = scoped_css(
+        "<h3></h3><h4></h4><style>h3:has(+ :global(h4)) { color: red; } .a:is(:global(.b), .c) { color: blue; }</style>",
+        ScopedStyleStrategy::Attribute,
+    );
+    assert_css_snapshot!("global_inside_functional_pseudo_class", css);
+}
+
 /// The same list distribution under the attribute scoping strategy.
 #[test]
 fn global_selector_list_attribute_strategy() {
