@@ -31,6 +31,8 @@ pub struct ConvertOptions {
     /// Component identifier source, and `sources[0]` in the source map.
     pub filename: Option<String>,
     pub sourcemap: SourceMapMode,
+    /// Appends `declare` statements resolving the `Fragment` and `Astro` globals.
+    pub ambient_types: bool,
 }
 
 /// `code` is always populated, whether or not the input parsed cleanly.

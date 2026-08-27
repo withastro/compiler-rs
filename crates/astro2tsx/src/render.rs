@@ -80,6 +80,12 @@ pub(crate) fn render_root(printer: &mut Printer, root: HtmlRoot, options: &Conve
         body_start = printer.position();
 
         let mut prev_end = body_text_start;
+        // TSX has no doctype syntax, so the directive must not reach the output.
+        if let Some(directive) = root.directive() {
+            let directive_range = directive.range();
+            emit_source_gap(printer, prev_end, range_start(directive_range));
+            prev_end = prev_end.max(u32::from(directive_range.end()));
+        }
         for element in body.iter() {
             let element_range = element.range();
             emit_source_gap(printer, prev_end, u32::from(element_range.start()));
@@ -106,7 +112,12 @@ pub(crate) fn render_root(printer: &mut Printer, root: HtmlRoot, options: &Conve
     }
 
     let component_name = tsx_component_name(options.filename.as_deref());
-    emit_default_export(printer, &component_name, &props_analysis);
+    emit_default_export(
+        printer,
+        &component_name,
+        &props_analysis,
+        options.ambient_types,
+    );
 }
 
 /// Returns the byte offset where body content begins. With a frontmatter
@@ -161,7 +172,12 @@ fn frontmatter_content(node: &AnyAstroFrontmatterElement) -> Option<(String, u32
     None
 }
 
-fn emit_default_export(printer: &mut Printer, component: &str, analysis: &PropsAnalysis) {
+fn emit_default_export(
+    printer: &mut Printer,
+    component: &str,
+    analysis: &PropsAnalysis,
+    ambient_types: bool,
+) {
     // `_props` takes the parameterised `Props<T>`; the Astro global takes the bare ident.
     let (props_param, props_global) = if analysis.has_props {
         if analysis.generics_args.is_empty() {
@@ -204,7 +220,11 @@ fn emit_default_export(printer: &mut Printer, component: &str, analysis: &PropsA
         printer.write("type ASTRO__Get<T, K> = T extends undefined ? undefined : K extends keyof T ? T[K] : never;\n");
     }
 
-    if analysis.has_props || analysis.has_get_static_paths {
+    if ambient_types {
+        printer.write("declare const Fragment: any;\n");
+    }
+
+    if analysis.has_props || analysis.has_get_static_paths || ambient_types {
         printer.write(
             "/**\n * Astro global available in all contexts in .astro files\n *\n * [Astro documentation](https://docs.astro.build/reference/api-reference/#astro-global)\n*/\n",
         );

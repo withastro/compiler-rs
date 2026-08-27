@@ -9,6 +9,7 @@ fn options() -> ConvertOptions {
     ConvertOptions {
         filename: Some("Component.astro".to_string()),
         sourcemap: SourceMapMode::External,
+        ..Default::default()
     }
 }
 
@@ -107,6 +108,7 @@ mod phases {
                     ConvertOptions {
                         filename: Some("Component.astro".to_string()),
                         sourcemap: SourceMapMode::Inline,
+                        ..Default::default()
                     },
                 )
             });

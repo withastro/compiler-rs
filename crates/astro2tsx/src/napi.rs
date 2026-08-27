@@ -91,6 +91,10 @@ pub struct ConvertToTsxOptions {
     /// `map` without touching `code`, and `true` / `"inline"` (the default)
     /// also appends a `//# sourceMappingURL=` comment.
     pub sourcemap: Option<Either<bool, String>>,
+    /// Appends unmapped `declare` statements resolving the `Fragment` and
+    /// `Astro` globals the TSX references but never declares. Off by default:
+    /// consumers that inject their own ambient types must not receive them.
+    pub ambient_types: Option<bool>,
 }
 
 #[napi(object)]
@@ -157,6 +161,7 @@ pub fn convert_to_tsx(source: String, options: Option<ConvertToTsxOptions>) -> C
         ConvertOptions {
             filename: options.filename,
             sourcemap: SourceMapMode::External,
+            ambient_types: options.ambient_types.unwrap_or(false),
         },
     );
     let source_index = Utf16Index::new(&source);

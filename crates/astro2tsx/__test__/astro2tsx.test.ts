@@ -179,6 +179,39 @@ test('offsets are UTF-16 code units, not bytes', () => {
 	}
 });
 
+test('strips the doctype and leaves its source range unmapped', () => {
+	const source =
+		'---\nconst a = 1;\n---\n\n<!doctype html>\n<html lang="en"><body>{a}</body></html>\n';
+	const result = convertToTsx(source, { filename: 'X.astro', sourcemap: false });
+	assert.ok(!result.code.includes('<!'), result.code);
+	assert.ok(result.code.includes('<html lang="en">'));
+
+	const { generatedOffsets, sourceOffsets, lengths } = result;
+	for (let i = 0; i < generatedOffsets.length; i++) {
+		const original = source.slice(sourceOffsets[i], sourceOffsets[i] + lengths[i]);
+		assert.equal(result.code.slice(generatedOffsets[i], generatedOffsets[i] + lengths[i]), original);
+		assert.ok(!original.includes('doctype'), `run ${i} maps into the doctype`);
+	}
+});
+
+test('ambientTypes appends unmapped Fragment and Astro declarations', () => {
+	const source = '---\nconst a = Astro.props.a;\n---\n<p>{a}</p>';
+
+	const plain = convertToTsx(source, { sourcemap: false });
+	assert.ok(!plain.code.includes('declare const Fragment'));
+	assert.ok(!plain.code.includes('declare const Astro'));
+
+	const ambient = convertToTsx(source, { sourcemap: false, ambientTypes: true });
+	assert.ok(ambient.code.includes('declare const Fragment: any;'));
+	assert.match(ambient.code, /declare const Astro: Readonly<import\('astro'\)\.AstroGlobal</);
+
+	// The declarations only extend the module; everything before them is unchanged.
+	assert.ok(ambient.code.startsWith(plain.code));
+	assert.deepEqual(Array.from(ambient.generatedOffsets), Array.from(plain.generatedOffsets));
+	assert.deepEqual(Array.from(ambient.sourceOffsets), Array.from(plain.sourceOffsets));
+	assert.deepEqual(Array.from(ambient.lengths), Array.from(plain.lengths));
+});
+
 test('reports frontmatter status and positioned diagnostics', () => {
 	assert.equal(convertToTsx('---\nlet x = 1;\n---\n<p/>').frontmatterStatus, 'closed');
 	assert.equal(convertToTsx('---\nlet x = 1;\n').frontmatterStatus, 'open');
