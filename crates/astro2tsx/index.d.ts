@@ -33,6 +33,12 @@ export interface ConvertToTsxOptions {
    * also appends a `//# sourceMappingURL=` comment.
    */
   sourcemap?: boolean | string
+  /**
+   * Appends unmapped `declare` statements resolving the `Fragment` and
+   * `Astro` globals the TSX references but never declares. Off by default:
+   * consumers that inject their own ambient types must not receive them.
+   */
+  ambientTypes?: boolean
 }
 
 export interface ConvertToTsxResult {

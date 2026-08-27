@@ -459,6 +459,127 @@ fn dynamic_routes_keep_their_component_name() {
 }
 
 #[test]
+fn doctype_never_reaches_the_output() {
+    for input in [
+        "<!doctype html>\n<html><body>x</body></html>",
+        "<!DOCTYPE html>\n<html><body>x</body></html>",
+        "---\nconst a = 1;\n---\n\n<!doctype html>\n<html lang=\"en\"><body>{a}</body></html>\n",
+        "---\nconst a = 1;\n---\n<!doctype html>",
+    ] {
+        let actual = convert(input);
+        assert!(
+            !actual.contains("<!"),
+            "the doctype survived for {input:?}:\n{actual}"
+        );
+    }
+
+    let actual = convert("<!doctype html>\n<html><body>x</body></html>");
+    assert!(
+        actual.contains("<html>"),
+        "the html element was lost:\n{actual}"
+    );
+}
+
+/// Mirrors the offset-array contract consumers assert: runs slice to identical text.
+fn assert_mapped_runs_are_verbatim(source: &str, result: &astro2tsx::ConvertResult) {
+    let code_len = result.code.len() as u32;
+    let mut previous_generated = 0;
+    for (index, mapping) in result.mappings.iter().enumerate() {
+        assert!(
+            mapping.generated >= previous_generated,
+            "run {index} goes backwards"
+        );
+        previous_generated = mapping.generated;
+        let Some(original) = mapping.original else {
+            continue;
+        };
+        let run_end = result
+            .mappings
+            .get(index + 1)
+            .map(|next| next.generated)
+            .unwrap_or(code_len);
+        let length = (run_end - mapping.generated).min(source.len() as u32 - original);
+        let generated_slice =
+            &result.code[mapping.generated as usize..(mapping.generated + length) as usize];
+        let source_slice = &source[original as usize..(original + length) as usize];
+        assert_eq!(generated_slice, source_slice, "run {index} is not verbatim");
+    }
+}
+
+#[test]
+fn stripping_the_doctype_keeps_mapped_runs_verbatim() {
+    let source = "---\nconst é = 1;\n---\n\n<!doctype html>\n<html lang=en data-x=\"𝒳\"><body>{é}</body></html>\n";
+    for ambient_types in [false, true] {
+        let result = convert_to_tsx(
+            source,
+            ConvertOptions {
+                sourcemap: astro2tsx::SourceMapMode::External,
+                ambient_types,
+                ..Default::default()
+            },
+        );
+        assert!(!result.code.contains("<!"), "{}", result.code);
+        assert_mapped_runs_are_verbatim(source, &result);
+    }
+}
+
+#[test]
+fn ambient_types_are_appended_only_on_request() {
+    let source = "---\nconst title = Astro.props.title;\n---\n<h1>{title}</h1>";
+
+    let plain = convert(source);
+    assert!(!plain.contains("declare const Fragment"), "{plain}");
+    assert!(!plain.contains("declare const Astro"), "{plain}");
+
+    let ambient = convert_to_tsx(
+        source,
+        ConvertOptions {
+            ambient_types: true,
+            ..Default::default()
+        },
+    )
+    .code;
+    assert!(
+        ambient.contains("declare const Fragment: any;\n"),
+        "{ambient}"
+    );
+    assert!(
+        ambient.contains(
+            "declare const Astro: Readonly<import('astro').AstroGlobal<Record<string, any>, typeof __AstroComponent_>>"
+        ),
+        "{ambient}"
+    );
+}
+
+/// A frontmatter `Props` already declares `Astro`; a second one would conflict.
+#[test]
+fn ambient_types_never_declare_astro_twice() {
+    let source = "---\ninterface Props { title: string }\n---\n<h1>{Astro.props.title}</h1>";
+    let ambient = convert_to_tsx(
+        source,
+        ConvertOptions {
+            ambient_types: true,
+            ..Default::default()
+        },
+    )
+    .code;
+    assert_eq!(
+        ambient.matches("declare const Astro").count(),
+        1,
+        "{ambient}"
+    );
+    assert!(
+        ambient.contains("AstroGlobal<Props, typeof __AstroComponent_>"),
+        "the Props-aware declaration must win:\n{ambient}"
+    );
+    assert_eq!(
+        ambient.matches("declare const Fragment").count(),
+        1,
+        "{ambient}"
+    );
+}
+
+#[test]
 fn unicode_filenames_still_name_their_component() {
     let code = convert_to_tsx(
         "<div/>",
