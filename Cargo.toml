@@ -33,16 +33,16 @@ oxc_syntax = { git = "https://github.com/withastro/oxc", rev = "8bb526fc0c20beb4
 oxc_transformer = { git = "https://github.com/withastro/oxc", rev = "8bb526fc0c20beb4649b223d3ac39851505caa5a" }
 oxc_sourcemap = "6.0.1"
 
-# Biome dependencies via git, all pinned to the same fork revision
-biome_diagnostics = { git = "https://github.com/Princesseuh/biome", rev = "e0a22c5f5b6fd09abe5e93ec0b5416f0ffbb73cb" }
-biome_html_parser = { git = "https://github.com/Princesseuh/biome", rev = "e0a22c5f5b6fd09abe5e93ec0b5416f0ffbb73cb" }
-biome_html_syntax = { git = "https://github.com/Princesseuh/biome", rev = "e0a22c5f5b6fd09abe5e93ec0b5416f0ffbb73cb" }
-biome_js_parser = { git = "https://github.com/Princesseuh/biome", rev = "e0a22c5f5b6fd09abe5e93ec0b5416f0ffbb73cb" }
-biome_parser = { git = "https://github.com/Princesseuh/biome", rev = "e0a22c5f5b6fd09abe5e93ec0b5416f0ffbb73cb" }
-biome_js_syntax = { git = "https://github.com/Princesseuh/biome", rev = "e0a22c5f5b6fd09abe5e93ec0b5416f0ffbb73cb" }
-biome_languages = { git = "https://github.com/Princesseuh/biome", rev = "e0a22c5f5b6fd09abe5e93ec0b5416f0ffbb73cb" }
-biome_rowan = { git = "https://github.com/Princesseuh/biome", rev = "e0a22c5f5b6fd09abe5e93ec0b5416f0ffbb73cb" }
-biome_string_case = { git = "https://github.com/Princesseuh/biome", rev = "e0a22c5f5b6fd09abe5e93ec0b5416f0ffbb73cb" }
+# Biome dependencies via git, all pinned to the same revision
+biome_diagnostics = { git = "https://github.com/biomejs/biome", rev = "b88f1ea368c727ff8ebeddcaf9448f6ddc7c4878" }
+biome_html_parser = { git = "https://github.com/biomejs/biome", rev = "b88f1ea368c727ff8ebeddcaf9448f6ddc7c4878" }
+biome_html_syntax = { git = "https://github.com/biomejs/biome", rev = "b88f1ea368c727ff8ebeddcaf9448f6ddc7c4878" }
+biome_js_parser = { git = "https://github.com/biomejs/biome", rev = "b88f1ea368c727ff8ebeddcaf9448f6ddc7c4878" }
+biome_parser = { git = "https://github.com/biomejs/biome", rev = "b88f1ea368c727ff8ebeddcaf9448f6ddc7c4878" }
+biome_js_syntax = { git = "https://github.com/biomejs/biome", rev = "b88f1ea368c727ff8ebeddcaf9448f6ddc7c4878" }
+biome_languages = { git = "https://github.com/biomejs/biome", rev = "b88f1ea368c727ff8ebeddcaf9448f6ddc7c4878" }
+biome_rowan = { git = "https://github.com/biomejs/biome", rev = "b88f1ea368c727ff8ebeddcaf9448f6ddc7c4878" }
+biome_string_case = { git = "https://github.com/biomejs/biome", rev = "b88f1ea368c727ff8ebeddcaf9448f6ddc7c4878" }
 
 # NAPI
 napi = { version = "3", features = ["tokio_rt"] }

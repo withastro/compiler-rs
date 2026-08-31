@@ -1,9 +1,9 @@
 //! Emits a parsed expression body: JS verbatim, JSX normalized like the HTML renderer.
 
 use biome_js_syntax::{
-    AnyJsxAttribute, AnyJsxAttributeValue, AnyJsxElementName, JsLanguage, JsSyntaxKind,
-    JsxAttribute, JsxAttributeList, JsxElement, JsxFragment, JsxSelfClosingElement, JsxString,
-    JsxText,
+    AnyJsxAttribute, AnyJsxAttributeValue, AnyJsxElementName, AstroImplicitFragment, JsLanguage,
+    JsSyntaxKind, JsxAttribute, JsxAttributeList, JsxElement, JsxFragment, JsxSelfClosingElement,
+    JsxString, JsxText,
 };
 use biome_rowan::{AstNode, AstNodeList, SyntaxNode, SyntaxToken, SyntaxTriviaPiece, TextSize};
 
@@ -41,6 +41,12 @@ fn emit_node(printer: &mut Printer, node: &JsNode, base: u32, in_children: bool)
         JsSyntaxKind::JSX_FRAGMENT => {
             if let Some(fragment) = JsxFragment::cast_ref(node) {
                 emit_jsx_fragment(printer, &fragment, base);
+                return;
+            }
+        }
+        JsSyntaxKind::ASTRO_IMPLICIT_FRAGMENT => {
+            if let Some(fragment) = AstroImplicitFragment::cast_ref(node) {
+                emit_implicit_fragment(printer, &fragment, base);
                 return;
             }
         }
@@ -115,22 +121,26 @@ fn emit_jsx_text(printer: &mut Printer, text: &JsxText, base: u32) {
 }
 
 fn emit_jsx_fragment(printer: &mut Printer, fragment: &JsxFragment, base: u32) {
-    let implicit = fragment.is_implicit();
-    if implicit {
-        printer.map_nil();
-        printer.write("<Fragment>");
-    } else if let Ok(opening) = fragment.opening_fragment() {
+    if let Ok(opening) = fragment.opening_fragment() {
         emit_node(printer, opening.syntax(), base, true);
     }
     for child in fragment.children() {
         emit_node(printer, child.syntax(), base, true);
     }
-    if implicit {
-        printer.map_nil();
-        printer.write("</Fragment>");
-    } else if let Ok(closing) = fragment.closing_fragment() {
+    if let Ok(closing) = fragment.closing_fragment() {
         emit_node(printer, closing.syntax(), base, false);
     }
+}
+
+/// Adjacent siblings with no written wrapper; TSX needs an explicit one.
+fn emit_implicit_fragment(printer: &mut Printer, fragment: &AstroImplicitFragment, base: u32) {
+    printer.map_nil();
+    printer.write("<Fragment>");
+    for child in fragment.children() {
+        emit_node(printer, child.syntax(), base, true);
+    }
+    printer.map_nil();
+    printer.write("</Fragment>");
 }
 
 enum ChildrenMode {

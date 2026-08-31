@@ -3,8 +3,8 @@
 use biome_html_syntax::{
     AnyAstroDirective, AnyAstroFrontmatterElement, AnyHtmlAttribute, AnyHtmlAttributeInitializer,
     AnyHtmlComponentObjectName, AnyHtmlContent, AnyHtmlElement, AnyHtmlTagName,
-    AnyHtmlTextExpression, HtmlAttribute, HtmlElement, HtmlRoot, HtmlSelfClosingElement,
-    HtmlSingleTextExpression, HtmlSpreadAttribute,
+    AnyHtmlTextExpression, AstroFragment, HtmlAttribute, HtmlElement, HtmlRoot,
+    HtmlSelfClosingElement, HtmlSingleTextExpression, HtmlSpreadAttribute,
 };
 use biome_js_parser::{JsOffsetParse, JsParserOptions, parse, parse_js_with_offset};
 use biome_languages::JsFileSource;
@@ -289,6 +289,7 @@ fn render_element(printer: &mut Printer, element: AnyHtmlElement) {
     match element {
         AnyHtmlElement::AnyHtmlContent(content) => render_content(printer, content),
         AnyHtmlElement::HtmlElement(node) => render_html_element(printer, node),
+        AnyHtmlElement::AstroFragment(node) => render_astro_fragment(printer, &node),
         AnyHtmlElement::HtmlSelfClosingElement(node) => {
             render_self_closing_element(printer, node);
         }
@@ -365,7 +366,7 @@ fn render_single_text_expression(printer: &mut Printer, node: HtmlSingleTextExpr
     let Ok(l_curly) = node.l_curly_token() else {
         return;
     };
-    let Ok(expression) = node.expression() else {
+    let Some(expression) = node.expression() else {
         return;
     };
     let Ok(r_curly) = node.r_curly_token() else {
@@ -449,9 +450,7 @@ fn render_html_element(printer: &mut Printer, node: HtmlElement) {
     let Ok(opening) = node.opening_element() else {
         return;
     };
-    let Some(name) = opening.name() else {
-        // Fragment shorthand: `<>...</>`, which JSX accepts as `Fragment`.
-        render_fragment_shorthand(printer, &node);
+    let Ok(name) = opening.name() else {
         return;
     };
     let Ok(open_l_angle) = opening.l_angle_token() else {
@@ -577,7 +576,7 @@ fn render_html_element(printer: &mut Printer, node: HtmlElement) {
         }
         printer.write("</");
 
-        if let Some(closing_name) = closing_name {
+        if let Ok(closing_name) = closing_name {
             printer.map_to_offset(range_start(closing_name.range()));
             printer.write(&tag_name_text(&closing_name));
         } else {
@@ -738,11 +737,9 @@ fn render_self_closing_element(printer: &mut Printer, node: HtmlSelfClosingEleme
     printer.write(">");
 }
 
-/// Renders an `HtmlElement` whose tag name is missing — JSX's Fragment
-/// shorthand `<>...</>`. We emit literal `<>` / `</>` framing and render
-/// children inside as normal so embedded expressions still get processed.
-fn render_fragment_shorthand(printer: &mut Printer, node: &HtmlElement) {
-    let Ok(opening) = node.opening_element() else {
+/// `<>...</>` is valid TSX as written; only the children need processing.
+fn render_astro_fragment(printer: &mut Printer, node: &AstroFragment) {
+    let Ok(opening) = node.opening_fragment() else {
         return;
     };
     let Ok(open_l) = opening.l_angle_token() else {
@@ -765,7 +762,7 @@ fn render_fragment_shorthand(printer: &mut Printer, node: &HtmlElement) {
         .unwrap_or_else(|| u32::from(opening.range().end()));
 
     let closing_inner_start = node
-        .closing_element()
+        .closing_fragment()
         .ok()
         .and_then(|c| c.l_angle_token().ok())
         .map(|t| u32::from(t.text_trimmed_range().start()));
@@ -782,7 +779,7 @@ fn render_fragment_shorthand(printer: &mut Printer, node: &HtmlElement) {
         emit_source_gap(printer, prev_end.unwrap_or(opening_end), trailing_to);
     }
 
-    if let Ok(closing) = node.closing_element() {
+    if let Ok(closing) = node.closing_fragment() {
         let l_angle = closing.l_angle_token().ok();
         let r_angle = closing.r_angle_token().ok();
         if let Some(l_angle) = l_angle {
