@@ -1,6 +1,9 @@
 //! Assertions over `convert_to_tsx` output for a spread of Astro inputs.
 
+mod common;
+
 use astro2tsx::{ConvertOptions, convert_to_tsx};
+use common::assert_mapped_runs_are_verbatim;
 
 const PREFIX: &str = "/* @jsxImportSource astro */\n\n";
 
@@ -480,30 +483,108 @@ fn doctype_never_reaches_the_output() {
     );
 }
 
-/// Mirrors the offset-array contract consumers assert: runs slice to identical text.
-fn assert_mapped_runs_are_verbatim(source: &str, result: &astro2tsx::ConvertResult) {
-    let code_len = result.code.len() as u32;
-    let mut previous_generated = 0;
-    for (index, mapping) in result.mappings.iter().enumerate() {
-        assert!(
-            mapping.generated >= previous_generated,
-            "run {index} goes backwards"
-        );
-        previous_generated = mapping.generated;
-        let Some(original) = mapping.original else {
+/// The one invariant every consumer leans on, checked against every fixture.
+#[test]
+fn every_fixture_keeps_mapped_runs_verbatim() {
+    let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures");
+    let mut checked = 0;
+    for entry in std::fs::read_dir(dir).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().is_none_or(|ext| ext != "astro") {
             continue;
-        };
-        let run_end = result
-            .mappings
-            .get(index + 1)
-            .map(|next| next.generated)
-            .unwrap_or(code_len);
-        let length = (run_end - mapping.generated).min(source.len() as u32 - original);
-        let generated_slice =
-            &result.code[mapping.generated as usize..(mapping.generated + length) as usize];
-        let source_slice = &source[original as usize..(original + length) as usize];
-        assert_eq!(generated_slice, source_slice, "run {index} is not verbatim");
+        }
+        let name = path.file_name().unwrap().to_str().unwrap().to_string();
+        let raw = std::fs::read_to_string(&path).unwrap();
+        let (source, options) = common::parse_fixture(&raw);
+        let result = convert_to_tsx(
+            &source,
+            ConvertOptions {
+                sourcemap: astro2tsx::SourceMapMode::External,
+                ..options
+            },
+        );
+        assert_mapped_runs_are_verbatim(&source, &result, &name);
+        checked += 1;
     }
+    assert!(checked > 50, "expected to check most fixtures, got {checked}");
+}
+
+fn convert_external(source: &str) -> astro2tsx::ConvertResult {
+    convert_to_tsx(
+        source,
+        ConvertOptions {
+            sourcemap: astro2tsx::SourceMapMode::External,
+            ..Default::default()
+        },
+    )
+}
+
+#[test]
+fn bare_less_than_in_text_is_escaped() {
+    for input in ["<p>a < b</p>", "<div>5 < 10 is true</div>"] {
+        let result = convert_external(input);
+        assert!(
+            result.code.contains("{`<`}"),
+            "bare < survived for {input:?}:\n{}",
+            result.code
+        );
+        assert!(!result.has_parse_errors, "{input:?} should parse cleanly");
+        assert_mapped_runs_are_verbatim(input, &result, "bare <");
+    }
+}
+
+#[test]
+fn bare_return_becomes_void_0() {
+    let bare = convert("---\nif (cond) {\n\treturn;\n}\nreturn\n---\n<p/>");
+    assert!(bare.contains("void 0;"), "{bare}");
+    assert!(!bare.contains("throw ;"), "{bare}");
+    assert!(!bare.contains("throw\n"), "{bare}");
+
+    let valued = convert("---\nif (cond) return Astro.redirect('/x');\n---\n<p/>");
+    assert!(valued.contains("throw  Astro.redirect"), "{valued}");
+    assert!(!valued.contains("return Astro"), "{valued}");
+}
+
+#[test]
+fn single_quoted_attributes_round_trip_with_their_quotes() {
+    let source = "<div data-x='a\"b' title='plain'></div>";
+    let result = convert_external(source);
+    assert!(result.code.contains("data-x='a\"b'"), "{}", result.code);
+    assert_mapped_runs_are_verbatim(source, &result, "single quotes");
+}
+
+#[test]
+fn raw_template_escapes_are_present_but_unmapped() {
+    let source = "<div is:raw>a`b ${x}</div>";
+    let result = convert_external(source);
+    assert!(result.code.contains("{`a\\`b \\${x}`}"), "{}", result.code);
+    assert_mapped_runs_are_verbatim(source, &result, "raw escapes");
+}
+
+#[test]
+fn multiline_tag_headers_keep_their_whitespace() {
+    let source = "<Comp\n  foo={bar}\n/>";
+    let result = convert_external(source);
+    assert!(result.code.contains("foo={bar}\n/>"), "{}", result.code);
+    assert_mapped_runs_are_verbatim(source, &result, "multiline tag");
+}
+
+#[test]
+fn extracted_attribute_ranges_slice_to_content_with_inner_quotes() {
+    let result = convert_to_tsx(
+        "<div style='a:\"x\"' onclick='go(\"y\")'></div>",
+        ConvertOptions::default(),
+    );
+    let style = &result.styles[0];
+    assert_eq!(
+        &result.code[style.range.start as usize..style.range.end as usize],
+        style.content
+    );
+    let script = &result.scripts[0];
+    assert_eq!(
+        &result.code[script.range.start as usize..script.range.end as usize],
+        script.content
+    );
 }
 
 #[test]
@@ -519,7 +600,7 @@ fn stripping_the_doctype_keeps_mapped_runs_verbatim() {
             },
         );
         assert!(!result.code.contains("<!"), "{}", result.code);
-        assert_mapped_runs_are_verbatim(source, &result);
+        assert_mapped_runs_are_verbatim(source, &result, "doctype");
     }
 }
 

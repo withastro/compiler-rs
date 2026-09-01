@@ -33,6 +33,16 @@ pub(crate) fn encode_double_quote(src: &str) -> String {
     src.replace('"', "&quot;")
 }
 
+/// The value inside a matched `"…"` or `'…'` pair, or `None` when unquoted.
+/// Mismatched or lone quotes (`"x'`, `"`) count as unquoted.
+pub(crate) fn strip_matching_quotes(text: &str) -> Option<&str> {
+    let quote = match text.chars().next()? {
+        quote @ ('"' | '\'') => quote,
+        _ => return None,
+    };
+    text.strip_prefix(quote)?.strip_suffix(quote)
+}
+
 /// The synthetic component identifier emitted as the default export. Empty and
 /// `<stdin>` filenames produce the bare placeholder, as does a basename that
 /// cannot be an identifier (`404.astro`).

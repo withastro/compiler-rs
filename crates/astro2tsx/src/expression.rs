@@ -9,7 +9,10 @@ use biome_rowan::{AstNode, AstNodeList, SyntaxNode, SyntaxToken, SyntaxTriviaPie
 
 use crate::printer::Printer;
 use crate::sourcemap::{GeneratedRange, SourceRange};
-use crate::utils::{comment_needs_leading_space, encode_double_quote, is_valid_tsx_attribute_name};
+use crate::utils::{
+    comment_needs_leading_space, encode_double_quote, is_valid_tsx_attribute_name,
+    strip_matching_quotes,
+};
 
 type JsNode = SyntaxNode<JsLanguage>;
 type JsToken = SyntaxToken<JsLanguage>;
@@ -426,14 +429,9 @@ fn emit_jsx_string(printer: &mut Printer, string: &JsxString, base: u32) {
         emit_trivia(printer, &piece, base, false);
     }
     let start = abs(base, token.text_trimmed_range().start());
-    printer.map_to_offset(start);
+    printer.map_nil();
     printer.write("\"");
-    if text.contains('"') {
-        printer.map_to_offset(start);
-        printer.write(&encode_double_quote(text));
-    } else {
-        printer.write_with_mapping(text, start);
-    }
+    printer.write_attribute_value_with_mapping(text, start);
     printer.map_nil();
     printer.write("\"");
     for piece in token.trailing_trivia().pieces() {
@@ -473,10 +471,7 @@ fn emit_invalid_jsx_attribute(
         Some(AnyJsxAttributeValue::JsxString(string)) => {
             if let Ok(token) = string.value_token() {
                 let text = token.text_trimmed();
-                let inner = text
-                    .strip_prefix(['"', '\''])
-                    .and_then(|rest| rest.strip_suffix(['"', '\'']))
-                    .unwrap_or(text);
+                let inner = strip_matching_quotes(text).unwrap_or(text);
                 printer.map_nil();
                 printer.write(&format!("\"{}\"", encode_double_quote(inner)));
             } else {
@@ -534,10 +529,7 @@ fn jsx_attribute_string(attributes: &JsxAttributeList, name: &str) -> Option<Str
             && let Ok(token) = string.value_token()
         {
             let text = token.text_trimmed().to_string();
-            let inner = text
-                .strip_prefix(['"', '\''])
-                .and_then(|rest| rest.strip_suffix(['"', '\'']))
-                .unwrap_or(&text);
+            let inner = strip_matching_quotes(&text).unwrap_or(&text);
             return Some(inner.to_string());
         }
     }

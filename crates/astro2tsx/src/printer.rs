@@ -89,11 +89,11 @@ impl<'a> Printer<'a> {
         self.output.push_str(text);
     }
 
-    /// JSX text cannot contain raw `>` or `}`; they emit as `{\`>\`}`.
+    /// JSX text cannot contain raw `<`, `>`, or `}`; they emit as `{\`>\`}`.
     pub(crate) fn write_jsx_text_with_mapping(&mut self, text: &str, original_start: u32) {
         let mut original = original_start;
         for ch in text.chars() {
-            if ch == '>' || ch == '}' {
+            if ch == '<' || ch == '>' || ch == '}' {
                 self.map_nil();
                 self.output.push_str("{`");
                 self.map_to_offset(original);
@@ -108,14 +108,13 @@ impl<'a> Printer<'a> {
         }
     }
 
-    /// Template-body escaping; inserted escapes map to the character they
-    /// escape, so they never shift later mappings.
+    /// Template-body escaping; escapes differ from their source byte, so they stay nil-mapped.
     pub(crate) fn write_template_text_with_mapping(&mut self, text: &str, original_start: u32) {
         let mut original = original_start;
         let mut chars = text.chars().peekable();
         while let Some(ch) = chars.next() {
             match template_text_escape(ch, chars.peek().copied()) {
-                Some(escaped) => self.write_mapped_str(escaped, original),
+                Some(escaped) => self.write_nil_mapped(escaped),
                 None => {
                     self.map_to_offset(original);
                     self.output.push(ch);
@@ -131,7 +130,7 @@ impl<'a> Printer<'a> {
         let mut previous = None;
         for ch in body.chars() {
             match comment_body_escape(previous, ch) {
-                Some(escaped) => self.write_mapped_str(escaped, original),
+                Some(escaped) => self.write_nil_mapped(escaped),
                 None => {
                     self.map_to_offset(original);
                     self.output.push(ch);
@@ -142,13 +141,12 @@ impl<'a> Printer<'a> {
         }
     }
 
-    /// Attribute-value escaping; `&quot;` maps wholly to the quote it replaces
-    /// so the characters after it keep their own positions.
+    /// Escaping for a value emitted inside synthetic double quotes.
     pub(crate) fn write_attribute_value_with_mapping(&mut self, text: &str, original_start: u32) {
         let mut original = original_start;
         for ch in text.chars() {
             if ch == '"' {
-                self.write_mapped_str("&quot;", original);
+                self.write_nil_mapped("&quot;");
             } else {
                 self.map_to_offset(original);
                 self.output.push(ch);
@@ -157,11 +155,9 @@ impl<'a> Printer<'a> {
         }
     }
 
-    fn write_mapped_str(&mut self, text: &str, original: u32) {
-        for ch in text.chars() {
-            self.map_to_offset(original);
-            self.output.push(ch);
-        }
+    fn write_nil_mapped(&mut self, text: &str) {
+        self.map_nil();
+        self.output.push_str(text);
     }
 
     pub(crate) fn add_script_block(

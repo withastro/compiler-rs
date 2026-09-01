@@ -19,7 +19,7 @@ input_file: crates/astro2tsx/tests/fixtures/attribute_quoted_forms.astro
 /* @jsxImportSource astro */
 
 <Fragment>
-<div id="single" class="double" data-n="3" hidden></div>
+<div id='single' class="double" data-n="3" hidden></div>
 
 </Fragment>
 export default function __AstroComponent_(_props: Record<string, any>): any {}
