@@ -90,7 +90,8 @@ pub struct ConvertToTsxOptions {
     pub filename: Option<String>,
     /// `false` skips building the map entirely, `"external"` returns it in
     /// `map` without touching `code`, and `true` / `"inline"` (the default)
-    /// also appends a `//# sourceMappingURL=` comment.
+    /// also appends a `//# sourceMappingURL=` comment. Unrecognized strings
+    /// behave as `"inline"`.
     pub sourcemap: Option<Either<bool, String>>,
     /// Appends unmapped `declare` statements resolving the `Fragment` and
     /// `Astro` globals the TSX references but never declares. Off by default:

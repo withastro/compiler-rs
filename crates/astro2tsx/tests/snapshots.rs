@@ -6,31 +6,13 @@
 //! A fixture may open with `// @config key=value` lines, stripped before
 //! conversion. The only key is `filename`, which defaults to none.
 
+mod common;
+
 use std::fs;
 
-use astro2tsx::{ConvertOptions, ConvertResult, ExtractedTag, convert_to_tsx};
+use astro2tsx::{ConvertResult, ExtractedTag, convert_to_tsx};
+use common::parse_fixture;
 use serde::Serialize;
-
-/// Parse `// @config` directives from the top of a fixture file.
-///
-/// Returns `(source_without_directives, options)`.
-fn parse_fixture(raw: &str) -> (String, ConvertOptions) {
-    let mut options = ConvertOptions::default();
-
-    let mut remaining = raw;
-    loop {
-        let line = remaining.lines().next().unwrap_or("");
-        let Some(config) = line.strip_prefix("// @config ") else {
-            break;
-        };
-        if let Some(value) = config.strip_prefix("filename=") {
-            options.filename = Some(value.trim().to_string());
-        }
-        remaining = remaining[line.len()..].trim_start_matches('\n');
-    }
-
-    (remaining.to_string(), options)
-}
 
 #[derive(Serialize)]
 struct Info {

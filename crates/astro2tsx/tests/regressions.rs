@@ -543,7 +543,10 @@ fn every_fixture_keeps_mapped_runs_verbatim() {
         assert_mapped_runs_are_verbatim(&source, &result, &name);
         checked += 1;
     }
-    assert!(checked > 50, "expected to check most fixtures, got {checked}");
+    assert!(
+        checked > 50,
+        "expected to check most fixtures, got {checked}"
+    );
 }
 
 fn convert_external(source: &str) -> astro2tsx::ConvertResult {
@@ -651,11 +654,23 @@ fn script_types_reflect_what_is_statically_knowable() {
     use astro2tsx::ExtractedScriptType;
 
     for (input, expected) in [
-        ("<script>const a = 1;</script>", ExtractedScriptType::ProcessedModule),
-        ("<script type=\"module\">x</script>", ExtractedScriptType::Module),
+        (
+            "<script>const a = 1;</script>",
+            ExtractedScriptType::ProcessedModule,
+        ),
+        (
+            "<script type=\"module\">x</script>",
+            ExtractedScriptType::Module,
+        ),
         ("<script is:inline>x</script>", ExtractedScriptType::Inline),
-        ("<script type={mime}>wat</script>", ExtractedScriptType::Unknown),
-        ("{x && <script type={mime}>wat</script>}", ExtractedScriptType::Unknown),
+        (
+            "<script type={mime}>wat</script>",
+            ExtractedScriptType::Unknown,
+        ),
+        (
+            "{x && <script type={mime}>wat</script>}",
+            ExtractedScriptType::Unknown,
+        ),
     ] {
         let result = convert_to_tsx(input, ConvertOptions::default());
         assert_eq!(
