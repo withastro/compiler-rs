@@ -574,15 +574,25 @@ fn bare_less_than_in_text_is_escaped() {
 }
 
 #[test]
-fn bare_return_becomes_void_0() {
+fn bare_return_stays_terminal_for_narrowing() {
     let bare = convert("---\nif (cond) {\n\treturn;\n}\nreturn\n---\n<p/>");
-    assert!(bare.contains("void 0;"), "{bare}");
+    assert!(bare.contains("throw undefined;"), "{bare}");
+    assert!(bare.contains("throw undefined\n"), "{bare}");
     assert!(!bare.contains("throw ;"), "{bare}");
-    assert!(!bare.contains("throw\n"), "{bare}");
+    assert!(!bare.contains("void 0"), "{bare}");
 
     let valued = convert("---\nif (cond) return Astro.redirect('/x');\n---\n<p/>");
     assert!(valued.contains("throw  Astro.redirect"), "{valued}");
     assert!(!valued.contains("return Astro"), "{valued}");
+}
+
+#[test]
+fn variable_length_return_rewrites_keep_runs_verbatim() {
+    let source = "---\nconst é = 1;\nif (é) {\n\treturn;\n}\nconst after = é;\n---\n<p>{after}</p>";
+    let result = convert_external(source);
+    assert!(result.code.contains("throw undefined;"), "{}", result.code);
+    assert!(result.code.contains("const after = é;"), "{}", result.code);
+    assert_mapped_runs_are_verbatim(source, &result, "bare return drift");
 }
 
 #[test]
