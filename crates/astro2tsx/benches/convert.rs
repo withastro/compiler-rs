@@ -16,7 +16,8 @@ fn options() -> ConvertOptions {
 fn bench_convert(bencher: divan::Bencher<'_, '_>, source: &str) {
     bencher
         .counter(BytesCount::of_str(source))
-        .bench_local(|| convert_to_tsx(divan::black_box(source), options()));
+        .with_inputs(options)
+        .bench_local_values(|options| convert_to_tsx(divan::black_box(source), options));
 }
 
 mod components {
@@ -73,7 +74,8 @@ fn large_page(bencher: divan::Bencher<'_, '_>, sections: usize) {
     let source = build_page(sections);
     bencher
         .counter(BytesCount::of_str(&source))
-        .bench_local(|| convert_to_tsx(divan::black_box(&source), options()));
+        .with_inputs(options)
+        .bench_local_values(|options| convert_to_tsx(divan::black_box(&source), options));
 }
 
 mod phases {
@@ -84,7 +86,8 @@ mod phases {
         let source = build_page(64);
         bencher
             .counter(BytesCount::of_str(&source))
-            .bench_local(|| convert_to_tsx(divan::black_box(&source), options()));
+            .with_inputs(options)
+            .bench_local_values(|options| convert_to_tsx(divan::black_box(&source), options));
     }
 
     #[divan::bench]
@@ -102,15 +105,10 @@ mod phases {
         let source = build_page(64);
         bencher
             .counter(BytesCount::of_str(&source))
-            .bench_local(|| {
-                convert_to_tsx(
-                    divan::black_box(&source),
-                    ConvertOptions {
-                        filename: Some("Component.astro".to_string()),
-                        sourcemap: SourceMapMode::Inline,
-                        ..Default::default()
-                    },
-                )
-            });
+            .with_inputs(|| ConvertOptions {
+                sourcemap: SourceMapMode::Inline,
+                ..options()
+            })
+            .bench_local_values(|options| convert_to_tsx(divan::black_box(&source), options));
     }
 }

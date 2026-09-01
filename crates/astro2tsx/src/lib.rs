@@ -13,7 +13,7 @@ mod napi;
 mod printer;
 mod props;
 mod render;
-pub mod sourcemap;
+mod sourcemap;
 mod utf16;
 mod utils;
 

@@ -26,6 +26,8 @@ use crate::utils::{
     tsx_component_name,
 };
 
+// #region document and frontmatter
+
 const TSX_PREFIX: &str = "/* @jsxImportSource astro */\n\n";
 
 pub(crate) fn render_root(printer: &mut Printer, root: HtmlRoot, options: &ConvertOptions) {
@@ -61,7 +63,7 @@ pub(crate) fn render_root(printer: &mut Printer, root: HtmlRoot, options: &Conve
         || printer
             .comment_ranges
             .iter()
-            .any(|range| u32::from(range.start()) >= body_text_start);
+            .any(|range| range_start(*range) >= body_text_start);
     let body_start;
 
     if has_body_children {
@@ -90,7 +92,7 @@ pub(crate) fn render_root(printer: &mut Printer, root: HtmlRoot, options: &Conve
         }
         for element in body.iter() {
             let element_range = element.range();
-            emit_source_gap(printer, prev_end, u32::from(element_range.start()));
+            emit_source_gap(printer, prev_end, range_start(element_range));
             render_element(printer, element);
             prev_end = u32::from(element_range.end());
         }
@@ -269,13 +271,26 @@ fn emit_frontmatter(
                 }
                 None => false,
             };
-            match anchor.filter(|_| !emitted_content) {
-                Some(anchor) if printer.source[anchor as usize..].starts_with('\n') => {
-                    printer.map_to_offset(anchor)
+            let anchor_newline = anchor.filter(|_| !emitted_content).and_then(|anchor| {
+                let rest = &printer.source[anchor as usize..];
+                if rest.starts_with("\r\n") {
+                    Some((anchor, "\r\n"))
+                } else if rest.starts_with('\n') {
+                    Some((anchor, "\n"))
+                } else {
+                    None
                 }
-                _ => printer.map_nil(),
+            });
+            match anchor_newline {
+                Some((anchor, newline)) => {
+                    printer.map_to_offset(anchor);
+                    printer.write(newline);
+                }
+                None => {
+                    printer.map_nil();
+                    printer.write("\n");
+                }
             }
-            printer.write("\n");
         }
         AnyAstroFrontmatterElement::AstroBogusFrontmatter(_) => {
             printer.map_to_offset(0);
@@ -299,6 +314,10 @@ fn emit_rewritten_frontmatter(printer: &mut Printer, rewritten: &RewrittenFrontm
     }
     printer.write_with_mapping(&rewritten.text[cursor..], start + cursor as u32);
 }
+
+// #endregion
+
+// #region elements
 
 fn render_element(printer: &mut Printer, element: AnyHtmlElement) {
     match element {
@@ -346,7 +365,7 @@ fn render_content(printer: &mut Printer, content: AnyHtmlContent) {
             let Ok(token) = node.value_token() else {
                 return;
             };
-            let original_start = u32::from(token.text_trimmed_range().start());
+            let original_start = range_start(token.text_trimmed_range());
             let raw = token.text_trimmed().to_string();
             printer.map_nil();
             printer.write("{`");
@@ -494,13 +513,13 @@ fn render_html_element(printer: &mut Printer, node: HtmlElement) {
     emit_open_tag(
         printer,
         &tag_name,
-        u32::from(open_l_angle.text_trimmed_range().start()),
-        u32::from(name.range().start()),
+        range_start(open_l_angle.text_trimmed_range()),
+        range_start(name.range()),
         &attributes,
     );
 
     let open_r_angle = open_r_angle.expect("checked above");
-    let r_angle_start = u32::from(open_r_angle.text_trimmed_range().start());
+    let r_angle_start = range_start(open_r_angle.text_trimmed_range());
     let attrs_end = attributes
         .last()
         .map(|attr| u32::from(attr.range().end()))
@@ -528,7 +547,7 @@ fn render_html_element(printer: &mut Printer, node: HtmlElement) {
         .closing_element()
         .ok()
         .and_then(|c| c.l_angle_token().ok())
-        .map(|t| u32::from(t.text_trimmed_range().start()));
+        .map(|t| range_start(t.text_trimmed_range()));
 
     if is_script || is_style {
         // The tag still prints; only its text content is left out.
@@ -548,7 +567,7 @@ fn render_html_element(printer: &mut Printer, node: HtmlElement) {
         let mut prev_end: Option<u32> = None;
         for child in children.iter() {
             let child_range = child.range();
-            let child_start = u32::from(child_range.start());
+            let child_start = range_start(child_range);
             let leading_from = prev_end.unwrap_or(opening_end);
             emit_source_gap(printer, leading_from, child_start);
             render_element(printer, child);
@@ -628,116 +647,6 @@ fn render_html_element(printer: &mut Printer, node: HtmlElement) {
     }
 }
 
-/// Only a bare `<script>` is processed by Astro; any attribute (`is:inline`,
-/// `define:vars`, …) leaves the script inline, sharing one scope with its peers.
-fn classify_script(attrs: &[AnyHtmlAttribute]) -> ExtractedScriptType {
-    if attrs.is_empty() {
-        return ExtractedScriptType::ProcessedModule;
-    }
-    if attrs
-        .iter()
-        .any(|a| attribute_key(a).as_deref() == Some("is:raw"))
-    {
-        return ExtractedScriptType::Raw;
-    }
-    script_type_for_attr(find_attr_value(attrs, "type"))
-}
-
-/// `attr` distinguishes a missing `type` from one whose value is dynamic.
-pub(crate) fn script_type_for_attr(attr: Option<Option<String>>) -> ExtractedScriptType {
-    match attr {
-        None => ExtractedScriptType::Inline,
-        Some(None) => ExtractedScriptType::Unknown,
-        Some(Some(value)) => match classify_script_type(Some(&value)) {
-            ScriptKind::Script => {
-                if value.trim().eq_ignore_ascii_case("module") {
-                    ExtractedScriptType::Module
-                } else {
-                    ExtractedScriptType::Inline
-                }
-            }
-            ScriptKind::Json => ExtractedScriptType::Json,
-            ScriptKind::Unknown => ExtractedScriptType::Unknown,
-        },
-    }
-}
-
-fn style_lang_label(attrs: &[AnyHtmlAttribute]) -> String {
-    find_attr_value(attrs, "lang")
-        .flatten()
-        .filter(|lang| !lang.is_empty())
-        .unwrap_or_else(|| "css".to_string())
-}
-
-/// `None`: absent. `Some(None)`: present but not statically knowable.
-/// `Some(Some(value))`: string value with any matching quotes stripped.
-fn find_attr_value(attrs: &[AnyHtmlAttribute], name: &str) -> Option<Option<String>> {
-    for attr in attrs {
-        let AnyHtmlAttribute::HtmlAttribute(attr_node) = attr else {
-            continue;
-        };
-        let Ok(attr_name) = attr_node.name() else {
-            continue;
-        };
-        let Ok(token) = attr_name.value_token() else {
-            continue;
-        };
-        if !token.text_trimmed().eq_ignore_ascii_case(name) {
-            continue;
-        }
-        let Some(initializer) = attr_node.initializer() else {
-            return Some(Some(String::new()));
-        };
-        let Ok(value) = initializer.value() else {
-            return Some(None);
-        };
-        if let AnyHtmlAttributeInitializer::HtmlString(s) = value
-            && let Ok(value_token) = s.value_token()
-        {
-            let raw = value_token.text_trimmed().to_string();
-            let inner = strip_matching_quotes(&raw).unwrap_or(&raw);
-            return Some(Some(inner.to_string()));
-        }
-        return Some(None);
-    }
-    None
-}
-
-fn attribute_key(attr: &AnyHtmlAttribute) -> Option<String> {
-    match attr {
-        AnyHtmlAttribute::HtmlAttribute(attr_node) => {
-            let attr_name = attr_node.name().ok()?;
-            Some(attr_name.value_token().ok()?.text_trimmed().to_string())
-        }
-        AnyHtmlAttribute::AnyAstroDirective(directive) => {
-            let prefix = match directive {
-                AnyAstroDirective::AstroIsDirective(_) => "is",
-                AnyAstroDirective::AstroClientDirective(_) => "client",
-                AnyAstroDirective::AstroClassDirective(_) => "class",
-                AnyAstroDirective::AstroDefineDirective(_) => "define",
-                AnyAstroDirective::AstroServerDirective(_) => "server",
-                AnyAstroDirective::AstroSetDirective(_) => "set",
-            };
-            let name = directive_value_name(directive)?;
-            Some(format!("{prefix}:{name}"))
-        }
-        _ => None,
-    }
-}
-
-fn directive_value_name(directive: &AnyAstroDirective) -> Option<String> {
-    let value = match directive {
-        AnyAstroDirective::AstroIsDirective(d) => d.value().ok()?,
-        AnyAstroDirective::AstroClientDirective(d) => d.value().ok()?,
-        AnyAstroDirective::AstroClassDirective(d) => d.value().ok()?,
-        AnyAstroDirective::AstroDefineDirective(d) => d.value().ok()?,
-        AnyAstroDirective::AstroServerDirective(d) => d.value().ok()?,
-        AnyAstroDirective::AstroSetDirective(d) => d.value().ok()?,
-    };
-    let name = value.name().ok()?;
-    Some(name.value_token().ok()?.text_trimmed().to_string())
-}
-
 fn render_self_closing_element(printer: &mut Printer, node: HtmlSelfClosingElement) {
     let Ok(name) = node.name() else {
         return;
@@ -754,16 +663,16 @@ fn render_self_closing_element(printer: &mut Printer, node: HtmlSelfClosingEleme
     emit_open_tag(
         printer,
         &tag_name,
-        u32::from(l_angle.text_trimmed_range().start()),
-        u32::from(name.range().start()),
+        range_start(l_angle.text_trimmed_range()),
+        range_start(name.range()),
         &attributes,
     );
 
     // The probe point sits before the slash: `<Foo />` keeps its space, `<Foo/>` stays tight.
-    let r_angle_start = u32::from(r_angle.text_trimmed_range().start());
+    let r_angle_start = range_start(r_angle.text_trimmed_range());
     let pre_slash = node
         .slash_token()
-        .map(|s| u32::from(s.text_trimmed_range().start()))
+        .map(|s| range_start(s.text_trimmed_range()))
         .unwrap_or(r_angle_start);
     let attrs_end = attributes
         .last()
@@ -807,13 +716,13 @@ fn render_astro_fragment(printer: &mut Printer, node: &AstroFragment) {
         .closing_fragment()
         .ok()
         .and_then(|c| c.l_angle_token().ok())
-        .map(|t| u32::from(t.text_trimmed_range().start()));
+        .map(|t| range_start(t.text_trimmed_range()));
 
     let mut prev_end: Option<u32> = None;
     for child in node.children() {
         let child_range = child.range();
         let leading_from = prev_end.unwrap_or(opening_end);
-        emit_source_gap(printer, leading_from, u32::from(child_range.start()));
+        emit_source_gap(printer, leading_from, range_start(child_range));
         render_element(printer, child);
         prev_end = Some(u32::from(child_range.end()));
     }
@@ -841,6 +750,10 @@ fn render_astro_fragment(printer: &mut Printer, node: &AstroFragment) {
         printer.write("</>");
     }
 }
+
+// #endregion
+
+// #region attributes
 
 /// Tag-header gaps hold whitespace or JS comments — both valid TSX, so they round-trip whole.
 fn emit_intra_tag_space(printer: &mut Printer, from: u32, to: u32) {
@@ -896,7 +809,7 @@ fn emit_attribute(printer: &mut Printer, attr: &AnyHtmlAttribute) {
                 && let Ok(token) = expression.html_literal_token()
             {
                 let trimmed = token.text_trimmed().to_string();
-                let original_start = u32::from(token.text_trimmed_range().start());
+                let original_start = range_start(token.text_trimmed_range());
                 printer.map_nil();
                 printer.write(" ");
                 printer.write_with_mapping(&trimmed, original_start);
@@ -931,7 +844,7 @@ fn emit_html_attribute(printer: &mut Printer, attr_node: &HtmlAttribute) {
         return;
     };
     let key_text = name_token.text_trimmed().to_string();
-    let key_start = u32::from(name_token.text_trimmed_range().start());
+    let key_start = range_start(name_token.text_trimmed_range());
 
     printer.map_nil();
     printer.write(" ");
@@ -947,7 +860,7 @@ fn emit_html_attribute(printer: &mut Printer, attr_node: &HtmlAttribute) {
     let Ok(eq_token) = initializer.eq_token() else {
         return;
     };
-    let eq_start = u32::from(eq_token.text_trimmed_range().start());
+    let eq_start = range_start(eq_token.text_trimmed_range());
 
     match value {
         AnyHtmlAttributeInitializer::HtmlString(s) => {
@@ -961,7 +874,7 @@ fn emit_html_attribute(printer: &mut Printer, attr_node: &HtmlAttribute) {
             // as `{\`...\`}` so JSX accepts it.
             if raw.starts_with('`') && raw.ends_with('`') && raw.len() >= 2 {
                 let inner = &raw[1..raw.len() - 1];
-                let value_start = u32::from(value_token.text_trimmed_range().start()) + 1;
+                let value_start = range_start(value_token.text_trimmed_range()) + 1;
                 printer.map_to_offset(eq_start);
                 printer.write("=");
                 printer.map_nil();
@@ -975,7 +888,7 @@ fn emit_html_attribute(printer: &mut Printer, attr_node: &HtmlAttribute) {
                 printer.write("}");
                 return;
             }
-            let token_start = u32::from(value_token.text_trimmed_range().start());
+            let token_start = range_start(value_token.text_trimmed_range());
             // Astro allows unquoted values, so the token may carry no quotes to strip.
             let quoted = strip_matching_quotes(&raw).is_some();
             let (inner, value_start) = if quoted {
@@ -1062,7 +975,7 @@ fn emit_spread_attribute(printer: &mut Printer, spread: &HtmlSpreadAttribute) {
         return;
     };
     let value = literal.text_trimmed().to_string();
-    let value_start = u32::from(literal.text_trimmed_range().start());
+    let value_start = range_start(literal.text_trimmed_range());
 
     printer.map_nil();
     printer.write(" {");
@@ -1098,7 +1011,7 @@ fn emit_invalid_attribute(
         return false;
     };
     let key_text = name_token.text_trimmed().to_string();
-    let key_start = u32::from(name_token.text_trimmed_range().start());
+    let key_start = range_start(name_token.text_trimmed_range());
 
     if needs_separator {
         printer.map_nil();
@@ -1143,7 +1056,7 @@ fn emit_invalid_attribute(
                     return true;
                 };
                 let value = literal.text_trimmed().to_string();
-                let value_start = u32::from(literal.text_trimmed_range().start());
+                let value_start = range_start(literal.text_trimmed_range());
                 printer.map_nil();
                 printer.write(":(");
                 printer.write_with_mapping(&value, value_start);
@@ -1158,6 +1071,142 @@ fn emit_invalid_attribute(
     }
     true
 }
+
+fn attribute_key(attr: &AnyHtmlAttribute) -> Option<String> {
+    match attr {
+        AnyHtmlAttribute::HtmlAttribute(attr_node) => {
+            let attr_name = attr_node.name().ok()?;
+            Some(attr_name.value_token().ok()?.text_trimmed().to_string())
+        }
+        AnyHtmlAttribute::AnyAstroDirective(directive) => {
+            let prefix = match directive {
+                AnyAstroDirective::AstroIsDirective(_) => "is",
+                AnyAstroDirective::AstroClientDirective(_) => "client",
+                AnyAstroDirective::AstroClassDirective(_) => "class",
+                AnyAstroDirective::AstroDefineDirective(_) => "define",
+                AnyAstroDirective::AstroServerDirective(_) => "server",
+                AnyAstroDirective::AstroSetDirective(_) => "set",
+            };
+            let name = directive_value_name(directive)?;
+            Some(format!("{prefix}:{name}"))
+        }
+        _ => None,
+    }
+}
+
+fn directive_value_name(directive: &AnyAstroDirective) -> Option<String> {
+    let value = match directive {
+        AnyAstroDirective::AstroIsDirective(d) => d.value().ok()?,
+        AnyAstroDirective::AstroClientDirective(d) => d.value().ok()?,
+        AnyAstroDirective::AstroClassDirective(d) => d.value().ok()?,
+        AnyAstroDirective::AstroDefineDirective(d) => d.value().ok()?,
+        AnyAstroDirective::AstroServerDirective(d) => d.value().ok()?,
+        AnyAstroDirective::AstroSetDirective(d) => d.value().ok()?,
+    };
+    let name = value.name().ok()?;
+    Some(name.value_token().ok()?.text_trimmed().to_string())
+}
+
+// #endregion
+
+// #region scripts and styles
+
+/// Only a bare `<script>` is processed by Astro; any attribute (`is:inline`,
+/// `define:vars`, …) leaves the script inline, sharing one scope with its peers.
+fn classify_script(attrs: &[AnyHtmlAttribute]) -> ExtractedScriptType {
+    if attrs.is_empty() {
+        return ExtractedScriptType::ProcessedModule;
+    }
+    if attrs
+        .iter()
+        .any(|a| attribute_key(a).as_deref() == Some("is:raw"))
+    {
+        return ExtractedScriptType::Raw;
+    }
+    script_type_for_attr(find_attr_value(attrs, "type"))
+}
+
+/// `attr` distinguishes a missing `type` from one whose value is dynamic.
+pub(crate) fn script_type_for_attr(attr: Option<Option<String>>) -> ExtractedScriptType {
+    match attr {
+        None => ExtractedScriptType::Inline,
+        Some(None) => ExtractedScriptType::Unknown,
+        Some(Some(value)) => match classify_script_type(Some(&value)) {
+            ScriptKind::Script => {
+                if value.trim().eq_ignore_ascii_case("module") {
+                    ExtractedScriptType::Module
+                } else {
+                    ExtractedScriptType::Inline
+                }
+            }
+            ScriptKind::Json => ExtractedScriptType::Json,
+            ScriptKind::Unknown => ExtractedScriptType::Unknown,
+        },
+    }
+}
+
+fn style_lang_label(attrs: &[AnyHtmlAttribute]) -> String {
+    find_attr_value(attrs, "lang")
+        .flatten()
+        .filter(|lang| !lang.is_empty())
+        .unwrap_or_else(|| "css".to_string())
+}
+
+/// `None`: absent. `Some(None)`: present but not statically knowable.
+/// `Some(Some(value))`: string value with any matching quotes stripped.
+fn find_attr_value(attrs: &[AnyHtmlAttribute], name: &str) -> Option<Option<String>> {
+    for attr in attrs {
+        let AnyHtmlAttribute::HtmlAttribute(attr_node) = attr else {
+            continue;
+        };
+        let Ok(attr_name) = attr_node.name() else {
+            continue;
+        };
+        let Ok(token) = attr_name.value_token() else {
+            continue;
+        };
+        if !token.text_trimmed().eq_ignore_ascii_case(name) {
+            continue;
+        }
+        let Some(initializer) = attr_node.initializer() else {
+            return Some(Some(String::new()));
+        };
+        let Ok(value) = initializer.value() else {
+            return Some(None);
+        };
+        if let AnyHtmlAttributeInitializer::HtmlString(s) = value
+            && let Ok(value_token) = s.value_token()
+        {
+            let raw = value_token.text_trimmed().to_string();
+            let inner = strip_matching_quotes(&raw).unwrap_or(&raw);
+            return Some(Some(inner.to_string()));
+        }
+        return Some(None);
+    }
+    None
+}
+
+fn inner_range(node: &HtmlElement) -> Option<(u32, u32)> {
+    let opening = node.opening_element().ok()?;
+    let start = u32::from(opening.r_angle_token().ok()?.text_trimmed_range().end());
+    let end = match node
+        .closing_element()
+        .ok()
+        .and_then(|c| c.l_angle_token().ok())
+    {
+        Some(l_angle) => range_start(l_angle.text_trimmed_range()),
+        None => u32::from(node.range().end()),
+    };
+    if start <= end {
+        Some((start, end))
+    } else {
+        None
+    }
+}
+
+// #endregion
+
+// #region shared text helpers
 
 fn tag_name_text(name: &AnyHtmlTagName) -> String {
     match name {
@@ -1198,24 +1247,6 @@ fn member_name_text(node: &biome_html_syntax::HtmlMemberName) -> String {
     format!("{object}.{member}")
 }
 
-fn inner_range(node: &HtmlElement) -> Option<(u32, u32)> {
-    let opening = node.opening_element().ok()?;
-    let start = u32::from(opening.r_angle_token().ok()?.text_trimmed_range().end());
-    let end = match node
-        .closing_element()
-        .ok()
-        .and_then(|c| c.l_angle_token().ok())
-    {
-        Some(l_angle) => u32::from(l_angle.text_trimmed_range().start()),
-        None => u32::from(node.range().end()),
-    };
-    if start <= end {
-        Some((start, end))
-    } else {
-        None
-    }
-}
-
 /// HTML comments never become nodes; the lexer stores them as token trivia.
 fn comment_trivia_ranges(root: &HtmlRoot) -> Vec<TextRange> {
     let mut ranges = Vec::new();
@@ -1251,10 +1282,7 @@ fn emit_source_gap(printer: &mut Printer, from: u32, to: u32) {
         .partition_point(|range| u32::from(range.end()) as usize <= cursor);
     for index in first..printer.comment_ranges.len() {
         let range = printer.comment_ranges[index];
-        let (start, end) = (
-            u32::from(range.start()) as usize,
-            u32::from(range.end()) as usize,
-        );
+        let (start, end) = (range_start(range) as usize, u32::from(range.end()) as usize);
         if start >= to {
             break;
         }
@@ -1297,7 +1325,9 @@ fn emit_html_comment(printer: &mut Printer, body: &str, original_offset: u32) {
 }
 
 fn slice_source(source: &str, range: TextRange) -> &str {
-    let start = u32::from(range.start()) as usize;
+    let start = range_start(range) as usize;
     let end = u32::from(range.end()) as usize;
     source.get(start..end).unwrap_or("")
 }
+
+// #endregion
