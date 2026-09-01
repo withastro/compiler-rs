@@ -503,6 +503,9 @@ fn unclosed_elements_are_emitted_as_written_and_flagged() {
             "<table><tr><td>a<td>b</tr></table>",
             "<td>a<td>b</tr></table>",
         ),
+        ("<div>x</div", "<div>x</div"),
+        ("<>x", "<>x"),
+        ("<img /", "<img /"),
     ] {
         let result = convert_external(input);
         assert!(
@@ -518,6 +521,11 @@ fn unclosed_elements_are_emitted_as_written_and_flagged() {
         assert!(result.has_parse_errors, "{input:?} must stay flagged");
         assert_mapped_runs_are_verbatim(input, &result, "unclosed as written");
     }
+
+    let truncated = convert_external("<div>x</div");
+    assert!(!truncated.code.contains("</div>"), "{}", truncated.code);
+    let fragment = convert_external("<>x");
+    assert!(!fragment.code.contains("</>"), "{}", fragment.code);
 }
 
 /// The one invariant every consumer leans on, checked against every fixture.
