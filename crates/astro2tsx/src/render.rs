@@ -13,7 +13,7 @@ use biome_rowan::{AstNode, AstNodeList, Direction, TextRange, TextSize};
 
 use crate::ConvertOptions;
 use crate::expression::emit_expression_tree;
-use crate::frontmatter::{REPLACEMENT_LEN, RewrittenFrontmatter, rewrite_top_level_returns};
+use crate::frontmatter::{RewrittenFrontmatter, rewrite_top_level_returns};
 use crate::printer::{Printer, range_start};
 use crate::props::{PropsAnalysis, analyze as analyze_props};
 use crate::sourcemap::{
@@ -302,17 +302,23 @@ fn emit_frontmatter(
     printer.frontmatter_range = GeneratedRange::new(frontmatter_start, frontmatter_end);
 }
 
-/// `start + cursor` addresses the source directly because replacements match `return`'s length.
+/// Replaced spans stay nil-mapped; the cursors drift once a replacement outgrows its `return`.
 fn emit_rewritten_frontmatter(printer: &mut Printer, rewritten: &RewrittenFrontmatter, start: u32) {
-    let mut cursor = 0usize;
-    for &offset in &rewritten.replaced {
-        let offset = offset as usize;
-        printer.write_with_mapping(&rewritten.text[cursor..offset], start + cursor as u32);
+    let mut text_cursor = 0usize;
+    let mut source_cursor = 0usize;
+    for replacement in &rewritten.replaced {
+        let offset = replacement.text_offset as usize;
+        printer.write_with_mapping(
+            &rewritten.text[text_cursor..offset],
+            start + source_cursor as u32,
+        );
+        source_cursor += offset - text_cursor;
         printer.map_nil();
-        printer.write(&rewritten.text[offset..offset + REPLACEMENT_LEN]);
-        cursor = offset + REPLACEMENT_LEN;
+        printer.write(&rewritten.text[offset..offset + replacement.text_len as usize]);
+        text_cursor = offset + replacement.text_len as usize;
+        source_cursor += replacement.source_len as usize;
     }
-    printer.write_with_mapping(&rewritten.text[cursor..], start + cursor as u32);
+    printer.write_with_mapping(&rewritten.text[text_cursor..], start + source_cursor as u32);
 }
 
 // #endregion

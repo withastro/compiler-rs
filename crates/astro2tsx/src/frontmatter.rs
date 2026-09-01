@@ -1,19 +1,24 @@
 //! Frontmatter runs in an implicit function, so its top-level `return`s are
-//! valid Astro but invalid TS. Each becomes `throw ` — or `void 0` when there
-//! is no argument, since `throw ;` is itself invalid — six bytes either way,
-//! so every offset after the keyword stays aligned with the source.
+//! valid Astro but invalid TS and must be rewritten. `throw` is the stand-in
+//! because it stays terminal: narrowing after a guard clause survives.
 
 use biome_js_syntax::{AnyJsRoot, JsReturnStatement, JsSyntaxKind};
 use biome_rowan::{AstNode, WalkEvent};
 
-/// Frontmatter text with its top-level `return`s replaced, plus the offsets
-/// (into `text`) of each six-byte replacement so they can stay unmapped.
+/// Frontmatter with `return`s replaced; a replacement can outgrow the keyword it stands in for.
 pub(crate) struct RewrittenFrontmatter {
     pub(crate) text: String,
-    pub(crate) replaced: Vec<u32>,
+    pub(crate) replaced: Vec<Replacement>,
 }
 
-pub(crate) const REPLACEMENT_LEN: usize = "return".len();
+/// A span of [`RewrittenFrontmatter::text`] standing in for source bytes.
+pub(crate) struct Replacement {
+    pub(crate) text_offset: u32,
+    pub(crate) text_len: u32,
+    pub(crate) source_len: u32,
+}
+
+const RETURN_LEN: usize = "return".len();
 
 /// `root` must be the parse of `source`.
 pub(crate) fn rewrite_top_level_returns(source: &str, root: &AnyJsRoot) -> RewrittenFrontmatter {
@@ -24,9 +29,18 @@ pub(crate) fn rewrite_top_level_returns(source: &str, root: &AnyJsRoot) -> Rewri
     for (offset, has_argument) in returns {
         let offset = offset as usize;
         text.push_str(&source[cursor..offset]);
-        replaced.push(text.len() as u32);
-        text.push_str(if has_argument { "throw " } else { "void 0" });
-        cursor = offset + REPLACEMENT_LEN;
+        let replacement = if has_argument {
+            "throw "
+        } else {
+            "throw undefined"
+        };
+        replaced.push(Replacement {
+            text_offset: text.len() as u32,
+            text_len: replacement.len() as u32,
+            source_len: RETURN_LEN as u32,
+        });
+        text.push_str(replacement);
+        cursor = offset + RETURN_LEN;
     }
     text.push_str(&source[cursor..]);
     RewrittenFrontmatter { text, replaced }
