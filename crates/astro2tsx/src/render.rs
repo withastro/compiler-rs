@@ -354,9 +354,7 @@ fn render_content(printer: &mut Printer, content: AnyHtmlContent) {
             let Ok(token) = node.value_token() else {
                 return;
             };
-            // Use the trimmed range so trailing whitespace stays in the
-            // gap between sibling nodes — the parent's emit_source_gap
-            // will emit it once. Otherwise the trivia would double up.
+            // Trimmed range: the parent's gap emission owns surrounding trivia, else it doubles.
             let range = token.text_trimmed_range();
             let text = token.text_trimmed();
             printer.write_jsx_text_with_mapping(text, range_start(range));
@@ -868,10 +866,7 @@ fn emit_html_attribute(printer: &mut Printer, attr_node: &HtmlAttribute) {
                 return;
             };
             let raw = value_token.text_trimmed().to_string();
-            // Template-literal attribute (`attr=\`tag\``) — the lexer
-            // emitted these as `HtmlString` so the parser path is shared
-            // with quoted strings. Detect the leading backtick and emit
-            // as `{\`...\`}` so JSX accepts it.
+            // The lexer files template-literal values under `HtmlString` too.
             if raw.starts_with('`') && raw.ends_with('`') && raw.len() >= 2 {
                 let inner = &raw[1..raw.len() - 1];
                 let value_start = range_start(value_token.text_trimmed_range()) + 1;

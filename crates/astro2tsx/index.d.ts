@@ -30,7 +30,8 @@ export interface ConvertToTsxOptions {
   /**
    * `false` skips building the map entirely, `"external"` returns it in
    * `map` without touching `code`, and `true` / `"inline"` (the default)
-   * also appends a `//# sourceMappingURL=` comment.
+   * also appends a `//# sourceMappingURL=` comment. Unrecognized strings
+   * behave as `"inline"`.
    */
   sourcemap?: boolean | string
   /**
