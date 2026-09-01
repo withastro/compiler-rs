@@ -212,6 +212,49 @@ test('ambientTypes appends unmapped Fragment and Astro declarations', () => {
 	assert.deepEqual(Array.from(ambient.lengths), Array.from(plain.lengths));
 });
 
+test('everyday inputs that used to break TS parsing now emit valid TSX', () => {
+	const inputs = [
+		'<p>a < b</p>',
+		'<div>5 < 10 is true</div>',
+		'---\nif (cond) {\n\treturn;\n}\n---\n<p/>',
+		'---\nconst a = 1;\n---\n<!doctype html>\n<html><body>{a}</body></html>',
+		'<div>hi</div>\n<!DOCTYPE html>\n<p>after</p>',
+		'<div>hello',
+		'<p>one<p>two',
+		"<div data-x='a\"b'></div>",
+		'<Comp\n  foo={bar}\n/>',
+	];
+	for (const input of inputs) {
+		const result = convertToTsx(input, { sourcemap: false });
+		const sourceFile = ts.createSourceFile(
+			'x.tsx',
+			result.code,
+			ts.ScriptTarget.Latest,
+			false,
+			ts.ScriptKind.TSX,
+		);
+		const diagnostics = (
+			sourceFile as unknown as { parseDiagnostics: { messageText: unknown }[] }
+		).parseDiagnostics;
+		assert.deepEqual(
+			diagnostics.map((d) => `${JSON.stringify(input)}: ${JSON.stringify(d.messageText)}`),
+			[],
+			`invalid TSX for ${JSON.stringify(input)}:\n${result.code}`,
+		);
+	}
+});
+
+test('sourcemap accepts every documented string form', () => {
+	assert.equal(convertToTsx('<p/>', { sourcemap: 'none' }).map, undefined);
+	assert.equal(convertToTsx('<p/>', { sourcemap: 'false' }).map, undefined);
+	assert.ok(convertToTsx('<p/>', { sourcemap: 'external' }).map);
+
+	// Unrecognized strings behave as "inline", per the option's contract.
+	const garbage = convertToTsx('<p/>', { sourcemap: 'bananas' });
+	assert.ok(garbage.map);
+	assert.match(garbage.code, /sourceMappingURL/);
+});
+
 test('reports frontmatter status and positioned diagnostics', () => {
 	assert.equal(convertToTsx('---\nlet x = 1;\n---\n<p/>').frontmatterStatus, 'closed');
 	assert.equal(convertToTsx('---\nlet x = 1;\n').frontmatterStatus, 'open');

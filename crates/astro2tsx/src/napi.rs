@@ -186,6 +186,7 @@ pub fn convert_to_tsx(source: String, options: Option<ConvertToTsxOptions>) -> C
         let generated = generated_index.convert(mapping.generated);
         let source = source_index.convert(original);
         // Escapes are ASCII on both sides, so one UTF-16 length serves both.
+        // The min collapses the EOF-anchored trailing run to the source that remains.
         let length =
             (generated_index.convert(run_end) - generated).min(source_len.saturating_sub(source));
         if length == 0 {

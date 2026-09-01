@@ -70,6 +70,7 @@ impl<'a> Printer<'a> {
             let continues = match (last.original, mapping.original) {
                 (None, None) => true,
                 (Some(last_original), Some(original)) => {
+                    // Shorthand attrs map one span twice, so original can regress; wrapping stays safe.
                     original.wrapping_sub(last_original) == mapping.generated - last.generated
                 }
                 _ => false,
