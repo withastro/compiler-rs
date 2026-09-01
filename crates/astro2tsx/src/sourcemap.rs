@@ -108,7 +108,10 @@ pub struct ExtractedTag {
     pub source: SourceRange,
     pub kind: ExtractedKind,
     pub content: String,
+    /// Style language (`css`, `scss`, …); `None` for scripts.
     pub lang: Option<String>,
+    /// How a script's contents should be treated; `None` for styles.
+    pub script_type: Option<ExtractedScriptType>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -117,6 +120,19 @@ pub enum ExtractedKind {
     Style,
     StyleAttribute,
     EventAttribute,
+}
+
+/// A bare `<script>` is processed by Astro; anything else is inlined as
+/// written. `Unknown` covers a `type` whose value cannot be known statically.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ExtractedScriptType {
+    ProcessedModule,
+    Module,
+    Inline,
+    EventAttribute,
+    Json,
+    Raw,
+    Unknown,
 }
 
 /// The `//# sourceMappingURL=` line that carries `map` inline.

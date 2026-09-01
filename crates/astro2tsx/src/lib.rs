@@ -21,9 +21,9 @@ use biome_html_parser::parse_html;
 use biome_languages::HtmlFileSource;
 
 pub use crate::sourcemap::{
-    DEFAULT_SOURCE_NAME, Diagnostic, DiagnosticSeverity, ExtractedKind, ExtractedTag,
-    FrontmatterInfo, FrontmatterStatus, GeneratedRange, Mapping, SourceMap, SourceMapMode,
-    SourceRange,
+    DEFAULT_SOURCE_NAME, Diagnostic, DiagnosticSeverity, ExtractedKind, ExtractedScriptType,
+    ExtractedTag, FrontmatterInfo, FrontmatterStatus, GeneratedRange, Mapping, SourceMap,
+    SourceMapMode, SourceRange,
 };
 
 #[derive(Clone, Debug, Default)]

@@ -17,7 +17,8 @@ use crate::frontmatter::{REPLACEMENT_LEN, RewrittenFrontmatter, rewrite_top_leve
 use crate::printer::{Printer, range_start};
 use crate::props::{PropsAnalysis, analyze as analyze_props};
 use crate::sourcemap::{
-    Diagnostic, DiagnosticSeverity, FrontmatterInfo, FrontmatterStatus, GeneratedRange, SourceRange,
+    Diagnostic, DiagnosticSeverity, ExtractedScriptType, FrontmatterInfo, FrontmatterStatus,
+    GeneratedRange, SourceRange,
 };
 use crate::utils::{
     ScriptKind, classify_script_type, comment_needs_leading_space, encode_double_quote,
@@ -571,7 +572,7 @@ fn render_html_element(printer: &mut Printer, node: HtmlElement) {
                     GeneratedRange::new(body_start, body_end),
                     SourceRange::new(start, end),
                     content,
-                    classify_script_label(&attributes),
+                    classify_script(&attributes),
                 );
             } else {
                 printer.add_style_block(
@@ -629,43 +630,48 @@ fn render_html_element(printer: &mut Printer, node: HtmlElement) {
 
 /// Only a bare `<script>` is processed by Astro; any attribute (`is:inline`,
 /// `define:vars`, …) leaves the script inline, sharing one scope with its peers.
-fn classify_script_label(attrs: &[AnyHtmlAttribute]) -> &'static str {
+fn classify_script(attrs: &[AnyHtmlAttribute]) -> ExtractedScriptType {
     if attrs.is_empty() {
-        return "processed-module";
+        return ExtractedScriptType::ProcessedModule;
     }
     if attrs
         .iter()
         .any(|a| attribute_key(a).as_deref() == Some("is:raw"))
     {
-        return "raw";
+        return ExtractedScriptType::Raw;
     }
-    script_label_for_type(find_attr_value(attrs, "type").as_deref())
+    script_type_for_attr(find_attr_value(attrs, "type"))
 }
 
-pub(crate) fn script_label_for_type(type_value: Option<&str>) -> &'static str {
-    let Some(value) = type_value else {
-        return "inline";
-    };
-    match classify_script_type(Some(value)) {
-        ScriptKind::Script => {
-            if value.trim().eq_ignore_ascii_case("module") {
-                "module"
-            } else {
-                "inline"
+/// `attr` distinguishes a missing `type` from one whose value is dynamic.
+pub(crate) fn script_type_for_attr(attr: Option<Option<String>>) -> ExtractedScriptType {
+    match attr {
+        None => ExtractedScriptType::Inline,
+        Some(None) => ExtractedScriptType::Unknown,
+        Some(Some(value)) => match classify_script_type(Some(&value)) {
+            ScriptKind::Script => {
+                if value.trim().eq_ignore_ascii_case("module") {
+                    ExtractedScriptType::Module
+                } else {
+                    ExtractedScriptType::Inline
+                }
             }
-        }
-        ScriptKind::Json => "json",
-        ScriptKind::Unknown => "unknown",
+            ScriptKind::Json => ExtractedScriptType::Json,
+            ScriptKind::Unknown => ExtractedScriptType::Unknown,
+        },
     }
 }
 
 fn style_lang_label(attrs: &[AnyHtmlAttribute]) -> String {
     find_attr_value(attrs, "lang")
+        .flatten()
         .filter(|lang| !lang.is_empty())
         .unwrap_or_else(|| "css".to_string())
 }
 
-fn find_attr_value(attrs: &[AnyHtmlAttribute], name: &str) -> Option<String> {
+/// `None`: absent. `Some(None)`: present but not statically knowable.
+/// `Some(Some(value))`: string value with any matching quotes stripped.
+fn find_attr_value(attrs: &[AnyHtmlAttribute], name: &str) -> Option<Option<String>> {
     for attr in attrs {
         let AnyHtmlAttribute::HtmlAttribute(attr_node) = attr else {
             continue;
@@ -680,17 +686,19 @@ fn find_attr_value(attrs: &[AnyHtmlAttribute], name: &str) -> Option<String> {
             continue;
         }
         let Some(initializer) = attr_node.initializer() else {
-            return Some(String::new());
+            return Some(Some(String::new()));
         };
         let Ok(value) = initializer.value() else {
-            continue;
+            return Some(None);
         };
         if let AnyHtmlAttributeInitializer::HtmlString(s) = value
             && let Ok(value_token) = s.value_token()
         {
             let raw = value_token.text_trimmed().to_string();
-            return Some(raw.trim_matches(|c| c == '"' || c == '\'').to_string());
+            let inner = strip_matching_quotes(&raw).unwrap_or(&raw);
+            return Some(Some(inner.to_string()));
         }
+        return Some(None);
     }
     None
 }
