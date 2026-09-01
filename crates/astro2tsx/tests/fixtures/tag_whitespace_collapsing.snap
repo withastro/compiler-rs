@@ -11,7 +11,7 @@ info:
     end: 30
   body:
     start: 41
-    end: 78
+    end: 80
   scripts: []
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/tag_whitespace_collapsing.astro
@@ -19,9 +19,9 @@ input_file: crates/astro2tsx/tests/fixtures/tag_whitespace_collapsing.astro
 /* @jsxImportSource astro */
 
 <Fragment>
-<div class="a" id="b" >spaced</div>
+<div class="a" id="b"   >spaced</div>
 
 </Fragment>
 export default function __AstroComponent_(_props: Record<string, any>): any {}
 
-//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiaW5wdXQuYXN0cm8iXSwic291cmNlc0NvbnRlbnQiOlsiPGRpdiAgIGNsYXNzPVwiYVwiXG5cdGlkPVwiYlwiICAgPnNwYWNlZDwvZGl2PlxuIl0sIm1hcHBpbmdzIjoiQTs7O0FBQUEsSSxDQUFPLFMsQ0FDTixPQUFTO0FBQ1Y7QSJ9
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiaW5wdXQuYXN0cm8iXSwic291cmNlc0NvbnRlbnQiOlsiPGRpdiAgIGNsYXNzPVwiYVwiXG5cdGlkPVwiYlwiICAgPnNwYWNlZDwvZGl2PlxuIl0sIm1hcHBpbmdzIjoiQTs7O0FBQUEsSSxDQUFPLFMsQ0FDTjtBQUNEO0EifQ==

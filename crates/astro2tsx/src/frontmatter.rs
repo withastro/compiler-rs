@@ -1,31 +1,41 @@
 //! Frontmatter runs in an implicit function, so its top-level `return`s are
-//! valid Astro but invalid TS; they become `throw `, whose six bytes match
-//! `return` and keep source mappings aligned.
+//! valid Astro but invalid TS. Each becomes `throw ` — or `void 0` when there
+//! is no argument, since `throw ;` is itself invalid — six bytes either way,
+//! so every offset after the keyword stays aligned with the source.
 
 use biome_js_syntax::{AnyJsRoot, JsReturnStatement, JsSyntaxKind};
 use biome_rowan::{AstNode, WalkEvent};
 
-/// `root` must be the parse of `source`.
-pub(crate) fn rewrite_top_level_returns(source: &str, root: &AnyJsRoot) -> String {
-    let offsets = find_top_level_returns(root);
-    if offsets.is_empty() {
-        return source.to_string();
-    }
-    let mut out = String::with_capacity(source.len());
-    let mut cursor = 0usize;
-    for offset in offsets {
-        let offset = offset as usize;
-        out.push_str(&source[cursor..offset]);
-        out.push_str("throw ");
-        cursor = offset + "return".len();
-    }
-    out.push_str(&source[cursor..]);
-    out
+/// Frontmatter text with its top-level `return`s replaced, plus the offsets
+/// (into `text`) of each six-byte replacement so they can stay unmapped.
+pub(crate) struct RewrittenFrontmatter {
+    pub(crate) text: String,
+    pub(crate) replaced: Vec<u32>,
 }
 
-/// Byte offsets of every `return` keyword sitting at module scope, ascending.
-fn find_top_level_returns(root: &AnyJsRoot) -> Vec<u32> {
-    let mut offsets = Vec::new();
+pub(crate) const REPLACEMENT_LEN: usize = "return".len();
+
+/// `root` must be the parse of `source`.
+pub(crate) fn rewrite_top_level_returns(source: &str, root: &AnyJsRoot) -> RewrittenFrontmatter {
+    let returns = find_top_level_returns(root);
+    let mut text = String::with_capacity(source.len());
+    let mut replaced = Vec::with_capacity(returns.len());
+    let mut cursor = 0usize;
+    for (offset, has_argument) in returns {
+        let offset = offset as usize;
+        text.push_str(&source[cursor..offset]);
+        replaced.push(text.len() as u32);
+        text.push_str(if has_argument { "throw " } else { "void 0" });
+        cursor = offset + REPLACEMENT_LEN;
+    }
+    text.push_str(&source[cursor..]);
+    RewrittenFrontmatter { text, replaced }
+}
+
+/// Byte offsets of every `return` keyword sitting at module scope, ascending,
+/// with whether the statement carries an argument.
+fn find_top_level_returns(root: &AnyJsRoot) -> Vec<(u32, bool)> {
+    let mut returns = Vec::new();
     let mut function_depth: u32 = 0;
 
     for event in root.syntax().preorder() {
@@ -38,7 +48,10 @@ fn find_top_level_returns(root: &AnyJsRoot) -> Vec<u32> {
                     && let Some(stmt) = JsReturnStatement::cast(node)
                     && let Ok(token) = stmt.return_token()
                 {
-                    offsets.push(u32::from(token.text_trimmed_range().start()));
+                    returns.push((
+                        u32::from(token.text_trimmed_range().start()),
+                        stmt.argument().is_some(),
+                    ));
                 }
             }
             WalkEvent::Leave(node) => {
@@ -48,7 +61,7 @@ fn find_top_level_returns(root: &AnyJsRoot) -> Vec<u32> {
             }
         }
     }
-    offsets
+    returns
 }
 
 fn is_function_like(kind: JsSyntaxKind) -> bool {

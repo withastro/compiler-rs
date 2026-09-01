@@ -13,7 +13,7 @@ use biome_rowan::{AstNode, AstNodeList, Direction, TextRange, TextSize};
 
 use crate::ConvertOptions;
 use crate::expression::emit_expression_tree;
-use crate::frontmatter::rewrite_top_level_returns;
+use crate::frontmatter::{REPLACEMENT_LEN, RewrittenFrontmatter, rewrite_top_level_returns};
 use crate::printer::{Printer, range_start};
 use crate::props::{PropsAnalysis, analyze as analyze_props};
 use crate::sourcemap::{
@@ -21,7 +21,8 @@ use crate::sourcemap::{
 };
 use crate::utils::{
     ScriptKind, classify_script_type, comment_needs_leading_space, encode_double_quote,
-    is_html_event_attribute, is_valid_tsx_attribute_name, tsx_component_name,
+    is_html_event_attribute, is_valid_tsx_attribute_name, strip_matching_quotes,
+    tsx_component_name,
 };
 
 const TSX_PREFIX: &str = "/* @jsxImportSource astro */\n\n";
@@ -38,7 +39,7 @@ pub(crate) fn render_root(printer: &mut Printer, root: HtmlRoot, options: &Conve
 
     let content = frontmatter.as_ref().and_then(frontmatter_content);
     let mut props_analysis = PropsAnalysis::default();
-    let mut rewritten: Option<(String, u32)> = None;
+    let mut rewritten: Option<(RewrittenFrontmatter, u32)> = None;
     if let Some((text, start)) = &content
         && !text.is_empty()
     {
@@ -252,7 +253,7 @@ fn frontmatter_anchor(frontmatter: &AnyAstroFrontmatterElement) -> Option<u32> {
 fn emit_frontmatter(
     printer: &mut Printer,
     frontmatter: &AnyAstroFrontmatterElement,
-    rewritten: Option<&(String, u32)>,
+    rewritten: Option<&(RewrittenFrontmatter, u32)>,
     anchor: Option<u32>,
 ) {
     let frontmatter_start = printer.position();
@@ -261,9 +262,9 @@ fn emit_frontmatter(
         AnyAstroFrontmatterElement::AstroFrontmatterElement(_) => {
             printer.map_to_offset(0);
             let emitted_content = match rewritten {
-                Some((text, start)) => {
-                    printer.write_with_mapping(text, *start);
-                    !text.is_empty()
+                Some((frontmatter_text, start)) => {
+                    emit_rewritten_frontmatter(printer, frontmatter_text, *start);
+                    !frontmatter_text.text.is_empty()
                 }
                 None => false,
             };
@@ -283,6 +284,19 @@ fn emit_frontmatter(
 
     let frontmatter_end = printer.position();
     printer.frontmatter_range = GeneratedRange::new(frontmatter_start, frontmatter_end);
+}
+
+/// `start + cursor` addresses the source directly because replacements match `return`'s length.
+fn emit_rewritten_frontmatter(printer: &mut Printer, rewritten: &RewrittenFrontmatter, start: u32) {
+    let mut cursor = 0usize;
+    for &offset in &rewritten.replaced {
+        let offset = offset as usize;
+        printer.write_with_mapping(&rewritten.text[cursor..offset], start + cursor as u32);
+        printer.map_nil();
+        printer.write(&rewritten.text[offset..offset + REPLACEMENT_LEN]);
+        cursor = offset + REPLACEMENT_LEN;
+    }
+    printer.write_with_mapping(&rewritten.text[cursor..], start + cursor as u32);
 }
 
 fn render_element(printer: &mut Printer, element: AnyHtmlElement) {
@@ -797,12 +811,11 @@ fn render_astro_fragment(printer: &mut Printer, node: &AstroFragment) {
     }
 }
 
-/// Anything between trimmed tag-header tokens is whitespace or comment
-/// trivia; both collapse to the single space JSX expects.
+/// Tag-header gaps hold whitespace or JS comments — both valid TSX, so they round-trip whole.
 fn emit_intra_tag_space(printer: &mut Printer, from: u32, to: u32) {
     if from < to {
-        printer.map_to_offset(from);
-        printer.write(" ");
+        let text = &printer.source[from as usize..to as usize];
+        printer.write_with_mapping(text, from);
     }
 }
 
@@ -933,8 +946,7 @@ fn emit_html_attribute(printer: &mut Printer, attr_node: &HtmlAttribute) {
             }
             let token_start = u32::from(value_token.text_trimmed_range().start());
             // Astro allows unquoted values, so the token may carry no quotes to strip.
-            let quoted = (raw.starts_with('"') && raw.ends_with('"'))
-                || (raw.starts_with('\'') && raw.ends_with('\''));
+            let quoted = strip_matching_quotes(&raw).is_some();
             let (inner, value_start) = if quoted {
                 (&raw[1..raw.len() - 1], token_start + 1)
             } else {
@@ -944,21 +956,22 @@ fn emit_html_attribute(printer: &mut Printer, attr_node: &HtmlAttribute) {
 
             printer.map_to_offset(eq_start);
             printer.write("=");
+            let (generated_start, generated_end);
             if quoted {
-                printer.map_to_offset(token_start);
+                // Either quote style is valid TSX, so the token round-trips whole.
+                let token_generated_start = printer.position();
+                printer.write_with_mapping(&raw, token_start);
+                generated_start = token_generated_start + 1;
+                generated_end = printer.position() - 1;
             } else {
                 printer.map_nil();
-            }
-            printer.write("\"");
-            let generated_start = printer.position();
-            printer.write_attribute_value_with_mapping(inner, value_start);
-            let generated_end = printer.position();
-            if quoted {
-                printer.map_to_offset(inner_end);
-            } else {
+                printer.write("\"");
+                generated_start = printer.position();
+                printer.write_attribute_value_with_mapping(inner, value_start);
+                generated_end = printer.position();
                 printer.map_nil();
+                printer.write("\"");
             }
-            printer.write("\"");
 
             let lower_key = key_text.to_ascii_lowercase();
             if is_html_event_attribute(&lower_key) {
@@ -1081,13 +1094,7 @@ fn emit_invalid_attribute(
                     return true;
                 };
                 let raw = value_token.text_trimmed().to_string();
-                let inner = if (raw.starts_with('"') && raw.ends_with('"'))
-                    || (raw.starts_with('\'') && raw.ends_with('\''))
-                {
-                    &raw[1..raw.len() - 1]
-                } else {
-                    raw.as_str()
-                };
+                let inner = strip_matching_quotes(&raw).unwrap_or(raw.as_str());
                 printer.map_nil();
                 printer.write(":");
                 printer.map_nil();
