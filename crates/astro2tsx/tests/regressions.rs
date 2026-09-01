@@ -468,6 +468,9 @@ fn doctype_never_reaches_the_output() {
         "<!DOCTYPE html>\n<html><body>x</body></html>",
         "---\nconst a = 1;\n---\n\n<!doctype html>\n<html lang=\"en\"><body>{a}</body></html>\n",
         "---\nconst a = 1;\n---\n<!doctype html>",
+        "<div>hi</div>\n<!DOCTYPE html>\n<p>after</p>",
+        "<!DOCTYPE html>\n<!DOCTYPE html>\n<p/>",
+        "<main>\n<!doctype html>\n<p>x</p>\n</main>",
     ] {
         let actual = convert(input);
         assert!(
@@ -480,6 +483,40 @@ fn doctype_never_reaches_the_output() {
     assert!(
         actual.contains("<html>"),
         "the html element was lost:\n{actual}"
+    );
+
+    let sibling = convert("<div>hi</div>\n<!DOCTYPE html>\n<p>after</p>");
+    assert!(
+        sibling.contains("<p>after</p>"),
+        "content after a stray doctype was lost:\n{sibling}"
+    );
+}
+
+#[test]
+fn unclosed_elements_get_a_synthetic_closing_tag() {
+    for (input, expected) in [
+        ("<div>hello", "<div>hello</div>"),
+        ("<Card>\n  <p>text</p>", "<p>text</p></Card>"),
+        ("<p>one<p>two", "<p>one<p>two</p></p>"),
+        ("<>{1}<p>x</p>", "<p>x</p></>"),
+    ] {
+        let result = convert_external(input);
+        assert!(
+            result.code.contains(expected),
+            "no synthetic close for {input:?}:\n{}",
+            result.code
+        );
+        assert!(result.has_parse_errors, "{input:?} must stay flagged");
+        assert_mapped_runs_are_verbatim(input, &result, "synthetic close");
+    }
+
+    // Recovery buries the real close inside a bogus node; a synthetic one would double it.
+    let recovered = convert_external("<table><tr><td>a<td>b</tr></table>");
+    assert_eq!(
+        recovered.code.matches("</table>").count(),
+        1,
+        "{}",
+        recovered.code
     );
 }
 

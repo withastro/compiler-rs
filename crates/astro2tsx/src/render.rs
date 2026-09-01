@@ -4,7 +4,7 @@ use biome_html_syntax::{
     AnyAstroDirective, AnyAstroFrontmatterElement, AnyHtmlAttribute, AnyHtmlAttributeInitializer,
     AnyHtmlComponentObjectName, AnyHtmlContent, AnyHtmlElement, AnyHtmlTagName,
     AnyHtmlTextExpression, AstroFragment, HtmlAttribute, HtmlElement, HtmlRoot,
-    HtmlSelfClosingElement, HtmlSingleTextExpression, HtmlSpreadAttribute,
+    HtmlSelfClosingElement, HtmlSingleTextExpression, HtmlSpreadAttribute, HtmlSyntaxKind,
 };
 use biome_js_parser::{JsOffsetParse, JsParserOptions, parse, parse_js_with_offset};
 use biome_languages::JsFileSource;
@@ -310,14 +310,20 @@ fn render_element(printer: &mut Printer, element: AnyHtmlElement) {
         AnyHtmlElement::HtmlCdataSection(_)
         | AnyHtmlElement::HtmlProcessingInstruction(_)
         | AnyHtmlElement::HtmlBogusElement(_) => {
-            // CDATA, processing instructions, and bogus nodes are passed
-            // through verbatim. They occur rarely in `.astro` and produce
-            // JSX-illegal output regardless, so the safest action is to
-            // preserve the original text and let downstream tooling surface
-            // diagnostics.
+            // Rare and JSX-illegal regardless, so they pass through verbatim.
             let range = element.range();
             let text = slice_source(printer.source, range);
-            printer.write_with_mapping(text, range_start(range));
+            let start = range_start(range);
+            // A stray doctype recovers as bogus text, but TSX has no doctype syntax.
+            if text
+                .get(..9)
+                .is_some_and(|prefix| prefix.eq_ignore_ascii_case("<!doctype"))
+            {
+                let rest_at = text.find('>').map(|i| i + 1).unwrap_or(text.len());
+                printer.write_with_mapping(&text[rest_at..], start + rest_at as u32);
+                return;
+            }
+            printer.write_with_mapping(text, start);
         }
     }
 }
@@ -581,7 +587,6 @@ fn render_html_element(printer: &mut Printer, node: HtmlElement) {
     if let Ok(closing) = node.closing_element() {
         let l_angle = closing.l_angle_token().ok();
         let r_angle = closing.r_angle_token().ok();
-        let closing_name = closing.name();
 
         if let Some(l_angle) = l_angle {
             printer.map_to_offset(range_start(l_angle.text_trimmed_range()));
@@ -590,11 +595,16 @@ fn render_html_element(printer: &mut Printer, node: HtmlElement) {
         }
         printer.write("</");
 
-        if let Ok(closing_name) = closing_name {
-            printer.map_to_offset(range_start(closing_name.range()));
-            printer.write(&tag_name_text(&closing_name));
-        } else {
-            printer.write(&tag_name);
+        match node.closing_element().and_then(|closing| closing.name()) {
+            // Recovery adopts a mismatched close (`<li>a</ul>`); TSX needs the names to agree.
+            Ok(closing_name) if tag_name_text(&closing_name) == tag_name => {
+                printer.map_to_offset(range_start(closing_name.range()));
+                printer.write(&tag_name);
+            }
+            _ => {
+                printer.map_nil();
+                printer.write(&tag_name);
+            }
         }
 
         if let Some(r_angle) = r_angle {
@@ -603,8 +613,18 @@ fn render_html_element(printer: &mut Printer, node: HtmlElement) {
             printer.map_nil();
         }
         printer.write(">");
+    } else {
+        // A bogus descendant can hold the real close verbatim; a synthetic one would double it.
+        let recovery_in_subtree = node
+            .syntax()
+            .descendants()
+            .any(|descendant| descendant.kind() == HtmlSyntaxKind::HTML_BOGUS_ELEMENT);
+        if !recovery_in_subtree {
+            // Unclosed in the source (`<div>hello` mid-edit), but JSX demands balance.
+            printer.map_nil();
+            printer.write(&format!("</{tag_name}>"));
+        }
     }
-    // Unclosed tags are unsupported, so no synthetic `</tag>` is emitted.
 }
 
 /// Only a bare `<script>` is processed by Astro; any attribute (`is:inline`,
@@ -808,6 +828,9 @@ fn render_astro_fragment(printer: &mut Printer, node: &AstroFragment) {
             printer.map_nil();
         }
         printer.write(">");
+    } else {
+        printer.map_nil();
+        printer.write("</>");
     }
 }
 
