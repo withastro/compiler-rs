@@ -608,36 +608,21 @@ fn render_html_element(printer: &mut Printer, node: HtmlElement) {
         }
     }
 
+    // Broken input is emitted as written; nothing is synthesized around missing tokens.
     if let Ok(closing) = node.closing_element() {
-        let l_angle = closing.l_angle_token().ok();
-        let r_angle = closing.r_angle_token().ok();
-
-        if let Some(l_angle) = l_angle {
+        if let Ok(l_angle) = closing.l_angle_token() {
             printer.map_to_offset(range_start(l_angle.text_trimmed_range()));
-        } else {
-            printer.map_nil();
+            printer.write("</");
         }
-        printer.write("</");
-
-        match node.closing_element().and_then(|closing| closing.name()) {
-            Ok(closing_name) => {
-                printer.map_to_offset(range_start(closing_name.range()));
-                printer.write(&tag_name_text(&closing_name));
-            }
-            Err(_) => {
-                printer.map_nil();
-                printer.write(&tag_name);
-            }
+        if let Ok(closing_name) = closing.name() {
+            printer.map_to_offset(range_start(closing_name.range()));
+            printer.write(&tag_name_text(&closing_name));
         }
-
-        if let Some(r_angle) = r_angle {
+        if let Ok(r_angle) = closing.r_angle_token() {
             printer.map_to_offset(range_start(r_angle.text_trimmed_range()));
-        } else {
-            printer.map_nil();
+            printer.write(">");
         }
-        printer.write(">");
     }
-    // Unclosed elements stay unclosed: a synthetic close would auto-correct broken input.
 }
 
 fn render_self_closing_element(printer: &mut Printer, node: HtmlSelfClosingElement) {
@@ -647,7 +632,11 @@ fn render_self_closing_element(printer: &mut Printer, node: HtmlSelfClosingEleme
     let Ok(l_angle) = node.l_angle_token() else {
         return;
     };
+    // A truncated tag (`<img /`) round-trips whole instead of being dropped.
     let Ok(r_angle) = node.r_angle_token() else {
+        let range = node.syntax().text_trimmed_range();
+        let text = slice_source(printer.source, range);
+        printer.write_with_mapping(text, range_start(range));
         return;
     };
     let attributes: Vec<AnyHtmlAttribute> = node.attributes().iter().collect();
@@ -695,10 +684,8 @@ fn render_astro_fragment(printer: &mut Printer, node: &AstroFragment) {
     printer.write("<");
     if let Some(open_r) = open_r.as_ref() {
         printer.map_to_offset(range_start(open_r.text_trimmed_range()));
-    } else {
-        printer.map_nil();
+        printer.write(">");
     }
-    printer.write(">");
 
     let opening_end = open_r
         .as_ref()
@@ -724,20 +711,14 @@ fn render_astro_fragment(printer: &mut Printer, node: &AstroFragment) {
     }
 
     if let Ok(closing) = node.closing_fragment() {
-        let l_angle = closing.l_angle_token().ok();
-        let r_angle = closing.r_angle_token().ok();
-        if let Some(l_angle) = l_angle {
+        if let Ok(l_angle) = closing.l_angle_token() {
             printer.map_to_offset(range_start(l_angle.text_trimmed_range()));
-        } else {
-            printer.map_nil();
+            printer.write("</");
         }
-        printer.write("</");
-        if let Some(r_angle) = r_angle {
+        if let Ok(r_angle) = closing.r_angle_token() {
             printer.map_to_offset(range_start(r_angle.text_trimmed_range()));
-        } else {
-            printer.map_nil();
+            printer.write(">");
         }
-        printer.write(">");
     }
 }
 

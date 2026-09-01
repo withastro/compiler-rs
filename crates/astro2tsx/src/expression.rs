@@ -310,9 +310,6 @@ fn emit_self_closing_element(printer: &mut Printer, element: &JsxSelfClosingElem
                 for piece in r_angle.trailing_trivia().pieces() {
                     emit_trivia(printer, &piece, base, false);
                 }
-            } else {
-                printer.map_nil();
-                printer.write("/>");
             }
         }
     }
