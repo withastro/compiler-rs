@@ -11,7 +11,8 @@ use napi_derive::napi;
 use crate::utf16::Utf16Index;
 use crate::{
     ConvertOptions, DEFAULT_SOURCE_NAME, DiagnosticSeverity as CoreDiagnosticSeverity,
-    ExtractedKind, FrontmatterStatus, SourceMapMode, convert_to_tsx as convert_rs,
+    ExtractedKind, ExtractedScriptType as CoreScriptType, FrontmatterStatus, SourceMapMode,
+    convert_to_tsx as convert_rs,
 };
 
 #[napi(object)]
@@ -276,14 +277,14 @@ fn extracted_script_to_napi(
     ExtractedScript {
         position: source_position(tag, source_index),
         content: tag.content.clone(),
-        r#type: match (tag.kind, tag.lang.as_deref()) {
-            (ExtractedKind::EventAttribute, _) => ExtractedScriptType::EventAttribute,
-            (_, Some("processed-module")) => ExtractedScriptType::ProcessedModule,
-            (_, Some("module")) => ExtractedScriptType::Module,
-            (_, Some("inline")) => ExtractedScriptType::Inline,
-            (_, Some("json")) => ExtractedScriptType::Json,
-            (_, Some("raw")) => ExtractedScriptType::Raw,
-            _ => ExtractedScriptType::Unknown,
+        r#type: match tag.script_type {
+            Some(CoreScriptType::ProcessedModule) => ExtractedScriptType::ProcessedModule,
+            Some(CoreScriptType::Module) => ExtractedScriptType::Module,
+            Some(CoreScriptType::Inline) => ExtractedScriptType::Inline,
+            Some(CoreScriptType::EventAttribute) => ExtractedScriptType::EventAttribute,
+            Some(CoreScriptType::Json) => ExtractedScriptType::Json,
+            Some(CoreScriptType::Raw) => ExtractedScriptType::Raw,
+            Some(CoreScriptType::Unknown) | None => ExtractedScriptType::Unknown,
         },
     }
 }

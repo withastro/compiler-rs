@@ -625,6 +625,48 @@ fn extracted_attribute_ranges_slice_to_content_with_inner_quotes() {
 }
 
 #[test]
+fn jsx_path_extracts_event_and_style_attributes() {
+    let source = "{x && <div onclick=\"go()\" style=\"color:red\"></div>}";
+    let result = convert_to_tsx(source, ConvertOptions::default());
+    assert_eq!(result.scripts.len(), 1, "{}", result.code);
+    assert_eq!(result.scripts[0].content, "go()");
+    assert_eq!(result.styles.len(), 1, "{}", result.code);
+    assert_eq!(result.styles[0].content, "color:red");
+    for tag in result.scripts.iter().chain(result.styles.iter()) {
+        assert_eq!(
+            &result.code[tag.range.start as usize..tag.range.end as usize],
+            tag.content,
+            "generated range does not slice to content"
+        );
+        assert_eq!(
+            &source[tag.source.start as usize..tag.source.end as usize],
+            tag.content,
+            "source range does not slice to content"
+        );
+    }
+}
+
+#[test]
+fn script_types_reflect_what_is_statically_knowable() {
+    use astro2tsx::ExtractedScriptType;
+
+    for (input, expected) in [
+        ("<script>const a = 1;</script>", ExtractedScriptType::ProcessedModule),
+        ("<script type=\"module\">x</script>", ExtractedScriptType::Module),
+        ("<script is:inline>x</script>", ExtractedScriptType::Inline),
+        ("<script type={mime}>wat</script>", ExtractedScriptType::Unknown),
+        ("{x && <script type={mime}>wat</script>}", ExtractedScriptType::Unknown),
+    ] {
+        let result = convert_to_tsx(input, ConvertOptions::default());
+        assert_eq!(
+            result.scripts.first().and_then(|tag| tag.script_type),
+            Some(expected),
+            "wrong script type for {input:?}"
+        );
+    }
+}
+
+#[test]
 fn stripping_the_doctype_keeps_mapped_runs_verbatim() {
     let source = "---\nconst é = 1;\n---\n\n<!doctype html>\n<html lang=en data-x=\"𝒳\"><body>{é}</body></html>\n";
     for ambient_types in [false, true] {

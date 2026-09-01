@@ -3,7 +3,8 @@
 use biome_rowan::TextRange;
 
 use crate::sourcemap::{
-    Diagnostic, ExtractedKind, ExtractedTag, FrontmatterInfo, GeneratedRange, Mapping, SourceRange,
+    Diagnostic, ExtractedKind, ExtractedScriptType, ExtractedTag, FrontmatterInfo, GeneratedRange,
+    Mapping, SourceRange,
 };
 use crate::utils::{comment_body_escape, template_text_escape};
 
@@ -165,14 +166,15 @@ impl<'a> Printer<'a> {
         range: GeneratedRange,
         source: SourceRange,
         content: String,
-        kind_label: &str,
+        script_type: ExtractedScriptType,
     ) {
         self.scripts.push(ExtractedTag {
             range,
             source,
             kind: ExtractedKind::Script,
             content,
-            lang: Some(kind_label.to_string()),
+            lang: None,
+            script_type: Some(script_type),
         });
     }
 
@@ -189,6 +191,7 @@ impl<'a> Printer<'a> {
             kind: ExtractedKind::Style,
             content,
             lang: Some(lang),
+            script_type: None,
         });
     }
 
@@ -203,7 +206,8 @@ impl<'a> Printer<'a> {
             source,
             kind: ExtractedKind::EventAttribute,
             content,
-            lang: Some("event-attribute".to_string()),
+            lang: None,
+            script_type: Some(ExtractedScriptType::EventAttribute),
         });
     }
 
@@ -219,6 +223,7 @@ impl<'a> Printer<'a> {
             kind: ExtractedKind::StyleAttribute,
             content,
             lang: Some("css".to_string()),
+            script_type: None,
         });
     }
 }

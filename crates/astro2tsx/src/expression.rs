@@ -8,10 +8,10 @@ use biome_js_syntax::{
 use biome_rowan::{AstNode, AstNodeList, SyntaxNode, SyntaxToken, SyntaxTriviaPiece, TextSize};
 
 use crate::printer::Printer;
-use crate::sourcemap::{GeneratedRange, SourceRange};
+use crate::sourcemap::{ExtractedScriptType, GeneratedRange, SourceRange};
 use crate::utils::{
-    comment_needs_leading_space, encode_double_quote, is_valid_tsx_attribute_name,
-    strip_matching_quotes,
+    comment_needs_leading_space, encode_double_quote, is_html_event_attribute,
+    is_valid_tsx_attribute_name, strip_matching_quotes,
 };
 
 type JsNode = SyntaxNode<JsLanguage>;
@@ -230,10 +230,12 @@ fn emit_jsx_element(printer: &mut Printer, element: &JsxElement, base: u32) {
                 let range = GeneratedRange::new(body_start, printer.position());
                 let source = SourceRange::new(from, to);
                 if matches!(mode, ChildrenMode::ExcludedScript) {
-                    let label = script_label(&opening.attributes());
-                    printer.add_script_block(range, source, content, label);
+                    let script_type = classify_script(&opening.attributes());
+                    printer.add_script_block(range, source, content, script_type);
                 } else {
-                    let lang = jsx_attribute_string(&opening.attributes(), "lang")
+                    let lang = jsx_attribute_value(&opening.attributes(), "lang")
+                        .flatten()
+                        .filter(|lang| !lang.is_empty())
                         .unwrap_or_else(|| "css".to_string());
                     printer.add_style_block(range, source, content, lang);
                 }
@@ -384,6 +386,10 @@ fn emit_jsx_attributes(printer: &mut Printer, attributes: &JsxAttributeList, bas
 }
 
 fn emit_plain_jsx_attribute(printer: &mut Printer, attribute: &JsxAttribute, base: u32) {
+    let name_text = attribute
+        .name()
+        .ok()
+        .map(|name| name.syntax().text_trimmed().to_string());
     if let Ok(name) = attribute.name() {
         emit_verbatim(printer, name.syntax(), base);
     }
@@ -397,7 +403,21 @@ fn emit_plain_jsx_attribute(printer: &mut Printer, attribute: &JsxAttribute, bas
         return;
     };
     match &value {
-        AnyJsxAttributeValue::JsxString(string) => emit_jsx_string(printer, string, base),
+        AnyJsxAttributeValue::JsxString(string) => {
+            let emitted = emit_jsx_string(printer, string, base);
+            let Some((range, source, content)) = emitted else {
+                return;
+            };
+            let Some(lower_name) = name_text.map(|name| name.to_ascii_lowercase()) else {
+                return;
+            };
+            if is_html_event_attribute(&lower_name) {
+                printer.add_event_attribute(range, source, content.clone());
+            }
+            if lower_name == "style" {
+                printer.add_style_attribute(range, source, content);
+            }
+        }
         AnyJsxAttributeValue::JsxExpressionAttributeValue(expression) => {
             emit_node(printer, expression.syntax(), base, false);
         }
@@ -416,27 +436,45 @@ fn emit_plain_jsx_attribute(printer: &mut Printer, attribute: &JsxAttribute, bas
 }
 
 /// Quoted strings pass through; unquoted values gain quotes for TSX.
-fn emit_jsx_string(printer: &mut Printer, string: &JsxString, base: u32) {
-    let Ok(token) = string.value_token() else {
-        return;
-    };
+/// Returns the generated and source ranges of the value between the quotes.
+fn emit_jsx_string(
+    printer: &mut Printer,
+    string: &JsxString,
+    base: u32,
+) -> Option<(GeneratedRange, SourceRange, String)> {
+    let token = string.value_token().ok()?;
     let text = token.text_trimmed();
-    if text.starts_with('"') || text.starts_with('\'') {
-        emit_token(printer, &token, base, false);
-        return;
-    }
+    let start = abs(base, token.text_trimmed_range().start());
+
     for piece in token.leading_trivia().pieces() {
         emit_trivia(printer, &piece, base, false);
     }
-    let start = abs(base, token.text_trimmed_range().start());
-    printer.map_nil();
-    printer.write("\"");
-    printer.write_attribute_value_with_mapping(text, start);
-    printer.map_nil();
-    printer.write("\"");
+    let extracted = if let Some(inner) = strip_matching_quotes(text) {
+        let generated_start = printer.position() + 1;
+        printer.write_with_mapping(text, start);
+        (
+            GeneratedRange::new(generated_start, printer.position() - 1),
+            SourceRange::new(start + 1, start + 1 + inner.len() as u32),
+            inner.to_string(),
+        )
+    } else {
+        printer.map_nil();
+        printer.write("\"");
+        let generated_start = printer.position();
+        printer.write_attribute_value_with_mapping(text, start);
+        let generated_end = printer.position();
+        printer.map_nil();
+        printer.write("\"");
+        (
+            GeneratedRange::new(generated_start, generated_end),
+            SourceRange::new(start, start + text.len() as u32),
+            text.to_string(),
+        )
+    };
     for piece in token.trailing_trivia().pieces() {
         emit_trivia(printer, &piece, base, false);
     }
+    Some(extracted)
 }
 
 /// Returns whether an entry was written; a skipped entry must not be separated.
@@ -498,20 +536,22 @@ fn emit_invalid_jsx_attribute(
     true
 }
 
-fn script_label(attributes: &JsxAttributeList) -> &'static str {
+fn classify_script(attributes: &JsxAttributeList) -> ExtractedScriptType {
     if attributes.iter().next().is_none() {
-        return "processed-module";
+        return ExtractedScriptType::ProcessedModule;
     }
     if attributes
         .iter()
         .any(|attr| attribute_name_text(&attr).as_deref() == Some("is:raw"))
     {
-        return "raw";
+        return ExtractedScriptType::Raw;
     }
-    crate::render::script_label_for_type(jsx_attribute_string(attributes, "type").as_deref())
+    crate::render::script_type_for_attr(jsx_attribute_value(attributes, "type"))
 }
 
-fn jsx_attribute_string(attributes: &JsxAttributeList, name: &str) -> Option<String> {
+/// `None`: absent. `Some(None)`: present but not statically knowable.
+/// `Some(Some(value))`: string value with any matching quotes stripped.
+fn jsx_attribute_value(attributes: &JsxAttributeList, name: &str) -> Option<Option<String>> {
     for attr in attributes {
         let AnyJsxAttribute::JsxAttribute(attribute) = attr else {
             continue;
@@ -523,15 +563,16 @@ fn jsx_attribute_string(attributes: &JsxAttributeList, name: &str) -> Option<Str
             continue;
         }
         let Some(initializer) = attribute.initializer() else {
-            return Some(String::new());
+            return Some(Some(String::new()));
         };
         if let Ok(AnyJsxAttributeValue::JsxString(string)) = initializer.value()
             && let Ok(token) = string.value_token()
         {
             let text = token.text_trimmed().to_string();
             let inner = strip_matching_quotes(&text).unwrap_or(&text);
-            return Some(inner.to_string());
+            return Some(Some(inner.to_string()));
         }
+        return Some(None);
     }
     None
 }
