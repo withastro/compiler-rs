@@ -4,7 +4,7 @@ use biome_html_syntax::{
     AnyAstroDirective, AnyAstroFrontmatterElement, AnyHtmlAttribute, AnyHtmlAttributeInitializer,
     AnyHtmlComponentObjectName, AnyHtmlContent, AnyHtmlElement, AnyHtmlTagName,
     AnyHtmlTextExpression, AstroFragment, HtmlAttribute, HtmlElement, HtmlRoot,
-    HtmlSelfClosingElement, HtmlSingleTextExpression, HtmlSpreadAttribute, HtmlSyntaxKind,
+    HtmlSelfClosingElement, HtmlSingleTextExpression, HtmlSpreadAttribute,
 };
 use biome_js_parser::{JsOffsetParse, JsParserOptions, parse, parse_js_with_offset};
 use biome_languages::JsFileSource;
@@ -620,12 +620,11 @@ fn render_html_element(printer: &mut Printer, node: HtmlElement) {
         printer.write("</");
 
         match node.closing_element().and_then(|closing| closing.name()) {
-            // Recovery adopts a mismatched close (`<li>a</ul>`); TSX needs the names to agree.
-            Ok(closing_name) if tag_name_text(&closing_name) == tag_name => {
+            Ok(closing_name) => {
                 printer.map_to_offset(range_start(closing_name.range()));
-                printer.write(&tag_name);
+                printer.write(&tag_name_text(&closing_name));
             }
-            _ => {
+            Err(_) => {
                 printer.map_nil();
                 printer.write(&tag_name);
             }
@@ -637,18 +636,8 @@ fn render_html_element(printer: &mut Printer, node: HtmlElement) {
             printer.map_nil();
         }
         printer.write(">");
-    } else {
-        // A bogus descendant can hold the real close verbatim; a synthetic one would double it.
-        let recovery_in_subtree = node
-            .syntax()
-            .descendants()
-            .any(|descendant| descendant.kind() == HtmlSyntaxKind::HTML_BOGUS_ELEMENT);
-        if !recovery_in_subtree {
-            // Unclosed in the source (`<div>hello` mid-edit), but JSX demands balance.
-            printer.map_nil();
-            printer.write(&format!("</{tag_name}>"));
-        }
     }
+    // Unclosed elements stay unclosed: a synthetic close would auto-correct broken input.
 }
 
 fn render_self_closing_element(printer: &mut Printer, node: HtmlSelfClosingElement) {
@@ -749,9 +738,6 @@ fn render_astro_fragment(printer: &mut Printer, node: &AstroFragment) {
             printer.map_nil();
         }
         printer.write(">");
-    } else {
-        printer.map_nil();
-        printer.write("</>");
     }
 }
 

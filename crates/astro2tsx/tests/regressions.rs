@@ -493,31 +493,31 @@ fn doctype_never_reaches_the_output() {
 }
 
 #[test]
-fn unclosed_elements_get_a_synthetic_closing_tag() {
+fn unclosed_elements_are_emitted_as_written_and_flagged() {
     for (input, expected) in [
-        ("<div>hello", "<div>hello</div>"),
-        ("<Card>\n  <p>text</p>", "<p>text</p></Card>"),
-        ("<p>one<p>two", "<p>one<p>two</p></p>"),
-        ("<>{1}<p>x</p>", "<p>x</p></>"),
+        ("<div>hello", "<div>hello"),
+        ("<Card>\n  <p>text</p>", "<Card>\n  <p>text</p>"),
+        ("<p>one<p>two", "<p>one<p>two"),
+        ("<>{1}<p>x</p>", "<>{1}<p>x</p>"),
+        (
+            "<table><tr><td>a<td>b</tr></table>",
+            "<td>a<td>b</tr></table>",
+        ),
     ] {
         let result = convert_external(input);
         assert!(
             result.code.contains(expected),
-            "no synthetic close for {input:?}:\n{}",
+            "content lost for {input:?}:\n{}",
+            result.code
+        );
+        assert!(
+            !result.code.contains("</div>") || input.contains("</div>"),
+            "a closing tag was synthesized for {input:?}:\n{}",
             result.code
         );
         assert!(result.has_parse_errors, "{input:?} must stay flagged");
-        assert_mapped_runs_are_verbatim(input, &result, "synthetic close");
+        assert_mapped_runs_are_verbatim(input, &result, "unclosed as written");
     }
-
-    // Recovery buries the real close inside a bogus node; a synthetic one would double it.
-    let recovered = convert_external("<table><tr><td>a<td>b</tr></table>");
-    assert_eq!(
-        recovered.code.matches("</table>").count(),
-        1,
-        "{}",
-        recovered.code
-    );
 }
 
 /// The one invariant every consumer leans on, checked against every fixture.

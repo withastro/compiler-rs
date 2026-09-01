@@ -219,8 +219,6 @@ test('everyday inputs that used to break TS parsing now emit valid TSX', () => {
 		'---\nif (cond) {\n\treturn;\n}\n---\n<p/>',
 		'---\nconst a = 1;\n---\n<!doctype html>\n<html><body>{a}</body></html>',
 		'<div>hi</div>\n<!DOCTYPE html>\n<p>after</p>',
-		'<div>hello',
-		'<p>one<p>two',
 		"<div data-x='a\"b'></div>",
 		'<Comp\n  foo={bar}\n/>',
 	];
