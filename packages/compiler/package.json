@@ -43,7 +43,7 @@
     "@types/node": "^22",
     "publint": "^0.3.21",
     "tsdown": "^0.22.3",
-    "typescript": "~5.5.3"
+    "typescript": "~5.9.0"
   },
   "engines": {
     "node": ">=22.12.0"
