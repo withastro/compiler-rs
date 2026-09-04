@@ -28,7 +28,7 @@ test('detects `Props` interface and emits the Astro global declaration', () => {
 });
 
 test('reports parse errors but still produces output', () => {
-	const result = convertToTsx('<div'); // unclosed tag
+	const result = convertToTsx('<div');
 	assert.equal(result.hasParseErrors, true);
 	assert.ok(result.code.length > 0);
 });
@@ -82,7 +82,6 @@ test('mapped runs interpolate to exact source positions, Volar-style', () => {
 		);
 	}
 
-	// Synthetic output stays unmapped instead of resolving somewhere misleading.
 	assert.equal(originalAt(result.code.indexOf('<Fragment>')), null);
 	assert.equal(originalAt(result.code.indexOf('export default function')), null);
 });
@@ -118,8 +117,7 @@ test("sourcemap: 'external' leaves the code without the comment", () => {
 });
 
 test('every clean-parse fixture emits syntactically valid TSX', async () => {
-	// Frontmatter is user JS emitted verbatim, so a fixture whose frontmatter is
-	// itself invalid TS legitimately produces invalid output.
+	// Invalid user frontmatter legitimately produces invalid TSX.
 	const invalidUserCode = new Set(['props_generic_invalid']);
 
 	const dir = join(import.meta.dirname, '../tests/fixtures');
@@ -161,7 +159,6 @@ test('offsets are UTF-16 code units, not bytes', () => {
 	const source = '---\nconst \u{1f984} = 1;\n---\n<style>.a{color:red}</style>';
 	const result = convertToTsx(source, { sourcemap: 'external' });
 
-	// The unicorn is four bytes but two UTF-16 units, so a byte offset would overshoot.
 	const style = result.styles[0];
 	assert.equal(source.slice(style.position.start, style.position.end), '.a{color:red}');
 	assert.equal(
@@ -208,7 +205,6 @@ test('ambientTypes appends unmapped Fragment and Astro declarations', () => {
 	assert.ok(ambient.code.includes('declare const Fragment: any;'));
 	assert.match(ambient.code, /declare const Astro: Readonly<import\('astro'\)\.AstroGlobal</);
 
-	// The declarations only extend the module; everything before them is unchanged.
 	assert.ok(ambient.code.startsWith(plain.code));
 	assert.deepEqual(Array.from(ambient.generatedOffsets), Array.from(plain.generatedOffsets));
 	assert.deepEqual(Array.from(ambient.sourceOffsets), Array.from(plain.sourceOffsets));
@@ -249,7 +245,6 @@ test('sourcemap accepts every documented string form', () => {
 	assert.equal(convertToTsx('<p/>', { sourcemap: 'false' }).map, undefined);
 	assert.ok(convertToTsx('<p/>', { sourcemap: 'external' }).map);
 
-	// Unrecognized strings behave as "inline", per the option's contract.
 	const garbage = convertToTsx('<p/>', { sourcemap: 'bananas' });
 	assert.ok(garbage.map);
 	assert.match(garbage.code, /sourceMappingURL/);
@@ -276,7 +271,6 @@ test('sourcemap: false skips building the map', () => {
 	assert.equal(skipped.map, undefined);
 	assert.doesNotMatch(skipped.code, /sourceMappingURL/);
 
-	// Opting out must not change the code or the offsets editors navigate by.
 	const external = convertToTsx(source, { sourcemap: 'external' });
 	assert.equal(skipped.code, external.code);
 	assert.deepEqual(Array.from(skipped.generatedOffsets), Array.from(external.generatedOffsets));

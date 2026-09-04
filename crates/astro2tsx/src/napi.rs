@@ -1,8 +1,4 @@
-//! Node.js bindings for `astro2tsx`. Excluded from `cfg(test)` builds, where
-//! napi-derive emits no registration and every item here looks dead.
-//!
-//! Every offset crossing this boundary is in UTF-16 code units, because JS
-//! consumers index strings that way.
+//! NAPI uses UTF-16 offsets; napi-derive registers nothing in test builds.
 
 use napi::Either;
 use napi::bindgen_prelude::Uint32Array;
@@ -157,7 +153,6 @@ pub fn convert_to_tsx(source: String, options: Option<ConvertToTsxOptions>) -> C
         .filename
         .clone()
         .unwrap_or_else(|| DEFAULT_SOURCE_NAME.to_string());
-    // The comment is appended below, once, from the map this function builds.
     let mut result = convert_rs(
         &source,
         ConvertOptions {
@@ -185,8 +180,7 @@ pub fn convert_to_tsx(source: String, options: Option<ConvertToTsxOptions>) -> C
             .unwrap_or(code_len);
         let generated = generated_index.convert(mapping.generated);
         let source = source_index.convert(original);
-        // Escapes are ASCII on both sides, so one UTF-16 length serves both.
-        // The min collapses the EOF-anchored trailing run to the source that remains.
+        // ASCII escapes preserve equal UTF-16 run lengths; clamp EOF runs to remaining source.
         let length =
             (generated_index.convert(run_end) - generated).min(source_len.saturating_sub(source));
         if length == 0 {

@@ -1,5 +1,3 @@
-//! Walks the Biome HTML CST for an Astro file and emits TSX.
-
 use biome_html_syntax::{
     AnyAstroDirective, AnyAstroFrontmatterElement, AnyHtmlAttribute, AnyHtmlAttributeInitializer,
     AnyHtmlComponentObjectName, AnyHtmlContent, AnyHtmlElement, AnyHtmlTagName,
@@ -107,7 +105,6 @@ pub(crate) fn render_root(printer: &mut Printer, root: HtmlRoot, options: &Conve
         printer.map_nil();
         printer.write("</Fragment>\n");
     } else {
-        // Stands in for the trailing newline a body would have provided.
         if frontmatter.is_some() {
             printer.map_nil();
             printer.write("\n");
@@ -124,9 +121,6 @@ pub(crate) fn render_root(printer: &mut Printer, root: HtmlRoot, options: &Conve
     );
 }
 
-/// Returns the byte offset where body content begins. With a frontmatter
-/// present, this is the byte just after the closing `---` fence; without
-/// it, this is the start of the source.
 fn body_text_start_offset(frontmatter: &Option<AnyAstroFrontmatterElement>) -> u32 {
     if let Some(AnyAstroFrontmatterElement::AstroFrontmatterElement(node)) = frontmatter
         && let Ok(r_fence) = node.r_fence_token()
@@ -165,7 +159,6 @@ fn frontmatter_info(
     }
 }
 
-/// The frontmatter's JS text (trivia included) and its source offset.
 fn frontmatter_content(node: &AnyAstroFrontmatterElement) -> Option<(String, u32)> {
     if let AnyAstroFrontmatterElement::AstroFrontmatterElement(frontmatter) = node
         && let Ok(content) = frontmatter.content()
@@ -182,7 +175,6 @@ fn emit_default_export(
     analysis: &PropsAnalysis,
     ambient_types: bool,
 ) {
-    // `_props` takes the parameterised `Props<T>`; the Astro global takes the bare ident.
     let (props_param, props_global) = if analysis.has_props {
         if analysis.generics_args.is_empty() {
             ("Props".to_string(), "Props".to_string())
@@ -336,7 +328,7 @@ fn render_element(printer: &mut Printer, element: AnyHtmlElement) {
         AnyHtmlElement::HtmlCdataSection(_)
         | AnyHtmlElement::HtmlProcessingInstruction(_)
         | AnyHtmlElement::HtmlBogusElement(_) => {
-            // Rare and JSX-illegal regardless, so they pass through verbatim.
+            // Preserve unsupported syntax verbatim so error recovery loses no source text.
             let range = element.range();
             let text = slice_source(printer.source, range);
             let start = range_start(range);
@@ -389,8 +381,7 @@ fn render_text_expression(printer: &mut Printer, expression: AnyHtmlTextExpressi
             render_single_text_expression(printer, node);
         }
         AnyHtmlTextExpression::HtmlDoubleTextExpression(node) => {
-            // `{{ … }}` is Vue's syntax — Astro doesn't use it, but we
-            // accept it for HTML mode by passing through the raw text.
+            // Preserve Vue-style `{{ … }}` verbatim in HTML mode.
             let range = node.range();
             let text = slice_source(printer.source, range);
             printer.write_with_mapping(text, range_start(range));
@@ -400,9 +391,7 @@ fn render_text_expression(printer: &mut Printer, expression: AnyHtmlTextExpressi
             let text = slice_source(printer.source, range);
             printer.write_with_mapping(text, range_start(range));
         }
-        AnyHtmlTextExpression::AnySvelteBlock(_) => {
-            // Not relevant for Astro.
-        }
+        AnyHtmlTextExpression::AnySvelteBlock(_) => {}
     }
 }
 
@@ -445,8 +434,7 @@ fn render_single_text_expression(printer: &mut Printer, node: HtmlSingleTextExpr
     printer.write("}");
 }
 
-/// Parses an expression body so markup is located by the tree rather than by
-/// scanning bytes, which is what keeps strings and generics from being rewritten.
+/// Parse the tree to avoid rewriting markup-like strings and generics.
 fn parse_expression_body(text: &str, base_offset: u32) -> JsOffsetParse {
     parse_js_with_offset(
         text,
@@ -477,8 +465,7 @@ fn emit_expression_body(printer: &mut Printer, raw: &str, original_start: u32) {
     printer.write_with_mapping(raw, original_start);
 }
 
-/// Expression-body diagnostics already carry document offsets thanks to the
-/// parse offset, but a spanless one falls back to the whole body.
+/// Spanless expression diagnostics fall back to the whole expression body.
 fn diagnostic_source_range(
     diagnostic: &biome_parser::diagnostic::ParseDiagnostic,
     start: u32,
@@ -502,8 +489,7 @@ fn render_html_element(printer: &mut Printer, node: HtmlElement) {
     };
     let open_r_angle = opening.r_angle_token().ok();
 
-    // An open tag with no `>` is round-tripped verbatim rather than shimmed;
-    // the result is invalid TSX within that span alone.
+    // Preserve incomplete tags verbatim so error recovery loses no source text.
     if open_r_angle.is_none() {
         let range = node.syntax().text_trimmed_range();
         let text = slice_source(printer.source, range);
@@ -554,7 +540,7 @@ fn render_html_element(printer: &mut Printer, node: HtmlElement) {
         .map(|t| range_start(t.text_trimmed_range()));
 
     if is_script || is_style {
-        // The tag still prints; only its text content is left out.
+        // Keep the tag for TSX analysis while reporting its body separately.
     } else if inline_raw_body {
         // Unclosed raw-text content runs to the end of the node the parser built.
         let inner_start = opening_end;
@@ -650,7 +636,7 @@ fn render_self_closing_element(printer: &mut Printer, node: HtmlSelfClosingEleme
         &attributes,
     );
 
-    // The probe point sits before the slash: `<Foo />` keeps its space, `<Foo/>` stays tight.
+    // Measure before the slash to preserve whether the source included separating space.
     let r_angle_start = range_start(r_angle.text_trimmed_range());
     let pre_slash = node
         .slash_token()
@@ -670,7 +656,6 @@ fn render_self_closing_element(printer: &mut Printer, node: HtmlSelfClosingEleme
     printer.write(">");
 }
 
-/// `<>...</>` is valid TSX as written; only the children need processing.
 fn render_astro_fragment(printer: &mut Printer, node: &AstroFragment) {
     let Ok(opening) = node.opening_fragment() else {
         return;
@@ -775,7 +760,6 @@ fn emit_attribute(printer: &mut Printer, attr: &AnyHtmlAttribute) {
         AnyHtmlAttribute::HtmlAttribute(attr_node) => emit_html_attribute(printer, attr_node),
         AnyHtmlAttribute::HtmlSpreadAttribute(spread) => emit_spread_attribute(printer, spread),
         AnyHtmlAttribute::HtmlAttributeSingleTextExpression(node) => {
-            // Astro shorthand attribute: `<Foo {bar} />`.
             if let Ok(expression) = node.expression()
                 && let Ok(token) = expression.html_literal_token()
             {
@@ -870,7 +854,6 @@ fn emit_html_attribute(printer: &mut Printer, attr_node: &HtmlAttribute) {
             printer.write("=");
             let (generated_start, generated_end);
             if quoted {
-                // Either quote style is valid TSX, so the token round-trips whole.
                 let token_generated_start = printer.position();
                 printer.write_with_mapping(&raw, token_start);
                 generated_start = token_generated_start + 1;
@@ -929,9 +912,7 @@ fn emit_html_attribute(printer: &mut Printer, attr_node: &HtmlAttribute) {
             printer.write("}");
         }
         AnyHtmlAttributeInitializer::SvelteTemplateAttributeValue(_)
-        | AnyHtmlAttributeInitializer::VueVForValue(_) => {
-            // Not applicable in Astro mode.
-        }
+        | AnyHtmlAttributeInitializer::VueVForValue(_) => {}
     }
 }
 
@@ -963,7 +944,7 @@ fn emit_astro_directive(printer: &mut Printer, directive: &AnyAstroDirective) {
     printer.write_with_mapping(text, range_start(range));
 }
 
-/// Returns whether an entry was written; a skipped entry must not be separated.
+/// A skipped entry must not advance comma insertion.
 fn emit_invalid_attribute(
     printer: &mut Printer,
     attr: &AnyHtmlAttribute,
@@ -1236,7 +1217,6 @@ fn comment_trivia_ranges(root: &HtmlRoot) -> Vec<TextRange> {
     ranges
 }
 
-/// Emits `source[from..to]`, rewriting `<!-- -->` to `{/** */}` for TSX.
 fn emit_source_gap(printer: &mut Printer, from: u32, to: u32) {
     let source = printer.source;
     let to = (to as usize).min(source.len());

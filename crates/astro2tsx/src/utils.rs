@@ -1,9 +1,6 @@
-//! Text-escaping helpers for text and attribute payloads emitted as TSX.
-
 use biome_string_case::Case;
 use oxc_syntax::identifier::{is_identifier_part, is_identifier_start};
 
-/// Escape for text wrapped in `{\`...\`}`: backslashes, backticks, and `${`.
 pub(crate) fn template_text_escape(ch: char, next: Option<char>) -> Option<&'static str> {
     match ch {
         '\\' => Some("\\\\"),
@@ -13,7 +10,6 @@ pub(crate) fn template_text_escape(ch: char, next: Option<char>) -> Option<&'sta
     }
 }
 
-/// Escape for `{/** ... */}` bodies, where `*/` closes the comment early.
 pub(crate) fn comment_body_escape(previous: Option<char>, ch: char) -> Option<&'static str> {
     match ch {
         '\\' => Some("\\\\"),
@@ -33,8 +29,6 @@ pub(crate) fn encode_double_quote(src: &str) -> String {
     src.replace('"', "&quot;")
 }
 
-/// The value inside a matched `"…"` or `'…'` pair, or `None` when unquoted.
-/// Mismatched or lone quotes (`"x'`, `"`) count as unquoted.
 pub(crate) fn strip_matching_quotes(text: &str) -> Option<&str> {
     let quote = match text.chars().next()? {
         quote @ ('"' | '\'') => quote,
@@ -43,9 +37,6 @@ pub(crate) fn strip_matching_quotes(text: &str) -> Option<&str> {
     text.strip_prefix(quote)?.strip_suffix(quote)
 }
 
-/// The synthetic component identifier emitted as the default export. Empty and
-/// `<stdin>` filenames produce the bare placeholder, as does a basename that
-/// cannot be an identifier (`404.astro`).
 pub(crate) fn tsx_component_name(filename: Option<&str>) -> String {
     const PLACEHOLDER: &str = "__AstroComponent_";
     let Some(filename) = filename else {
@@ -165,16 +156,12 @@ pub(crate) fn is_html_event_attribute(name: &str) -> bool {
     )
 }
 
-/// Whether JSX accepts `name` as written. JSX allows an identifier plus `:`
-/// (namespace) and `-` (custom attributes); anything else — `@click`,
-/// `x-on:k.s.e` — has to go through a spread object literal.
 pub(crate) fn is_valid_tsx_attribute_name(name: &str) -> bool {
     let mut chars = name.chars();
     chars.next().is_some_and(is_identifier_start)
         && chars.all(|ch| is_identifier_part(ch) || ch == ':' || ch == '-')
 }
 
-/// The family a script's `type` attribute puts it in.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum ScriptKind {
     Script,

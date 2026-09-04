@@ -1,5 +1,3 @@
-//! Emits a parsed expression body: JS verbatim, JSX normalized like the HTML renderer.
-
 use biome_js_syntax::{
     AnyJsxAttribute, AnyJsxAttributeValue, AnyJsxElementName, AstroImplicitFragment, JsLanguage,
     JsSyntaxKind, JsxAttribute, JsxAttributeList, JsxElement, JsxFragment, JsxSelfClosingElement,
@@ -135,7 +133,6 @@ fn emit_jsx_fragment(printer: &mut Printer, fragment: &JsxFragment, base: u32) {
     }
 }
 
-/// Adjacent siblings with no written wrapper; TSX needs an explicit one.
 fn emit_implicit_fragment(printer: &mut Printer, fragment: &AstroImplicitFragment, base: u32) {
     printer.map_nil();
     printer.write("<Fragment>");
@@ -148,10 +145,8 @@ fn emit_implicit_fragment(printer: &mut Printer, fragment: &AstroImplicitFragmen
 
 enum ChildrenMode {
     Normal,
-    /// `<script>` / `<style>`: the body is excluded and reported instead.
     ExcludedScript,
     ExcludedStyle,
-    /// `is:raw`: the body is emitted as a `{\`...\`}` template.
     RawTemplate,
 }
 
@@ -261,7 +256,6 @@ fn emit_jsx_element(printer: &mut Printer, element: &JsxElement, base: u32) {
     }
 }
 
-/// The source span between `>` of the opening tag and `<` of the closing tag.
 fn children_source_span(element: &JsxElement) -> Option<(TextSize, TextSize)> {
     let start = element
         .opening_element()
@@ -432,8 +426,6 @@ fn emit_plain_jsx_attribute(printer: &mut Printer, attribute: &JsxAttribute, bas
     }
 }
 
-/// Quoted strings pass through; unquoted values gain quotes for TSX.
-/// Returns the generated and source ranges of the value between the quotes.
 fn emit_jsx_string(
     printer: &mut Printer,
     string: &JsxString,
@@ -474,7 +466,6 @@ fn emit_jsx_string(
     Some(extracted)
 }
 
-/// Returns whether an entry was written; a skipped entry must not be separated.
 fn emit_invalid_jsx_attribute(
     printer: &mut Printer,
     attribute: &JsxAttribute,

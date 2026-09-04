@@ -88,7 +88,6 @@ pub fn convert_to_tsx(source: &str, options: ConvertOptions) -> ConvertResult {
         .collect();
     diagnostics.extend(printer.diagnostics);
     diagnostics.sort_by_key(|diagnostic| (diagnostic.source.start, diagnostic.source.end));
-    // The HTML parse and an expression re-parse can surface the same entry.
     diagnostics.dedup();
 
     let mut result = ConvertResult {

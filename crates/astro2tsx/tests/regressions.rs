@@ -1,5 +1,3 @@
-//! Assertions over `convert_to_tsx` output for a spread of Astro inputs.
-
 mod common;
 
 use astro2tsx::{ConvertOptions, convert_to_tsx};
@@ -43,7 +41,6 @@ fn unparseable_expression_bodies_are_not_silent() {
 
 #[test]
 fn parser_errors_surface_but_do_not_block_emission() {
-    // Unbalanced curly brace — bogus text expression recovery.
     let result = convert_to_tsx(
         "---\nconst items = [1];\n---\n{items.map(i => <div>{i}</div>)",
         ConvertOptions::default(),
@@ -52,7 +49,6 @@ fn parser_errors_surface_but_do_not_block_emission() {
     assert!(result.code.starts_with(PREFIX));
 }
 
-/// Excluded bodies must stay reachable through the extracted arrays.
 #[test]
 fn unclosed_raw_text_element_still_accounts_for_its_content() {
     let raw = convert("<div is:raw>lost\n<p>after</p>");
@@ -99,7 +95,6 @@ fn spread_object_entries_are_comma_separated_without_a_leading_comma() {
         "{actual}"
     );
 
-    // A dotted directive reaches the spread but emits no entry of its own.
     for input in [
         "<div client:load.foo @z={} />",
         "<div @z={} client:load.foo />",
@@ -226,7 +221,6 @@ fn extracted_ranges_are_generated_offsets() {
         "go()"
     );
 
-    // An excluded body leaves an empty range between the tags.
     let tag = convert_to_tsx("<style>.a{color:red}</style>", ConvertOptions::default());
     let range = tag.styles[0].range;
     assert_eq!(range.start, range.end);
@@ -436,13 +430,12 @@ fn extracted_tag_sources_slice_to_their_content() {
     }
 }
 
-/// Distinct names per route file; the language server keys auto-imports on them.
+// Route-specific component names keep language-server auto-imports distinct.
 #[test]
 fn dynamic_routes_keep_their_component_name() {
     for (filename, expected) in [
         ("src/pages/[slug].astro", "Slug__AstroComponent_"),
         ("src/pages/my-comp.astro", "MyComp__AstroComponent_"),
-        // Names that cannot be identifiers fall back to the bare placeholder.
         ("src/pages/404.astro", "__AstroComponent_"),
         ("src/pages/[...path].astro", "__AstroComponent_"),
     ] {
@@ -528,7 +521,6 @@ fn unclosed_elements_are_emitted_as_written_and_flagged() {
     assert!(!fragment.code.contains("</>"), "{}", fragment.code);
 }
 
-/// The one invariant every consumer leans on, checked against every fixture.
 #[test]
 fn every_fixture_keeps_mapped_runs_verbatim() {
     let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/tests/fixtures");
@@ -744,7 +736,6 @@ fn ambient_types_are_appended_only_on_request() {
     );
 }
 
-/// A frontmatter `Props` already declares `Astro`; a second one would conflict.
 #[test]
 fn ambient_types_never_declare_astro_twice() {
     let source = "---\ninterface Props { title: string }\n---\n<h1>{Astro.props.title}</h1>";

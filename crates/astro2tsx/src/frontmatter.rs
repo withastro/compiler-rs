@@ -1,17 +1,13 @@
-//! Frontmatter runs in an implicit function, so its top-level `return`s are
-//! valid Astro but invalid TS and must be rewritten. `throw` is the stand-in
-//! because it stays terminal: narrowing after a guard clause survives.
+//! Top-level frontmatter returns become throws to preserve terminal control flow in TSX.
 
 use biome_js_syntax::{AnyJsRoot, JsReturnStatement, JsSyntaxKind};
 use biome_rowan::{AstNode, WalkEvent};
 
-/// Frontmatter with `return`s replaced; a replacement can outgrow the keyword it stands in for.
 pub(crate) struct RewrittenFrontmatter {
     pub(crate) text: String,
     pub(crate) replaced: Vec<Replacement>,
 }
 
-/// A span of [`RewrittenFrontmatter::text`] standing in for source bytes.
 pub(crate) struct Replacement {
     pub(crate) text_offset: u32,
     pub(crate) text_len: u32,
@@ -46,8 +42,6 @@ pub(crate) fn rewrite_top_level_returns(source: &str, root: &AnyJsRoot) -> Rewri
     RewrittenFrontmatter { text, replaced }
 }
 
-/// Byte offsets of every `return` keyword sitting at module scope, ascending,
-/// with whether the statement carries an argument.
 fn find_top_level_returns(root: &AnyJsRoot) -> Vec<(u32, bool)> {
     let mut returns = Vec::new();
     let mut function_depth: u32 = 0;
