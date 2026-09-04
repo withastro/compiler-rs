@@ -29,6 +29,9 @@ importers:
 
   crates/astro2tsx:
     devDependencies:
+      '@emnapi/runtime':
+        specifier: 1.8.1
+        version: 1.8.1
       '@napi-rs/cli':
         specifier: ^3
         version: 3.5.1(@emnapi/runtime@1.8.1)(@types/node@22.20.1)(node-addon-api@7.1.1)
