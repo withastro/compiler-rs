@@ -17,8 +17,9 @@ pub(crate) struct Printer<'a> {
     pub(crate) scripts: Vec<ExtractedTag>,
     pub(crate) styles: Vec<ExtractedTag>,
     pub(crate) diagnostics: Vec<Diagnostic>,
+    pub(crate) suppressed_html_diagnostics: Vec<SourceRange>,
     pub(crate) frontmatter_info: FrontmatterInfo,
-    pub(crate) has_expression_errors: bool,
+    pub(crate) has_embedded_parse_errors: bool,
 }
 
 impl<'a> Printer<'a> {
@@ -33,8 +34,9 @@ impl<'a> Printer<'a> {
             scripts: Vec::new(),
             styles: Vec::new(),
             diagnostics: Vec::new(),
+            suppressed_html_diagnostics: Vec::new(),
             frontmatter_info: FrontmatterInfo::default(),
-            has_expression_errors: false,
+            has_embedded_parse_errors: false,
         }
     }
 

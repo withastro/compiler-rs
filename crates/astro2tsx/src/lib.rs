@@ -68,7 +68,6 @@ impl ConvertResult {
 
 pub fn convert_to_tsx(source: &str, options: ConvertOptions) -> ConvertResult {
     let parse = parse_html(source, (&HtmlFileSource::astro()).into());
-    let html_has_errors = parse.has_errors();
     let root = parse.tree();
 
     let mut printer = printer::Printer::new(source);
@@ -77,15 +76,28 @@ pub fn convert_to_tsx(source: &str, options: ConvertOptions) -> ConvertResult {
     let mut diagnostics: Vec<Diagnostic> = parse
         .diagnostics()
         .iter()
-        .map(|diagnostic| Diagnostic {
-            message: diagnostic.message.to_string(),
-            severity: DiagnosticSeverity::Error,
-            source: match biome_diagnostics::Diagnostic::location(diagnostic).span {
+        .filter_map(|diagnostic| {
+            let source = match biome_diagnostics::Diagnostic::location(diagnostic).span {
                 Some(span) => SourceRange::new(u32::from(span.start()), u32::from(span.end())),
                 None => SourceRange::new(0, source.len() as u32),
-            },
+            };
+            if printer.suppressed_html_diagnostics.iter().any(|range| {
+                if source.start == source.end {
+                    range.start <= source.start && source.start <= range.end
+                } else {
+                    range.start < source.end && source.start < range.end
+                }
+            }) {
+                return None;
+            }
+            Some(Diagnostic {
+                message: diagnostic.message.to_string(),
+                severity: DiagnosticSeverity::Error,
+                source,
+            })
         })
         .collect();
+    let html_has_errors = !diagnostics.is_empty();
     diagnostics.extend(printer.diagnostics);
     diagnostics.sort_by_key(|diagnostic| (diagnostic.source.start, diagnostic.source.end));
     diagnostics.dedup();
@@ -97,7 +109,7 @@ pub fn convert_to_tsx(source: &str, options: ConvertOptions) -> ConvertResult {
         body: printer.body_range,
         scripts: printer.scripts,
         styles: printer.styles,
-        has_parse_errors: html_has_errors || printer.has_expression_errors,
+        has_parse_errors: html_has_errors || printer.has_embedded_parse_errors,
         diagnostics,
         frontmatter: printer.frontmatter_info,
     };

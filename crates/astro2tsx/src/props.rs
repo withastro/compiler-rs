@@ -1,6 +1,7 @@
 use biome_js_syntax::{
-    AnyJsRoot, JsLanguage, JsSyntaxKind, TsInterfaceDeclaration, TsTypeAliasDeclaration,
-    TsTypeParameters,
+    AnyJsDeclarationClause, AnyJsExportClause, AnyJsExportNamedSpecifier, AnyJsRoot, JsExport,
+    JsIdentifierBinding, JsLanguage, JsSyntaxKind, JsSyntaxToken, TsInterfaceDeclaration,
+    TsTypeAliasDeclaration, TsTypeParameters, unescape_js_string,
 };
 use biome_rowan::{AstNode, AstNodeList, AstSeparatedList, SyntaxNode};
 
@@ -121,37 +122,86 @@ fn module_items(root: &AnyJsRoot) -> Vec<JsNode> {
 }
 
 fn exports_get_static_paths(node: &JsNode) -> bool {
-    if node.kind() != JsSyntaxKind::JS_EXPORT {
+    let Some(export) = JsExport::cast_ref(node) else {
         return false;
+    };
+    let Ok(clause) = export.export_clause() else {
+        return false;
+    };
+    match clause {
+        AnyJsExportClause::AnyJsDeclarationClause(declaration) => {
+            declaration_exports_get_static_paths(&declaration)
+        }
+        AnyJsExportClause::JsExportNamedClause(clause) => clause
+            .specifiers()
+            .iter()
+            .filter_map(Result::ok)
+            .any(|specifier| match specifier {
+                AnyJsExportNamedSpecifier::JsExportNamedShorthandSpecifier(specifier) => specifier
+                    .name()
+                    .and_then(|name| name.value_token())
+                    .is_ok_and(identifier_token_is_get_static_paths),
+                AnyJsExportNamedSpecifier::JsExportNamedSpecifier(specifier) => {
+                    specifier
+                        .exported_name()
+                        .and_then(|name| name.inner_string_text())
+                        .map(unescape_js_string)
+                        .is_ok_and(|name| name == "getStaticPaths")
+                        && specifier
+                            .local_name()
+                            .and_then(|name| name.value_token())
+                            .is_ok_and(identifier_token_is_get_static_paths)
+                }
+            }),
+        _ => false,
     }
-    node.descendants().any(|candidate| {
-        if candidate.text_trimmed() != "getStaticPaths" {
-            return false;
+}
+
+fn declaration_exports_get_static_paths(declaration: &AnyJsDeclarationClause) -> bool {
+    match declaration {
+        AnyJsDeclarationClause::JsClassDeclaration(declaration) => declaration
+            .id()
+            .is_ok_and(|binding| binding_has_get_static_paths(binding.syntax())),
+        AnyJsDeclarationClause::JsFunctionDeclaration(declaration) => declaration
+            .id()
+            .is_ok_and(|binding| binding_has_get_static_paths(binding.syntax())),
+        AnyJsDeclarationClause::JsVariableDeclarationClause(clause) => {
+            clause.declaration().is_ok_and(|declaration| {
+                declaration
+                    .declarators()
+                    .iter()
+                    .filter_map(Result::ok)
+                    .any(|declarator| {
+                        declarator
+                            .id()
+                            .is_ok_and(|binding| binding_has_get_static_paths(binding.syntax()))
+                    })
+            })
         }
-        match candidate.kind() {
-            JsSyntaxKind::JS_IDENTIFIER_BINDING => !is_nested_in_body(&candidate, node),
-            JsSyntaxKind::JS_LITERAL_EXPORT_NAME => true,
-            JsSyntaxKind::JS_REFERENCE_IDENTIFIER => candidate
-                .parent()
-                .is_some_and(|p| p.kind() == JsSyntaxKind::JS_EXPORT_NAMED_SHORTHAND_SPECIFIER),
-            _ => false,
-        }
+        AnyJsDeclarationClause::TsDeclareFunctionDeclaration(declaration) => declaration
+            .id()
+            .is_ok_and(|binding| binding_has_get_static_paths(binding.syntax())),
+        AnyJsDeclarationClause::TsEnumDeclaration(declaration) => declaration
+            .id()
+            .is_ok_and(|binding| binding_has_get_static_paths(binding.syntax())),
+        _ => false,
+    }
+}
+
+fn binding_has_get_static_paths(binding: &JsNode) -> bool {
+    JsIdentifierBinding::cast_ref(binding).is_some_and(|binding| {
+        binding
+            .name_token()
+            .is_ok_and(identifier_token_is_get_static_paths)
+    }) || binding.descendants().any(|candidate| {
+        JsIdentifierBinding::cast_ref(&candidate).is_some_and(|binding| {
+            binding
+                .name_token()
+                .is_ok_and(identifier_token_is_get_static_paths)
+        })
     })
 }
 
-fn is_nested_in_body(node: &JsNode, export: &JsNode) -> bool {
-    let mut current = node.parent();
-    while let Some(parent) = current {
-        if &parent == export {
-            return false;
-        }
-        if matches!(
-            parent.kind(),
-            JsSyntaxKind::JS_FUNCTION_BODY | JsSyntaxKind::JS_BLOCK_STATEMENT
-        ) {
-            return true;
-        }
-        current = parent.parent();
-    }
-    false
+fn identifier_token_is_get_static_paths(token: JsSyntaxToken) -> bool {
+    unescape_js_string(token.token_text_trimmed()).text() == "getStaticPaths"
 }

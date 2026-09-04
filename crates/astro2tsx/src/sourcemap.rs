@@ -147,7 +147,19 @@ struct LineIndex<'a> {
 impl<'a> LineIndex<'a> {
     fn new(text: &'a str) -> Self {
         let mut line_starts = vec![0];
-        line_starts.extend(text.match_indices('\n').map(|(index, _)| index + 1));
+        for (index, ch) in text.char_indices() {
+            match ch {
+                '\n' if index == 0 || text.as_bytes()[index - 1] != b'\r' => {
+                    line_starts.push(index + 1);
+                }
+                '\r' if text.as_bytes().get(index + 1) == Some(&b'\n') => {
+                    line_starts.push(index + 2);
+                }
+                '\r' => line_starts.push(index + 1),
+                '\u{2028}' | '\u{2029}' => line_starts.push(index + ch.len_utf8()),
+                _ => {}
+            }
+        }
         Self {
             text,
             line_starts,

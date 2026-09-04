@@ -76,6 +76,7 @@ fn is_function_like(kind: JsSyntaxKind) -> bool {
     matches!(
         kind,
         JsSyntaxKind::JS_FUNCTION_DECLARATION
+            | JsSyntaxKind::JS_FUNCTION_EXPORT_DEFAULT_DECLARATION
             | JsSyntaxKind::JS_FUNCTION_EXPRESSION
             | JsSyntaxKind::JS_ARROW_FUNCTION_EXPRESSION
             | JsSyntaxKind::JS_METHOD_CLASS_MEMBER
