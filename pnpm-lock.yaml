@@ -39,8 +39,8 @@ importers:
         specifier: ^22
         version: 22.19.9
       typescript:
-        specifier: ^5.9.3
-        version: 5.9.3
+        specifier: ~5.5.3
+        version: 5.5.4
 
   crates/astro_napi:
     devDependencies:
