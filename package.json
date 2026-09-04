@@ -35,7 +35,7 @@
     "tsx": "^4.21.0",
     "typescript": "~5.9.3"
   },
-  "packageManager": "pnpm@10.29.3",
+  "packageManager": "pnpm@10.34.5",
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
   }
