@@ -1,0 +1,19 @@
+pnpm-lock.yaml
+  s_8049226ab80e2a::t_2807bb2a1a28a2 31-34,2467,2469
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "dea26dde0426eeefed1f787023d7909762548e57",
+  "prompts": {},
+  "sessions": {
+    "s_8049226ab80e2a": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f93f99a97ffeTD2qpJhpy3s3EC",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Princesseuh <3019731+Princesseuh@users.noreply.github.com>"
+    }
+  }
+}
