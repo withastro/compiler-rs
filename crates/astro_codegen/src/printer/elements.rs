@@ -36,7 +36,7 @@ impl ScopeId {
         }
     }
 
-    /// The attribute name for the `attribute` strategy (e.g. `"data-astro-cid-{hash}"`).
+    /// The attribute name for the `attribute` strategy (e.g. `"data-astro-cid-{hash}`) as a boolean attribute.
     pub(super) fn data_attr_name(&self) -> String {
         match self {
             ScopeId::DataAttribute(v) => format!("data-astro-cid-{v}"),
@@ -90,6 +90,35 @@ pub(super) fn is_head_element(name: &str) -> bool {
     )
 }
 
+fn source_location(source_text: &str, byte_offset: u32) -> (u32, u32) {
+    let offset = (byte_offset as usize).min(source_text.len());
+    let bytes = source_text.as_bytes();
+    let mut line = 1u32;
+    let mut line_start = 0usize;
+    let mut index = 0usize;
+
+    while index < offset {
+        match bytes[index] {
+            b'\r' => {
+                line += 1;
+                if bytes.get(index + 1) == Some(&b'\n') && index + 1 < offset {
+                    index += 1;
+                }
+                line_start = index + 1;
+            }
+            b'\n' => {
+                line += 1;
+                line_start = index + 1;
+            }
+            _ => {}
+        }
+        index += 1;
+    }
+
+    let column = source_text[line_start..offset].encode_utf16().count() as u32;
+    (line, column)
+}
+
 impl<'a> AstroCodegen<'a> {
     pub(super) fn add_transition_source_mapping(
         &mut self,
@@ -111,6 +140,29 @@ impl<'a> AstroCodegen<'a> {
         } else {
             None
         }
+    }
+
+    fn print_source_annotation(&mut self, name: &str, span: oxc_span::Span) {
+        if !self.options.annotate_source_file
+            || name == "html"
+            || !css_scoping::should_scope_element(name)
+        {
+            return;
+        }
+
+        let Some(filename) = self.options.filename.clone() else {
+            return;
+        };
+        let filename = escape_html_attribute(&filename).into_owned();
+        let (line, column) = source_location(self.source_text, span.start);
+        let location = format!("{line}:{column}");
+        self.print_parts([
+            " data-astro-source-file=\"",
+            &filename,
+            "\" data-astro-source-loc=\"",
+            &location,
+            "\"",
+        ]);
     }
 
     /// Print an HTML (non-component) element.
@@ -167,6 +219,7 @@ impl<'a> AstroCodegen<'a> {
             scope_id.as_ref(),
             inject_define_vars,
         );
+        self.print_source_annotation(name, el.opening_element.span);
 
         self.print(">");
 

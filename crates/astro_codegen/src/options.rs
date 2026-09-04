@@ -112,9 +112,7 @@ pub struct TransformOptions {
     /// `import "transitions.css";` for components that use transition directives.
     pub transitions_animation_url: Option<String>,
 
-    /// Whether to annotate generated code with the source file path.
-    ///
-    /// **Stub**: accepted for API compatibility.
+    /// Whether rendered HTML elements include source file and source location attributes.
     pub annotate_source_file: bool,
 
     /// Whether to strip HTML comments from component slot children.
@@ -279,7 +277,7 @@ impl TransformOptions {
         self
     }
 
-    /// Enable or disable source file annotation (stub).
+    /// Enable or disable source file annotation.
     #[must_use]
     pub fn with_annotate_source_file(mut self, enabled: bool) -> Self {
         self.annotate_source_file = enabled;

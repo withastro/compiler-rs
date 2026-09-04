@@ -19,6 +19,35 @@ use crate::scanner::{
 };
 use oxc_ast::ast::*;
 
+fn source_location(source_text: &str, byte_offset: u32) -> (u32, u32) {
+    let offset = (byte_offset as usize).min(source_text.len());
+    let bytes = source_text.as_bytes();
+    let mut line = 1u32;
+    let mut line_start = 0usize;
+    let mut index = 0usize;
+
+    while index < offset {
+        match bytes[index] {
+            b'\r' => {
+                line += 1;
+                if bytes.get(index + 1) == Some(&b'\n') && index + 1 < offset {
+                    index += 1;
+                }
+                line_start = index + 1;
+            }
+            b'\n' => {
+                line += 1;
+                line_start = index + 1;
+            }
+            _ => {}
+        }
+        index += 1;
+    }
+
+    let column = source_text[line_start..offset].encode_utf16().count() as u32;
+    (line, column)
+}
+
 /// A client hydration directive parsed from a component's attributes.
 pub(super) enum HydrationDirective {
     /// `client:only="framework"` — component is not rendered server-side.
@@ -206,6 +235,18 @@ impl<'a> AstroCodegen<'a> {
         // attached to them here.
         let inject_define_vars = is_custom && !self.define_vars_values.is_empty();
 
+        let source_annotation = if is_custom && self.options.annotate_source_file {
+            self.options.filename.as_ref().map(|filename| {
+                let (line, column) = source_location(self.source_text, el.opening_element.span.start);
+                (
+                    escape_double_quotes(filename).into_owned(),
+                    format!("{line}:{column}"),
+                )
+            })
+        } else {
+            None
+        };
+
         // Components always receive slot as a prop.
         // Only HTML elements have the slot attribute stripped when inside named slots.
         let prev_skip_slot = self.skip_slot_attribute;
@@ -223,6 +264,9 @@ impl<'a> AstroCodegen<'a> {
             },
             scope_id.as_ref(),
             inject_define_vars,
+            source_annotation
+                .as_ref()
+                .map(|(filename, location)| (filename.as_str(), location.as_str())),
         );
 
         self.skip_slot_attribute = prev_skip_slot;
@@ -338,6 +382,7 @@ impl<'a> AstroCodegen<'a> {
         skip_names: Option<&[&str]>,
         scope_id: Option<&ScopeId>,
         inject_define_vars: bool,
+        source_annotation: Option<(&str, &str)>,
     ) {
         let mut first = true;
 
@@ -584,6 +629,20 @@ impl<'a> AstroCodegen<'a> {
             first = false;
             self.print("\"style\":($$definedVars)");
             self.define_vars_injected = true;
+        }
+
+        if let Some((filename, location)) = source_annotation {
+            if !first {
+                self.print(",");
+            }
+            first = false;
+            self.print_parts([
+                "\"data-astro-source-file\":\"",
+                filename,
+                "\",\"data-astro-source-loc\":\"",
+                location,
+                "\"",
+            ]);
         }
 
         // Add hydration attributes if present
