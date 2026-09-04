@@ -1,0 +1,21 @@
+crates/astro2tsx/index.js
+  s_8049226ab80e2a::t_6226b701105b8a 84-85,100-101,121-122,137-138,154-155,170-171,189-190,205-206,221-222,241-242,257-258,278-279,294-295,312-313,328-329,346-347,362-363,380-381,396-397,414-415,430-431,447-448,463-464,483-484,499-500,515-516
+pnpm-lock.yaml
+  s_8049226ab80e2a::t_0df4818e351b2e 42-43
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "b25a9a826b2f12c419f98f089eaa95ab1383d7ac",
+  "prompts": {},
+  "sessions": {
+    "s_8049226ab80e2a": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f93f99a97ffeTD2qpJhpy3s3EC",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Princesseuh <3019731+Princesseuh@users.noreply.github.com>"
+    }
+  }
+}
