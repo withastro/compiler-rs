@@ -28,6 +28,10 @@ importers:
         version: 5.9.3
 
   crates/astro2tsx:
+    dependencies:
+      '@napi-rs/wasm-runtime':
+        specifier: 1.1.1
+        version: 1.1.1
     devDependencies:
       '@emnapi/runtime':
         specifier: 1.8.1
