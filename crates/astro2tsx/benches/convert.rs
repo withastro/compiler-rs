@@ -54,7 +54,6 @@ mod components {
     }
 }
 
-/// Repeats the section so the input grows without its shape changing.
 fn build_page(sections: usize) -> String {
     let fixture = include_str!("fixtures/ExpressionHeavy.astro");
     let (frontmatter, body) = fixture
@@ -99,7 +98,7 @@ mod phases {
             .bench_local(|| result.source_map(divan::black_box(&source), "Component.astro"));
     }
 
-    /// Inline is the napi binding's default, so this is the production path.
+    // Inline maps are the NAPI default exercised in production.
     #[divan::bench]
     fn convert_with_inline_map(bencher: divan::Bencher<'_, '_>) {
         let source = build_page(64);

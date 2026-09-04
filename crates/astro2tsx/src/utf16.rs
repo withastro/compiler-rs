@@ -1,6 +1,3 @@
-//! Byte offsets to UTF-16 code units, the unit JS consumers index strings in.
-
-/// Records only the multibyte characters, so ASCII documents cost nothing.
 pub(crate) struct Utf16Index {
     marks: Vec<Mark>,
 }
@@ -66,7 +63,6 @@ mod tests {
 
     #[test]
     fn multibyte_characters_shrink_offsets() {
-        // "π" is two bytes and one code unit; "🦄" is four bytes and two.
         let index = Utf16Index::new("aπb🦄c");
         assert_eq!(index.convert(0), 0);
         assert_eq!(index.convert(1), 1);

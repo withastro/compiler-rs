@@ -2,7 +2,6 @@
 
 use astro2tsx::{ConvertOptions, ConvertResult};
 
-/// Splits `// @config key=value` header lines off a fixture; the only key is `filename`.
 pub fn parse_fixture(raw: &str) -> (String, ConvertOptions) {
     let mut options = ConvertOptions::default();
 
@@ -21,7 +20,6 @@ pub fn parse_fixture(raw: &str) -> (String, ConvertOptions) {
     (remaining.to_string(), options)
 }
 
-/// Mirrors the offset-array contract consumers assert: runs slice to identical text.
 pub fn assert_mapped_runs_are_verbatim(source: &str, result: &ConvertResult, label: &str) {
     let code_len = result.code.len() as u32;
     let mut previous_generated = 0;

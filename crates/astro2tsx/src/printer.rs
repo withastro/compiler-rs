@@ -1,5 +1,3 @@
-//! Mutable output buffer: generated TSX bytes plus source-position mappings.
-
 use biome_rowan::TextRange;
 
 use crate::sourcemap::{
@@ -10,7 +8,7 @@ use crate::utils::{comment_body_escape, template_text_escape};
 
 pub(crate) struct Printer<'a> {
     pub(crate) source: &'a str,
-    /// Ranges of `<!-- ... -->` trivia, ascending, straight from the lexer.
+    /// Lexer comment ranges sorted for partition-point lookups.
     pub(crate) comment_ranges: Vec<TextRange>,
     pub(crate) output: String,
     pub(crate) mappings: Vec<Mapping>,
@@ -20,7 +18,6 @@ pub(crate) struct Printer<'a> {
     pub(crate) styles: Vec<ExtractedTag>,
     pub(crate) diagnostics: Vec<Diagnostic>,
     pub(crate) frontmatter_info: FrontmatterInfo,
-    /// An expression body failed to parse and was emitted verbatim.
     pub(crate) has_expression_errors: bool,
 }
 
@@ -82,7 +79,6 @@ impl<'a> Printer<'a> {
         self.mappings.push(mapping);
     }
 
-    /// Emits `text` as one lockstep run starting at `original_start`.
     pub(crate) fn write_with_mapping(&mut self, text: &str, original_start: u32) {
         if text.is_empty() {
             return;
@@ -126,7 +122,6 @@ impl<'a> Printer<'a> {
         }
     }
 
-    /// JSX-comment-body escaping, with the same mapping guarantee as above.
     pub(crate) fn write_comment_body_with_mapping(&mut self, body: &str, original_start: u32) {
         let mut original = original_start;
         let mut previous = None;
@@ -143,7 +138,6 @@ impl<'a> Printer<'a> {
         }
     }
 
-    /// Escaping for a value emitted inside synthetic double quotes.
     pub(crate) fn write_attribute_value_with_mapping(&mut self, text: &str, original_start: u32) {
         let mut original = original_start;
         for ch in text.chars() {

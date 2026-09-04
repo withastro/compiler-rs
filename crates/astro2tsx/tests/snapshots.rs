@@ -1,11 +1,3 @@
-//! astro2tsx snapshot tests. Run `cargo insta review` to accept changes.
-//!
-//! The body is `code` verbatim, inline source map and all, so it pastes
-//! straight into a viewer; the rest of the result rides in insta's `info`.
-//!
-//! A fixture may open with `// @config key=value` lines, stripped before
-//! conversion. The only key is `filename`, which defaults to none.
-
 mod common;
 
 use std::fs;
@@ -99,7 +91,7 @@ fn snapshots() {
     });
 }
 
-/// insta rewrites CRLF to LF when storing a snapshot, hiding this there.
+// Insta normalizes CRLF in snapshots, so this test reads the fixture directly.
 #[test]
 fn crlf_fixture_keeps_its_line_endings() {
     let raw = fs::read_to_string(concat!(

@@ -1,5 +1,3 @@
-//! Every source position an editor resolves must land on its own snippet.
-
 use astro2tsx::{ConvertOptions, Mapping, convert_to_tsx};
 
 fn convert(input: &str) -> astro2tsx::ConvertResult {
@@ -12,7 +10,6 @@ fn convert(input: &str) -> astro2tsx::ConvertResult {
     )
 }
 
-/// Line (1-based) and column (0-based, UTF-16 code units) of a byte offset.
 fn line_col(source: &str, byte_offset: usize) -> (usize, usize) {
     let mut line = 1usize;
     let mut col = 0usize;
@@ -36,8 +33,6 @@ fn snippet_offset(source: &str, snippet: &str) -> usize {
         .unwrap_or_else(|| panic!("snippet {snippet:?} not found in input"))
 }
 
-/// Generated positions covering `byte`: each mapping opens a lockstep run
-/// that lasts until the next mapping.
 fn original_to_generated(mappings: &[Mapping], code_len: u32, byte: u32) -> Vec<u32> {
     let mut candidates = Vec::new();
     for (index, mapping) in mappings.iter().enumerate() {
@@ -57,15 +52,11 @@ fn original_to_generated(mappings: &[Mapping], code_len: u32, byte: u32) -> Vec<
 }
 
 enum Resolution {
-    /// Mapped offset lands exactly on the snippet in the generated output.
     Exact,
-    /// Mapped offset lands elsewhere; carries the generated text found there.
     Wrong(String),
     Unmapped,
 }
 
-/// Resolves a snippet's original offset through the runs and reports whether
-/// any covering run lands exactly on the snippet in the generated output.
 fn resolve(input: &str, snippet: &str) -> Resolution {
     let result = convert(input);
     let offset = snippet_offset(input, snippet) as u32;

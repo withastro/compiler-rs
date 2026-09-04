@@ -1,12 +1,9 @@
-//! Source positions collected during printing, encoded via `oxc_sourcemap`.
-
 pub use oxc_sourcemap::SourceMap;
 use oxc_sourcemap::SourceMapBuilder;
 
 /// Used for `sources[0]` when the caller supplies no filename.
 pub const DEFAULT_SOURCE_NAME: &str = "input.astro";
 
-/// Whether the generated code carries its source map inline.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum SourceMapMode {
     /// Append a `//# sourceMappingURL=` data URI comment to `code`.
@@ -135,7 +132,6 @@ pub enum ExtractedScriptType {
     Unknown,
 }
 
-/// The `//# sourceMappingURL=` line that carries `map` inline.
 pub fn to_inline_comment(map: &SourceMap) -> String {
     format!("//# sourceMappingURL={}", map.to_data_url())
 }
@@ -184,9 +180,7 @@ impl<'a> LineIndex<'a> {
     }
 }
 
-/// `mappings` must ascend by generated offset. Each mapping opens a run that
-/// lasts until the next one; mapped runs re-emit a segment at every generated
-/// line start they span, since source-map columns reset per line.
+/// Mappings must be sorted; mapped runs need a segment per line because columns reset.
 pub(crate) fn encode(
     source: &str,
     generated: &str,
@@ -239,7 +233,6 @@ mod tests {
         let mut index = LineIndex::new("<p>🦄 {π}</p>");
         assert_eq!(index.locate(0), (0, 0));
         assert_eq!(index.locate(3), (0, 3));
-        // The emoji is four bytes but two UTF-16 code units.
         assert_eq!(index.locate(7), (0, 5));
         assert_eq!(index.locate(8), (0, 6));
     }

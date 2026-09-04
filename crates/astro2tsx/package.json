@@ -1,7 +1,6 @@
 {
   "name": "@astrojs/astro2tsx",
   "version": "0.1.0",
-  "private": true,
   "description": "Convert .astro files to TSX for tsserver intellisense",
   "keywords": [
     "astro",
@@ -25,11 +24,12 @@
     "version": "napi version"
   },
   "dependencies": {
+    "@emnapi/core": "1.9.2",
     "@napi-rs/wasm-runtime": "1.1.1"
   },
   "devDependencies": {
     "@emnapi/runtime": "1.8.1",
-    "@napi-rs/cli": "^3",
+    "@napi-rs/cli": "3.5.1",
     "@types/node": "^22",
     "typescript": "~5.5.3"
   },
@@ -38,6 +38,7 @@
   },
   "publishConfig": {
     "access": "public",
+    "provenance": true,
     "registry": "https://registry.npmjs.org/"
   },
   "napi": {

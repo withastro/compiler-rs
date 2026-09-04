@@ -1,5 +1,4 @@
-//! Checks the encoded source map by decoding it with `oxc_sourcemap` rather
-//! than by re-deriving it from the same code that produced it.
+//! Decodes maps independently with `oxc_sourcemap` to avoid self-validating the encoder.
 
 mod common;
 
@@ -26,8 +25,6 @@ fn fixtures() -> Vec<(String, String)> {
     fixtures
 }
 
-/// Byte offset of a zero-based line and UTF-16 column, resolved through
-/// `str::encode_utf16` so it shares no code with the encoder.
 fn byte_offset(text: &str, line: u32, column: u32) -> Option<usize> {
     let mut line_start = 0usize;
     for (index, line_text) in text.split('\n').enumerate() {
@@ -48,7 +45,6 @@ fn byte_offset(text: &str, line: u32, column: u32) -> Option<usize> {
     None
 }
 
-/// Zero-based line and UTF-16 column of a byte offset.
 fn line_col(text: &str, byte: usize) -> (u32, u32) {
     let mut line = 0u32;
     let mut col = 0u32;
@@ -66,8 +62,6 @@ fn line_col(text: &str, byte: usize) -> (u32, u32) {
     (line, col)
 }
 
-/// Resolves a generated position the way an editor does: nearest token on the
-/// line at or before the column, then column arithmetic within its run.
 fn resolve_decoded(decoded: &DecodedMap, line: u32, column: u32) -> Option<(u32, u32)> {
     let token = decoded
         .get_tokens()
@@ -103,7 +97,6 @@ fn every_fixture_round_trips_through_an_independent_decoder() {
             "{name}: sourcesContent did not survive"
         );
 
-        // Every run start must decode back to exactly its original position.
         for (index, mapping) in result.mappings.iter().enumerate() {
             let (line, column) = line_col(&result.code, mapping.generated as usize);
             match mapping.original {
@@ -131,7 +124,6 @@ fn every_fixture_round_trips_through_an_independent_decoder() {
             }
         }
 
-        // Every decoded token must be consistent with the run that covers it.
         for token in decoded.get_tokens() {
             let generated = byte_offset(&result.code, token.get_dst_line(), token.get_dst_col())
                 .unwrap_or_else(|| {
@@ -203,8 +195,7 @@ fn external_mode_omits_the_inline_comment() {
     assert_eq!(inline.mappings, external.mappings);
 }
 
-/// A byte column would be 8 here and a scalar-value column 5, so this pins the
-/// units down to UTF-16 rather than merely to "not bytes".
+// The expected column distinguishes UTF-16 from byte and scalar-value columns.
 #[test]
 fn astral_columns_are_utf16_code_units() {
     let source = "---\nconst \u{3c0} = Math.PI;\n---\n<p>\u{1f984} {\u{3c0}}</p>\n";
