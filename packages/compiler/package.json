@@ -1,6 +1,6 @@
 {
   "name": "@astrojs/compiler-rs",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "homepage": "https://astro.build",
   "bugs": "https://github.com/withastro/compiler-rs/issues",
   "repository": {
