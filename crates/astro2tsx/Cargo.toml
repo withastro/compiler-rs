@@ -7,7 +7,7 @@ license.workspace    = true
 repository.workspace = true
 rust-version.workspace = true
 publish              = false
-description          = "Converts .astro files to .tsx for TypeScript editor tooling, using Biome's HTML CST"
+description          = "Converts .astro files to .tsx for type checking"
 
 [lib]
 crate-type = ["cdylib", "lib"]
