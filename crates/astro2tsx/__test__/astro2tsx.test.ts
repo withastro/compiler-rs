@@ -17,6 +17,13 @@ test('rewrites top-level returns to throws', () => {
 	assert.doesNotMatch(result.code, /return Astro\.redirect/);
 });
 
+test('preserves returns in default-exported functions', () => {
+	const result = convertToTsx('---\nexport default function f() { return 1 }\n---\n', {
+		sourcemap: false,
+	});
+	assert.match(result.code, /function f\(\) \{ return 1 \}/);
+});
+
 test('detects `Props` interface and emits the Astro global declaration', () => {
 	const input = '---\ninterface Props {}\n---\n<div></div>';
 	const result = convertToTsx(input, { filename: 'Index.astro' });
@@ -27,10 +34,157 @@ test('detects `Props` interface and emits the Astro global declaration', () => {
 	);
 });
 
+test('detects escaped getStaticPaths bindings without matching nested bindings', () => {
+	for (const [frontmatter, expected] of [
+		['export const get\\u0053taticPaths = () => [];', true],
+		['export function f(get\\u0053taticPaths) {}', false],
+		['export function f() { const get\\u0053taticPaths = () => []; }', false],
+	] as const) {
+		const result = convertToTsx(`---\n${frontmatter}\n---\n`, { sourcemap: false });
+		assert.equal(result.code.includes('ReturnType<typeof getStaticPaths>'), expected, frontmatter);
+	}
+});
+
 test('reports parse errors but still produces output', () => {
 	const result = convertToTsx('<div');
 	assert.equal(result.hasParseErrors, true);
 	assert.ok(result.code.length > 0);
+});
+
+test('reports invalid frontmatter without blocking output', () => {
+	const source = '---\nconst = ;\n---\n<p/>';
+	const result = convertToTsx(source, { sourcemap: false });
+	assert.equal(result.hasParseErrors, true);
+	assert.ok(result.diagnostics.length > 0);
+	assert.ok(result.code.includes('const = ;'));
+	for (const diagnostic of result.diagnostics) {
+		assert.ok(diagnostic.position.start >= 4);
+		assert.ok(diagnostic.position.end <= 13);
+	}
+});
+
+test('emits hyphenated Astro attributes as ordinary TSX attributes', () => {
+	for (const source of ['<div v-if />', '<div v-if=visible />', '<Component v-if={visible} />']) {
+		const result = convertToTsx(source, { sourcemap: false });
+		assert.equal(result.hasParseErrors, false, source);
+		assert.deepEqual(result.diagnostics, [], source);
+		assert.ok(result.code.includes('v-if'), result.code);
+	}
+});
+
+test('reports invalid expressions in hyphenated Astro attributes', () => {
+	const result = convertToTsx('<Component v-if={visible ==} />', { sourcemap: false });
+	assert.equal(result.hasParseErrors, true);
+	assert.ok(result.diagnostics.length > 0);
+});
+
+test('preserves complete v-for attributes and validates expression values', () => {
+	for (const [source, expected] of [
+		['<div v-for="item in items" />', 'v-for="item in items"'],
+		['<div v-for=items />', 'v-for="items"'],
+		['<div v-for={items} />', 'v-for={items}'],
+		['<div v-for />', 'v-for'],
+		['<Component v-for={items} />', 'v-for={items}'],
+	]) {
+		const result = convertToTsx(source, { sourcemap: false });
+		assert.equal(result.hasParseErrors, false, source);
+		assert.deepEqual(result.diagnostics, [], source);
+		assert.ok(result.code.includes(expected), result.code);
+		assert.ok(!result.code.includes('v-for=""'), result.code);
+	}
+
+	const malformed = convertToTsx('<Component v-for={items ==} />', { sourcemap: false });
+	assert.equal(malformed.hasParseErrors, true);
+	assert.ok(malformed.diagnostics.length > 0);
+	assert.ok(malformed.code.includes('v-for={items ==}'), malformed.code);
+});
+
+test('suppresses only recovery diagnostics within reconstructed v-for attributes', () => {
+	for (const source of [
+		'<div v-for="a&amp;b" />',
+		'<div v-for=a&amp;b />',
+		'<Component v-for="a&amp;b" />',
+		'<Component v-for=a&amp;b />',
+	]) {
+		const result = convertToTsx(source, { sourcemap: false });
+		assert.equal(result.hasParseErrors, false, source);
+		assert.deepEqual(result.diagnostics, [], source);
+		assert.ok(result.code.includes('v-for="a&amp;b"'), result.code);
+	}
+
+	const malformed = '<div v-for="a&amp;b" /';
+	const result = convertToTsx(malformed, { sourcemap: false });
+	assert.equal(result.hasParseErrors, true);
+	assert.ok(result.diagnostics.length > 0);
+	assert.ok(
+		result.diagnostics.every((diagnostic) => diagnostic.position.start >= malformed.length - 2),
+	);
+});
+
+test('reports reconstructed v-for expression diagnostics at document offsets', () => {
+	const source = '<main><Component v-for={items ==} /></main>';
+	const result = convertToTsx(source, { sourcemap: false });
+	const expected = source.indexOf('}');
+	const diagnostic = result.diagnostics.at(-1);
+	assert.ok(diagnostic);
+	assert.deepEqual(diagnostic.position, { start: expected, end: expected });
+	assert.equal(source.slice(diagnostic.position.start, diagnostic.position.end), '');
+});
+
+test('preserves complete nested v-for expression boundaries', () => {
+	for (const [source, expected] of [
+		['<Component v-for={{a: 1}} data-after="yes" />', 'v-for={{a: 1}}'],
+		[
+			'<Component v-for={items.map(x => ({x}))} data-after="yes" />',
+			'v-for={items.map(x => ({x}))}',
+		],
+		['<Component v-for={fn("}")} data-after="yes" />', 'v-for={fn("}")}'],
+		[
+			'<Component v-for={`item-${items.map(x => ({x}))}`} data-after="yes" />',
+			'v-for={`item-${items.map(x => ({x}))}`}',
+		],
+		[
+			'<Component v-for={items.map(/* } */ x => ({x}))} data-after="yes" />',
+			'v-for={items.map(/* } */ x => ({x}))}',
+		],
+		[
+			'<Component v-for={items.filter(x => /}/.test(x))} data-after="yes" />',
+			'v-for={items.filter(x => /}/.test(x))}',
+		],
+	] as const) {
+		const result = convertToTsx(source, { sourcemap: false });
+		assert.equal(result.hasParseErrors, false, source);
+		assert.deepEqual(result.diagnostics, [], source);
+		assert.ok(result.code.includes(expected), result.code);
+		assert.ok(result.code.includes('data-after="yes"'), result.code);
+	}
+
+	const malformed = '<Component v-for={items.map(x => ({x})} data-after="yes" />';
+	const result = convertToTsx(malformed, { sourcemap: false });
+	assert.equal(result.hasParseErrors, true);
+	assert.ok(result.diagnostics.length > 0);
+	assert.ok(result.code.includes('v-for={items.map(x => ({x})}'), result.code);
+	assert.ok(result.code.includes('data-after="yes"'), result.code);
+});
+
+test('escapes invalid attribute string values as JavaScript strings', () => {
+	const source =
+		"<Component @event='quote\" slash\\ line\n\u2028\u2029\t &NotEqualTilde; &#128; &#0; &#xD800; &#x110000; &copy &amp; &quot; &copycat &amp= &bogus;' />";
+	const result = convertToTsx(source, { sourcemap: false });
+	const sourceFile = ts.createSourceFile(
+		'x.tsx',
+		result.code,
+		ts.ScriptTarget.Latest,
+		false,
+		ts.ScriptKind.TSX,
+	);
+	const diagnostics = (sourceFile as unknown as { parseDiagnostics: unknown[] }).parseDiagnostics;
+	assert.deepEqual(diagnostics, []);
+	assert.ok(
+		result.code.includes(
+			'"quote\\\" slash\\\\ line\\n\\u2028\\u2029\\t ≂̸ € � � � © & \\\" &copycat &amp= &bogus;"',
+		),
+	);
 });
 
 test('records frontmatter and body byte ranges', () => {

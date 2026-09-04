@@ -12,7 +12,6 @@
       "!crates/astro_napi/*.mjs",
       "!crates/astro_napi/index.d.ts",
       "!crates/astro_napi/npm",
-      "!crates/astro2tsx/*.js",
       "!crates/astro2tsx/index.d.ts",
       "!crates/astro2tsx/npm"
     ]

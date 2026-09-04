@@ -1,6 +1,6 @@
 mod common;
 
-use astro2tsx::{ConvertOptions, convert_to_tsx};
+use astro2tsx::{ConvertOptions, SourceRange, convert_to_tsx};
 use common::assert_mapped_runs_are_verbatim;
 
 const PREFIX: &str = "/* @jsxImportSource astro */\n\n";
@@ -195,12 +195,70 @@ fn get_static_paths_needs_a_real_export() {
     for input in [
         "---\nexport const getStaticPaths = async () => [];\n---\n",
         "---\nexport async function getStaticPaths() { return []; }\n---\n",
-        "---\nconst paths = async () => [];\nexport { paths as getStaticPaths };\n---\n",
+        "---\nconst getStaticPaths = async () => [];\nexport { getStaticPaths };\n---\n",
     ] {
         let actual = convert(input);
         assert!(
             actual.contains("ASTRO__InferredGetStaticPath"),
             "missed a real export for {input:?}:\n{actual}"
+        );
+    }
+}
+
+#[test]
+fn get_static_paths_inference_requires_a_local_named_export() {
+    for (frontmatter, expected) in [
+        ("export const getStaticPaths = () => [];", true),
+        ("export const get\\u0053taticPaths = () => [];", true),
+        ("export function getStaticPaths() { return []; }", true),
+        (
+            "const getStaticPaths = () => []; export { getStaticPaths };",
+            true,
+        ),
+        (
+            "const getStaticPaths = () => []; export { getStaticPaths as getStaticPaths };",
+            true,
+        ),
+        (
+            "const getStaticPaths = () => []; export { getStaticPaths as 'getStaticPaths' };",
+            true,
+        ),
+        (
+            "const getStaticPaths = () => []; export { getStaticPaths as 'get\\u0053taticPaths' };",
+            true,
+        ),
+        ("export function f(getStaticPaths) {};", false),
+        ("export function f(get\\u0053taticPaths) {};", false),
+        (
+            "export function f() { function getStaticPaths() {} }",
+            false,
+        ),
+        (
+            "export function f() { const get\\u0053taticPaths = () => []; }",
+            false,
+        ),
+        ("export const f = function getStaticPaths() {};", false),
+        ("export class Routes { getStaticPaths() {} }", false),
+        (
+            "export default function getStaticPaths() { return []; }",
+            false,
+        ),
+        (
+            "const paths = () => []; export { paths as getStaticPaths };",
+            false,
+        ),
+        (
+            "const getStaticPaths = () => []; export { getStaticPaths as paths };",
+            false,
+        ),
+        ("export { getStaticPaths } from './paths';", false),
+        ("export { foo as getStaticPaths } from './paths';", false),
+    ] {
+        let actual = convert(&format!("---\n{frontmatter}\n---\n"));
+        assert_eq!(
+            actual.contains("ReturnType<typeof getStaticPaths>"),
+            expected,
+            "wrong inference for {frontmatter:?}:\n{actual}"
         );
     }
 }
@@ -325,6 +383,20 @@ fn diagnostics_carry_positions_pointing_at_the_problem() {
             "{diagnostic:?} runs past the source"
         );
         assert!(diagnostic.source.start <= diagnostic.source.end);
+    }
+}
+
+#[test]
+fn invalid_frontmatter_reports_document_relative_diagnostics() {
+    let source = "---\nconst = ;\n---\n<p/>";
+    let result = convert_to_tsx(source, ConvertOptions::default());
+
+    assert!(result.has_parse_errors);
+    assert!(!result.diagnostics.is_empty());
+    assert!(result.code.contains("const = ;"));
+    for diagnostic in result.diagnostics {
+        assert!(diagnostic.source.start >= 4, "{diagnostic:?}");
+        assert!(diagnostic.source.end <= 13, "{diagnostic:?}");
     }
 }
 
@@ -587,6 +659,13 @@ fn bare_return_stays_terminal_for_narrowing() {
 }
 
 #[test]
+fn returns_in_default_exported_functions_are_preserved() {
+    let actual = convert("---\nexport default function f() { return 1 }\n---\n");
+    assert!(actual.contains("function f() { return 1 }"), "{actual}");
+    assert!(!actual.contains("function f() { throw  1 }"), "{actual}");
+}
+
+#[test]
 fn variable_length_return_rewrites_keep_runs_verbatim() {
     let source = "---\nconst é = 1;\nif (é) {\n\treturn;\n}\nconst after = é;\n---\n<p>{after}</p>";
     let result = convert_external(source);
@@ -688,6 +767,241 @@ fn script_types_reflect_what_is_statically_knowable() {
             Some(expected),
             "wrong script type for {input:?}"
         );
+    }
+}
+
+#[test]
+fn style_languages_match_the_static_attribute_value() {
+    for (attribute, expected) in [
+        ("", "css"),
+        ("lang={lang}", "unknown"),
+        ("lang", "unknown"),
+        ("lang=\"\"", ""),
+        ("lang=\" SCSS \"", "scss"),
+        ("lang='LeSs'", "less"),
+    ] {
+        let result = convert_to_tsx(
+            &format!("<style {attribute}>x</style>"),
+            ConvertOptions::default(),
+        );
+        assert_eq!(
+            result.styles[0].lang.as_deref(),
+            Some(expected),
+            "wrong style language for {attribute:?}"
+        );
+    }
+}
+
+#[test]
+fn astro_hyphenated_attributes_are_not_vue_syntax() {
+    for input in [
+        "<div v-if />",
+        "<div v-if=visible />",
+        "<Component v-if={visible} />",
+    ] {
+        let result = convert_to_tsx(input, ConvertOptions::default());
+        assert!(
+            !result.has_parse_errors,
+            "{input:?}: {:?}",
+            result.diagnostics
+        );
+        assert!(result.diagnostics.is_empty(), "{input:?}");
+        assert!(result.code.contains("v-if"), "{input:?}: {}", result.code);
+    }
+}
+
+#[test]
+fn astro_hyphenated_attribute_expressions_are_validated() {
+    let result = convert_to_tsx("<Component v-if={visible ==} />", ConvertOptions::default());
+    assert!(result.has_parse_errors, "{}", result.code);
+    assert!(!result.diagnostics.is_empty(), "{}", result.code);
+}
+
+#[test]
+fn v_for_attributes_preserve_their_complete_value() {
+    for (input, expected) in [
+        ("<div v-for=\"item in items\" />", "v-for=\"item in items\""),
+        ("<div v-for=items />", "v-for=\"items\""),
+        ("<div v-for={items} />", "v-for={items}"),
+        ("<div v-for />", "v-for"),
+        ("<Component v-for={items} />", "v-for={items}"),
+    ] {
+        let result = convert_external(input);
+        assert!(
+            !result.has_parse_errors,
+            "{input:?}: {:?}",
+            result.diagnostics
+        );
+        assert!(result.diagnostics.is_empty(), "{input:?}");
+        assert!(result.code.contains(expected), "{input:?}: {}", result.code);
+        assert!(!result.code.contains("v-for=\"\""), "{}", result.code);
+        assert_mapped_runs_are_verbatim(input, &result, "v-for attribute");
+    }
+
+    let malformed = convert_to_tsx("<Component v-for={items ==} />", ConvertOptions::default());
+    assert!(malformed.has_parse_errors, "{}", malformed.code);
+    assert!(!malformed.diagnostics.is_empty(), "{}", malformed.code);
+    assert!(
+        malformed.code.contains("v-for={items ==}"),
+        "{}",
+        malformed.code
+    );
+}
+
+#[test]
+fn reconstructed_v_for_suppresses_only_its_recovery_diagnostics() {
+    for input in [
+        "<div v-for=\"a&amp;b\" />",
+        "<div v-for=a&amp;b />",
+        "<Component v-for=\"a&amp;b\" />",
+        "<Component v-for=a&amp;b />",
+    ] {
+        let result = convert_to_tsx(input, ConvertOptions::default());
+        assert!(
+            !result.has_parse_errors,
+            "{input:?}: {:?}",
+            result.diagnostics
+        );
+        assert!(
+            result.diagnostics.is_empty(),
+            "{input:?}: {:?}",
+            result.diagnostics
+        );
+        assert!(result.code.contains("v-for=\"a&amp;b\""), "{}", result.code);
+    }
+
+    let malformed = "<div v-for=\"a&amp;b\" /";
+    let result = convert_to_tsx(malformed, ConvertOptions::default());
+    let v_for_end = malformed.find(" /").unwrap() as u32;
+    assert!(result.has_parse_errors, "{}", result.code);
+    assert!(
+        result
+            .diagnostics
+            .iter()
+            .all(|diagnostic| diagnostic.source.start >= v_for_end),
+        "{:?}",
+        result.diagnostics
+    );
+    assert!(!result.diagnostics.is_empty());
+}
+
+#[test]
+fn reconstructed_v_for_expression_diagnostics_use_document_offsets() {
+    let input = "<main><Component v-for={items ==} /></main>";
+    let result = convert_to_tsx(input, ConvertOptions::default());
+    let expected = input.find('}').unwrap() as u32;
+    let diagnostic = result.diagnostics.last().unwrap();
+
+    assert_eq!(
+        diagnostic.source,
+        SourceRange {
+            start: expected,
+            end: expected,
+        }
+    );
+    assert_eq!(
+        &input[diagnostic.source.start as usize..diagnostic.source.end as usize],
+        ""
+    );
+}
+
+#[test]
+fn reconstructed_v_for_uses_the_complete_expression_boundary() {
+    for (input, expected) in [
+        (
+            r#"<Component v-for={{a: 1}} data-after="yes" />"#,
+            "v-for={{a: 1}}",
+        ),
+        (
+            r#"<Component v-for={items.map(x => ({x}))} data-after="yes" />"#,
+            "v-for={items.map(x => ({x}))}",
+        ),
+        (
+            r#"<Component v-for={fn("}")} data-after="yes" />"#,
+            r#"v-for={fn("}")}"#,
+        ),
+        (
+            r#"<Component v-for={`item-${items.map(x => ({x}))}`} data-after="yes" />"#,
+            "v-for={`item-${items.map(x => ({x}))}`}",
+        ),
+        (
+            r#"<Component v-for={items.map(/* } */ x => ({x}))} data-after="yes" />"#,
+            "v-for={items.map(/* } */ x => ({x}))}",
+        ),
+        (
+            r#"<Component v-for={items.filter(x => /}/.test(x))} data-after="yes" />"#,
+            "v-for={items.filter(x => /}/.test(x))}",
+        ),
+    ] {
+        let result = convert_external(input);
+        assert!(
+            !result.has_parse_errors,
+            "{input:?}: {:?}",
+            result.diagnostics
+        );
+        assert!(
+            result.diagnostics.is_empty(),
+            "{input:?}: {:?}",
+            result.diagnostics
+        );
+        assert!(result.code.contains(expected), "{input:?}: {}", result.code);
+        assert!(
+            result.code.contains("data-after=\"yes\""),
+            "{}",
+            result.code
+        );
+        assert_mapped_runs_are_verbatim(input, &result, "complex v-for expression");
+    }
+
+    let malformed = r#"<Component v-for={items.map(x => ({x})} data-after="yes" />"#;
+    let result = convert_external(malformed);
+    assert!(result.has_parse_errors, "{}", result.code);
+    assert!(!result.diagnostics.is_empty(), "{}", result.code);
+    assert!(
+        result.code.contains("v-for={items.map(x => ({x})}"),
+        "{}",
+        result.code
+    );
+    assert!(
+        result.code.contains("data-after=\"yes\""),
+        "{}",
+        result.code
+    );
+    assert_mapped_runs_are_verbatim(malformed, &result, "malformed nested v-for expression");
+}
+
+#[test]
+fn invalid_attribute_string_values_are_javascript_escaped() {
+    for input in [
+        "<Component @event='quote\" slash\\ line\n\u{2028}\u{2029}\t' />",
+        "{ok && <Component @event='quote\" slash\\ line\n\u{2028}\u{2029}\t' />}",
+    ] {
+        let actual = convert(input);
+        assert!(
+            actual.contains("{...{\"@event\":\"quote\\\" slash\\\\ line\\n\\u2028\\u2029\\t\"}}"),
+            "{actual}"
+        );
+    }
+}
+
+#[test]
+fn invalid_attribute_string_values_are_html_decoded() {
+    let encoded =
+        "&NotEqualTilde; &#128; &#0; &#xD800; &#x110000; &copy &amp; &quot; &copycat &amp= &bogus;";
+    let decoded = "≂̸ € � � � © & \\\" &copycat &amp= &bogus;";
+    for input in [
+        format!("<Component @event='{encoded}' />"),
+        format!("{{ok && <Component @event='{encoded}' />}}"),
+    ] {
+        let result = convert_external(&input);
+        assert!(
+            result
+                .code
+                .contains(&format!("{{...{{\"@event\":\"{decoded}\"}}}}")),
+            "{}",
+            result.code
+        );
+        assert_mapped_runs_are_verbatim(&input, &result, "decoded attribute entities");
     }
 }
 

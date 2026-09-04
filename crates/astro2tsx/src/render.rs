@@ -1,8 +1,8 @@
 use biome_html_syntax::{
     AnyAstroDirective, AnyAstroFrontmatterElement, AnyHtmlAttribute, AnyHtmlAttributeInitializer,
     AnyHtmlComponentObjectName, AnyHtmlContent, AnyHtmlElement, AnyHtmlTagName,
-    AnyHtmlTextExpression, AstroFragment, HtmlAttribute, HtmlElement, HtmlRoot,
-    HtmlSelfClosingElement, HtmlSingleTextExpression, HtmlSpreadAttribute,
+    AnyHtmlTextExpression, AstroFragment, HtmlAttribute, HtmlAttributeInitializerClause,
+    HtmlElement, HtmlRoot, HtmlSelfClosingElement, HtmlSingleTextExpression, HtmlSpreadAttribute,
 };
 use biome_js_parser::{JsOffsetParse, JsParserOptions, parse, parse_js_with_offset};
 use biome_languages::JsFileSource;
@@ -19,9 +19,9 @@ use crate::sourcemap::{
     GeneratedRange, SourceRange,
 };
 use crate::utils::{
-    ScriptKind, classify_script_type, comment_needs_leading_space, encode_double_quote,
-    is_html_event_attribute, is_valid_tsx_attribute_name, strip_matching_quotes,
-    tsx_component_name,
+    ScriptKind, classify_script_type, comment_needs_leading_space, decode_html_entities,
+    escape_javascript_string, is_html_event_attribute, is_valid_tsx_attribute_name,
+    strip_matching_quotes, tsx_component_name,
 };
 
 // #region document and frontmatter
@@ -46,6 +46,23 @@ pub(crate) fn render_root(printer: &mut Printer, root: HtmlRoot, options: &Conve
     {
         let parse = parse(text, JsFileSource::astro(), JsParserOptions::default());
         let js_root = parse.tree();
+        if !parse.diagnostics().is_empty() {
+            printer.has_embedded_parse_errors = true;
+            for diagnostic in parse.diagnostics() {
+                let source = match biome_diagnostics::Diagnostic::location(diagnostic).span {
+                    Some(span) => SourceRange::new(
+                        start + u32::from(span.start()),
+                        start + u32::from(span.end()),
+                    ),
+                    None => SourceRange::new(*start, start + text.len() as u32),
+                };
+                printer.diagnostics.push(Diagnostic {
+                    message: diagnostic.message.to_string(),
+                    severity: DiagnosticSeverity::Error,
+                    source,
+                });
+            }
+        }
         props_analysis = analyze_props(&js_root);
         rewritten = Some((rewrite_top_level_returns(text, &js_root), *start));
     }
@@ -332,6 +349,9 @@ fn render_element(printer: &mut Printer, element: AnyHtmlElement) {
             let range = element.range();
             let text = slice_source(printer.source, range);
             let start = range_start(range);
+            if let Some(range) = reconstructed_v_for_source_range(text, start) {
+                printer.suppressed_html_diagnostics.push(range);
+            }
             // A stray doctype recovers as bogus text, but TSX has no doctype syntax.
             if text
                 .get(..9)
@@ -454,7 +474,7 @@ fn emit_expression_body(printer: &mut Printer, raw: &str, original_start: u32) {
         emit_expression_tree(printer, syntax.inner(), original_start);
         return;
     }
-    printer.has_expression_errors = true;
+    printer.has_embedded_parse_errors = true;
     for diagnostic in parse.diagnostics() {
         printer.diagnostics.push(Diagnostic {
             message: diagnostic.message.to_string(),
@@ -472,7 +492,10 @@ fn diagnostic_source_range(
     len: u32,
 ) -> SourceRange {
     match biome_diagnostics::Diagnostic::location(diagnostic).span {
-        Some(span) => SourceRange::new(u32::from(span.start()), u32::from(span.end())),
+        Some(span) => SourceRange::new(
+            start + u32::from(span.start()),
+            start + u32::from(span.end()),
+        ),
         None => SourceRange::new(start, start + len),
     }
 }
@@ -733,14 +756,32 @@ fn emit_open_tag(
 
     let mut invalid: Vec<&AnyHtmlAttribute> = Vec::new();
 
-    for attr in attrs {
+    let mut index = 0;
+    while let Some(attr) = attrs.get(index) {
+        if let Some(range) = recovered_v_for_range(printer.source, attrs, index) {
+            printer.suppressed_html_diagnostics.push(SourceRange::new(
+                range_start(attr.range()),
+                u32::from(attr.range().end()),
+            ));
+            emit_vue_as_html_attribute(printer, range, None);
+            index += 1;
+            while attrs
+                .get(index)
+                .is_some_and(|attr| attr.range().start() < range.end())
+            {
+                index += 1;
+            }
+            continue;
+        }
         if let Some(name) = attribute_key(attr)
             && !is_valid_tsx_attribute_name(&name)
         {
             invalid.push(attr);
+            index += 1;
             continue;
         }
         emit_attribute(printer, attr);
+        index += 1;
     }
 
     if !invalid.is_empty() {
@@ -752,6 +793,75 @@ fn emit_open_tag(
         }
         printer.map_nil();
         printer.write("}}");
+    }
+}
+
+fn recovered_v_for_range(
+    source: &str,
+    attrs: &[AnyHtmlAttribute],
+    index: usize,
+) -> Option<TextRange> {
+    let current = attrs.get(index)?;
+    let AnyHtmlAttribute::HtmlBogusAttribute(_) = current else {
+        return None;
+    };
+    if slice_source(source, current.range()).trim() != "v-for=" {
+        return None;
+    }
+    let next = attrs.get(index + 1)?;
+    if current.range().end() != next.range().start()
+        || !matches!(
+            next,
+            AnyHtmlAttribute::HtmlAttribute(_)
+                | AnyHtmlAttribute::HtmlAttributeSingleTextExpression(_)
+        )
+    {
+        return None;
+    }
+    let end = match next {
+        AnyHtmlAttribute::HtmlAttributeSingleTextExpression(_) => next.range().end(),
+        AnyHtmlAttribute::HtmlAttribute(_) => {
+            let value_start = u32::from(current.range().end()) as usize;
+            let value_len = reconstructed_v_for_value_len(&source[value_start..])?;
+            TextSize::from((value_start + value_len) as u32)
+        }
+        _ => return None,
+    };
+    Some(TextRange::new(current.range().start(), end))
+}
+
+fn reconstructed_v_for_source_range(text: &str, start: u32) -> Option<SourceRange> {
+    let (attribute_start, _) = text.match_indices("v-for=").find(|(index, _)| {
+        text[..*index]
+            .chars()
+            .next_back()
+            .is_some_and(char::is_whitespace)
+    })?;
+    let value_start = attribute_start + "v-for=".len();
+    let attribute_end = value_start + reconstructed_v_for_value_len(&text[value_start..])?;
+    let trailing = text[attribute_end..].trim_start();
+    let end = if matches!(trailing, ">" | "/>") {
+        text.len()
+    } else {
+        attribute_end
+    };
+    Some(SourceRange::new(
+        start + attribute_start as u32,
+        start + end as u32,
+    ))
+}
+
+fn reconstructed_v_for_value_len(value: &str) -> Option<usize> {
+    match value.chars().next()? {
+        delimiter @ ('"' | '\'') => {
+            Some(delimiter.len_utf8() + value[delimiter.len_utf8()..].find(delimiter)? + 1)
+        }
+        '{' => None,
+        _ => Some(
+            value
+                .find(|ch: char| ch.is_whitespace() || matches!(ch, '/' | '>'))
+                .unwrap_or(value.len()),
+        ),
     }
 }
 
@@ -778,6 +888,22 @@ fn emit_attribute(printer: &mut Printer, attr: &AnyHtmlAttribute) {
             }
         }
         AnyHtmlAttribute::AnyAstroDirective(directive) => emit_astro_directive(printer, directive),
+        AnyHtmlAttribute::AnyVueDirective(directive) if directive.as_vue_directive().is_some() => {
+            emit_vue_as_html_attribute(
+                printer,
+                directive.range(),
+                directive
+                    .as_vue_directive()
+                    .and_then(|directive| directive.initializer()),
+            );
+        }
+        AnyHtmlAttribute::HtmlBogusAttribute(attribute)
+            if slice_source(printer.source, attribute.range())
+                .trim_start()
+                .starts_with("v-") =>
+        {
+            emit_vue_as_html_attribute(printer, attribute.range(), None);
+        }
         AnyHtmlAttribute::AnyAngularBinding(_)
         | AnyHtmlAttribute::AngularStructuralDirective(_)
         | AnyHtmlAttribute::AngularTemplateRefVariable(_)
@@ -806,7 +932,70 @@ fn emit_html_attribute(printer: &mut Printer, attr_node: &HtmlAttribute) {
     printer.map_to_offset(key_start);
     printer.write(&key_text);
 
-    let Some(initializer) = attr_node.initializer() else {
+    emit_attribute_initializer(printer, &key_text, attr_node.initializer());
+}
+
+fn emit_vue_as_html_attribute(
+    printer: &mut Printer,
+    range: TextRange,
+    initializer: Option<HtmlAttributeInitializerClause>,
+) {
+    let start = range_start(range);
+    let raw = slice_source(printer.source, range).trim();
+
+    printer
+        .suppressed_html_diagnostics
+        .push(SourceRange::new(start, u32::from(range.end())));
+    printer.map_nil();
+    printer.write(" ");
+
+    if let Some(initializer) = initializer {
+        let Ok(eq_token) = initializer.eq_token() else {
+            return;
+        };
+        let key = slice_source(
+            printer.source,
+            TextRange::new(range.start(), eq_token.text_trimmed_range().start()),
+        )
+        .trim_end();
+        printer.write_with_mapping(key, start);
+        emit_attribute_initializer(printer, key, Some(initializer));
+        return;
+    }
+
+    let Some((key, value)) = raw.split_once('=') else {
+        printer.write_with_mapping(raw, start);
+        return;
+    };
+    let key = key.trim_end();
+    let value = value.trim_start();
+    let eq_offset = start + raw.find('=').unwrap_or(key.len()) as u32;
+    let value_offset = start + raw.len() as u32 - value.len() as u32;
+    printer.write_with_mapping(key, start);
+    printer.map_to_offset(eq_offset);
+    printer.write("=");
+    if strip_matching_quotes(value).is_some() {
+        printer.write_with_mapping(value, value_offset);
+    } else if let Some(inner) = value
+        .strip_prefix('{')
+        .and_then(|value| value.strip_suffix('}'))
+    {
+        emit_attribute_expression(printer, inner, value_offset + 1);
+    } else {
+        printer.map_nil();
+        printer.write("\"");
+        printer.write_attribute_value_with_mapping(value, value_offset);
+        printer.map_nil();
+        printer.write("\"");
+    }
+}
+
+fn emit_attribute_initializer(
+    printer: &mut Printer,
+    key_text: &str,
+    initializer: Option<HtmlAttributeInitializerClause>,
+) {
+    let Some(initializer) = initializer else {
         return;
     };
     let Ok(value) = initializer.value() else {
@@ -891,29 +1080,33 @@ fn emit_html_attribute(printer: &mut Printer, attr_node: &HtmlAttribute) {
                 .and_then(|e| e.html_literal_token().ok());
             printer.map_to_offset(eq_start);
             printer.write("=");
-            printer.map_nil();
-            printer.write("{");
             match literal {
                 Some(literal) if !literal.text_trimmed().trim().is_empty() => {
                     let value = literal.text_trimmed().to_string();
-                    emit_expression_body(
+                    emit_attribute_expression(
                         printer,
                         &value,
                         range_start(literal.text_trimmed_range()),
                     );
                 }
-                // TSX rejects an empty attribute expression.
-                _ => {
-                    printer.map_nil();
-                    printer.write("(void 0)");
-                }
+                _ => emit_attribute_expression(printer, "", eq_start + 1),
             }
-            printer.map_nil();
-            printer.write("}");
         }
         AnyHtmlAttributeInitializer::SvelteTemplateAttributeValue(_)
         | AnyHtmlAttributeInitializer::VueVForValue(_) => {}
     }
+}
+
+fn emit_attribute_expression(printer: &mut Printer, value: &str, value_start: u32) {
+    printer.map_nil();
+    printer.write("{");
+    if value.trim().is_empty() {
+        printer.write("(void 0)");
+    } else {
+        emit_expression_body(printer, value, value_start);
+    }
+    printer.map_nil();
+    printer.write("}");
 }
 
 fn emit_spread_attribute(printer: &mut Printer, spread: &HtmlSpreadAttribute) {
@@ -991,7 +1184,10 @@ fn emit_invalid_attribute(
                 printer.map_nil();
                 printer.write(":");
                 printer.map_nil();
-                printer.write(&format!("\"{}\"", encode_double_quote(inner)));
+                printer.write(&format!(
+                    "\"{}\"",
+                    escape_javascript_string(&decode_html_entities(inner))
+                ));
             }
             Ok(AnyHtmlAttributeInitializer::HtmlAttributeSingleTextExpression(expr)) => {
                 let Ok(text) = expr.expression() else {
@@ -1095,10 +1291,11 @@ pub(crate) fn script_type_for_attr(attr: Option<Option<String>>) -> ExtractedScr
 }
 
 fn style_lang_label(attrs: &[AnyHtmlAttribute]) -> String {
-    find_attr_value(attrs, "lang")
-        .flatten()
-        .filter(|lang| !lang.is_empty())
-        .unwrap_or_else(|| "css".to_string())
+    match find_attr_value(attrs, "lang") {
+        None => "css".to_string(),
+        Some(None) => "unknown".to_string(),
+        Some(Some(value)) => value.trim().to_ascii_lowercase(),
+    }
 }
 
 /// `None`: absent. `Some(None)`: present but not statically knowable.
@@ -1118,7 +1315,7 @@ fn find_attr_value(attrs: &[AnyHtmlAttribute], name: &str) -> Option<Option<Stri
             continue;
         }
         let Some(initializer) = attr_node.initializer() else {
-            return Some(Some(String::new()));
+            return Some(None);
         };
         let Ok(value) = initializer.value() else {
             return Some(None);

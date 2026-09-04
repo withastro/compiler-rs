@@ -24,6 +24,7 @@ biome_js_syntax   = { workspace = true }
 biome_languages   = { workspace = true }
 biome_rowan       = { workspace = true }
 biome_string_case = { workspace = true }
+htmlize           = { version = "1.1.0", features = ["unescape"] }
 
 napi          = { workspace = true }
 napi-derive   = { workspace = true }

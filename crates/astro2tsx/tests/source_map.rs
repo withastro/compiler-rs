@@ -26,37 +26,31 @@ fn fixtures() -> Vec<(String, String)> {
 }
 
 fn byte_offset(text: &str, line: u32, column: u32) -> Option<usize> {
-    let mut line_start = 0usize;
-    for (index, line_text) in text.split('\n').enumerate() {
-        if index as u32 == line {
-            let boundaries = line_text
-                .char_indices()
-                .map(|(byte, _)| byte)
-                .chain(std::iter::once(line_text.len()));
-            for byte in boundaries {
-                if line_text[..byte].encode_utf16().count() as u32 == column {
-                    return Some(line_start + byte);
-                }
-            }
-            return None;
-        }
-        line_start += line_text.len() + 1;
-    }
-    None
+    let mut matching_offsets = text
+        .char_indices()
+        .map(|(byte, _)| byte)
+        .chain(std::iter::once(text.len()))
+        .filter(|&byte| line_col(text, byte) == (line, column));
+    matching_offsets.next_back()
 }
 
 fn line_col(text: &str, byte: usize) -> (u32, u32) {
     let mut line = 0u32;
     let mut col = 0u32;
+    let mut previous_was_cr = false;
     for (index, ch) in text.char_indices() {
         if index >= byte {
             break;
         }
-        if ch == '\n' {
+        if ch == '\n' && previous_was_cr {
+            previous_was_cr = false;
+        } else if matches!(ch, '\n' | '\r' | '\u{2028}' | '\u{2029}') {
             line += 1;
             col = 0;
+            previous_was_cr = ch == '\r';
         } else {
             col += ch.len_utf16() as u32;
+            previous_was_cr = false;
         }
     }
     (line, col)
@@ -218,4 +212,26 @@ fn astral_columns_are_utf16_code_units() {
     assert_eq!(resolve_generated_snippet("{\u{3c0}}"), (3, 6));
     assert_eq!(resolve_generated_snippet("\u{3c0} = Math.PI"), (1, 6));
     assert_eq!(resolve_generated_snippet("</p>"), (3, 9));
+}
+
+#[test]
+fn every_javascript_line_terminator_resets_source_and_generated_columns() {
+    for terminator in ["\n", "\r\n", "\r", "\u{2028}", "\u{2029}"] {
+        let source = format!("<div>🦄x{terminator}<span>target</span></div>");
+        let result = convert_to_tsx(&source, ConvertOptions::default());
+        let decoded = DecodedMap::from_json_string(
+            &result
+                .source_map(&source, DEFAULT_SOURCE_NAME)
+                .to_json_string(),
+        )
+        .unwrap();
+        let generated = result.code.find("target").unwrap();
+        let (line, column) = line_col(&result.code, generated);
+
+        assert_eq!(
+            resolve_decoded(&decoded, line, column),
+            Some((1, 6)),
+            "wrong mapping after {terminator:?}"
+        );
+    }
 }

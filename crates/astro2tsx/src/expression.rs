@@ -8,8 +8,8 @@ use biome_rowan::{AstNode, AstNodeList, SyntaxNode, SyntaxToken, SyntaxTriviaPie
 use crate::printer::Printer;
 use crate::sourcemap::{ExtractedScriptType, GeneratedRange, SourceRange};
 use crate::utils::{
-    comment_needs_leading_space, encode_double_quote, is_html_event_attribute,
-    is_valid_tsx_attribute_name, strip_matching_quotes,
+    comment_needs_leading_space, decode_html_entities, escape_javascript_string,
+    is_html_event_attribute, is_valid_tsx_attribute_name, strip_matching_quotes,
 };
 
 type JsNode = SyntaxNode<JsLanguage>;
@@ -499,7 +499,10 @@ fn emit_invalid_jsx_attribute(
                 let text = token.text_trimmed();
                 let inner = strip_matching_quotes(text).unwrap_or(text);
                 printer.map_nil();
-                printer.write(&format!("\"{}\"", encode_double_quote(inner)));
+                printer.write(&format!(
+                    "\"{}\"",
+                    escape_javascript_string(&decode_html_entities(inner))
+                ));
             } else {
                 printer.map_nil();
                 printer.write("true");

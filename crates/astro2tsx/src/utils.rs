@@ -1,3 +1,5 @@
+use std::borrow::Cow;
+
 use biome_string_case::Case;
 use oxc_syntax::identifier::{is_identifier_part, is_identifier_start};
 
@@ -25,8 +27,31 @@ pub(crate) fn comment_needs_leading_space(body: &str) -> bool {
     body.chars().next().is_none_or(|c| !c.is_whitespace())
 }
 
-pub(crate) fn encode_double_quote(src: &str) -> String {
-    src.replace('"', "&quot;")
+pub(crate) fn escape_javascript_string(src: &str) -> String {
+    let mut escaped = String::with_capacity(src.len());
+    for ch in src.chars() {
+        match ch {
+            '"' => escaped.push_str("\\\""),
+            '\\' => escaped.push_str("\\\\"),
+            '\u{0008}' => escaped.push_str("\\b"),
+            '\u{000c}' => escaped.push_str("\\f"),
+            '\n' => escaped.push_str("\\n"),
+            '\r' => escaped.push_str("\\r"),
+            '\t' => escaped.push_str("\\t"),
+            '\u{2028}' => escaped.push_str("\\u2028"),
+            '\u{2029}' => escaped.push_str("\\u2029"),
+            ch if ch < '\u{0020}' => {
+                use std::fmt::Write;
+                write!(escaped, "\\u{:04x}", ch as u32).expect("writing to String cannot fail");
+            }
+            _ => escaped.push(ch),
+        }
+    }
+    escaped
+}
+
+pub(crate) fn decode_html_entities(src: &str) -> Cow<'_, str> {
+    htmlize::unescape_attribute(src)
 }
 
 pub(crate) fn strip_matching_quotes(text: &str) -> Option<&str> {
