@@ -1,5 +1,18 @@
 # @astrojs/compiler-binding
 
+## 0.4.1
+
+### Patch Changes
+
+- a9c4e94: Fixes an extra space appearing next to an HTML comment when `compressHTML` is enabled.
+- e9a5c37: Fixes escape sequences such as `\n` not being interpreted in quoted component props, so `<Component prop="a\nb" />` passes a real line break again. A backslash that forms a JavaScript escape needs doubling to stay literal (`prop="C:\\temp"`), while one that does not, such as `pattern="^example\.com$"`, is left alone.
+- a9c4e94: Fixes an extra space appearing next to components that contain a `<script>` when `compressHTML` is enabled.
+- 35e2a04: Generate and publish the Android ARM64 compiler binding package.
+- 3d6ee6d: Fixes invalid JavaScript being generated for elements with a backtick in an attribute name.
+- 07160da: Fixes `:global()` not being stripped from the CSS output when nested inside a pseudo-class such as `:has()`, `:is()`, `:where()` or `:not()`.
+- a9c4e94: Fixes whitespace inside `<pre>`, `<textarea>`, and `is:raw` elements being lost when the element also contains a `<style>` or `<script>`.
+- efb16c9: Fixes newlines being lost in text passed directly between a component's tags, so a `<slot />` wrapped in `<pre>` keeps its line breaks.
+
 ## 0.4.0
 
 ### Minor Changes
