@@ -189,7 +189,10 @@ test('strips the doctype and leaves its source range unmapped', () => {
 	const { generatedOffsets, sourceOffsets, lengths } = result;
 	for (let i = 0; i < generatedOffsets.length; i++) {
 		const original = source.slice(sourceOffsets[i], sourceOffsets[i] + lengths[i]);
-		assert.equal(result.code.slice(generatedOffsets[i], generatedOffsets[i] + lengths[i]), original);
+		assert.equal(
+			result.code.slice(generatedOffsets[i], generatedOffsets[i] + lengths[i]),
+			original,
+		);
 		assert.ok(!original.includes('doctype'), `run ${i} maps into the doctype`);
 	}
 });
@@ -231,9 +234,8 @@ test('everyday inputs that used to break TS parsing now emit valid TSX', () => {
 			false,
 			ts.ScriptKind.TSX,
 		);
-		const diagnostics = (
-			sourceFile as unknown as { parseDiagnostics: { messageText: unknown }[] }
-		).parseDiagnostics;
+		const diagnostics = (sourceFile as unknown as { parseDiagnostics: { messageText: unknown }[] })
+			.parseDiagnostics;
 		assert.deepEqual(
 			diagnostics.map((d) => `${JSON.stringify(input)}: ${JSON.stringify(d.messageText)}`),
 			[],
