@@ -1,0 +1,37 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+info:
+  has_parse_errors: false
+  frontmatter_status: Closed
+  frontmatter_source:
+    start: 0
+    end: 165
+  frontmatter:
+    start: 30
+    end: 190
+  body:
+    start: 204
+    end: 213
+  scripts: []
+  styles: []
+input_file: crates/astro2tsx/tests/fixtures/top_level_returns_nested.astro
+---
+/* @jsxImportSource astro */
+
+
+if (broken) {
+  throw  Astro.redirect("/");
+}
+const fn = () => { return 1; };
+function inner() { return 2; }
+class C { method() { return 3; } }
+throw  "top";
+
+{};<Fragment>
+
+<div/>
+
+</Fragment>
+export default function __AstroComponent_(_props: Record<string, any>): any {}
+
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiaW5wdXQuYXN0cm8iXSwic291cmNlc0NvbnRlbnQiOlsiLS0tXG5pZiAoYnJva2VuKSB7XG4gIHJldHVybiBBc3Ryby5yZWRpcmVjdChcIi9cIik7XG59XG5jb25zdCBmbiA9ICgpID0+IHsgcmV0dXJuIDE7IH07XG5mdW5jdGlvbiBpbm5lcigpIHsgcmV0dXJuIDI7IH1cbmNsYXNzIEMgeyBtZXRob2QoKSB7IHJldHVybiAzOyB9IH1cbnJldHVybiBcInRvcFwiO1xuLS0tXG48ZGl2Lz5cbiJdLCJtYXBwaW5ncyI6IkE7O0FBQUc7QUFDSDtBQUNBLEUsTUFBUTtBQUNSO0FBQ0E7QUFDQTtBQUNBO0EsTUFDTTtBOztBQUNIO0FBQ0g7QUFDQTtBIn0=

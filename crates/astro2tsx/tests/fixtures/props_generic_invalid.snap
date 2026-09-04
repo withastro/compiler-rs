@@ -1,0 +1,31 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+info:
+  has_parse_errors: false
+  frontmatter_status: Closed
+  frontmatter_source:
+    start: 0
+    end: 110
+  frontmatter:
+    start: 30
+    end: 135
+  body:
+    start: 149
+    end: 158
+  scripts: []
+  styles: []
+input_file: crates/astro2tsx/tests/fixtures/props_generic_invalid.astro
+---
+/* @jsxImportSource astro */
+
+
+interface Props<T extends { [key: string]: any }, P extends string ? { [key: string]: any }: never> {}
+
+{};<Fragment>
+
+<div/>
+
+</Fragment>
+export default function __AstroComponent_(_props: Record<string, any>): any {}
+
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiaW5wdXQuYXN0cm8iXSwic291cmNlc0NvbnRlbnQiOlsiLS0tXG5pbnRlcmZhY2UgUHJvcHM8VCBleHRlbmRzIHsgW2tleTogc3RyaW5nXTogYW55IH0sIFAgZXh0ZW5kcyBzdHJpbmcgPyB7IFtrZXk6IHN0cmluZ106IGFueSB9OiBuZXZlcj4ge31cbi0tLVxuPGRpdi8+XG4iXSwibWFwcGluZ3MiOiJBOztBQUFHO0FBQ0g7QTs7QUFDRztBQUNIO0FBQ0E7QSJ9

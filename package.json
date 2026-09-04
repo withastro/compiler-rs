@@ -8,7 +8,8 @@
   },
   "workspaces": [
     "packages/*",
-    "crates/astro_napi"
+    "crates/astro_napi",
+    "crates/astro2tsx"
   ],
   "scripts": {
     "build:all": "pnpm run build:napi && pnpm run build:compiler",

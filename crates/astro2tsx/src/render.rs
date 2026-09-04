@@ -1,0 +1,1478 @@
+use biome_html_syntax::{
+    AnyAstroDirective, AnyAstroFrontmatterElement, AnyHtmlAttribute, AnyHtmlAttributeInitializer,
+    AnyHtmlComponentObjectName, AnyHtmlContent, AnyHtmlElement, AnyHtmlTagName,
+    AnyHtmlTextExpression, AstroFragment, HtmlAttribute, HtmlAttributeInitializerClause,
+    HtmlElement, HtmlRoot, HtmlSelfClosingElement, HtmlSingleTextExpression, HtmlSpreadAttribute,
+};
+use biome_js_parser::{JsOffsetParse, JsParserOptions, parse, parse_js_with_offset};
+use biome_languages::JsFileSource;
+use biome_languages::javascript::JsEmbeddingKind;
+use biome_rowan::{AstNode, AstNodeList, Direction, TextRange, TextSize};
+
+use crate::ConvertOptions;
+use crate::expression::emit_expression_tree;
+use crate::frontmatter::{RewrittenFrontmatter, rewrite_top_level_returns};
+use crate::printer::{Printer, range_start};
+use crate::props::{PropsAnalysis, analyze as analyze_props};
+use crate::sourcemap::{
+    Diagnostic, DiagnosticSeverity, ExtractedScriptType, FrontmatterInfo, FrontmatterStatus,
+    GeneratedRange, SourceRange,
+};
+use crate::utils::{
+    ScriptKind, classify_script_type, comment_needs_leading_space, decode_html_entities,
+    escape_javascript_string, is_html_event_attribute, is_valid_tsx_attribute_name,
+    strip_matching_quotes, tsx_component_name,
+};
+
+// #region document and frontmatter
+
+const TSX_PREFIX: &str = "/* @jsxImportSource astro */\n\n";
+
+pub(crate) fn render_root(printer: &mut Printer, root: HtmlRoot, options: &ConvertOptions) {
+    printer.comment_ranges = comment_trivia_ranges(&root);
+    printer.map_nil();
+    printer.write(TSX_PREFIX);
+    // Where frontmatter would be inserted, so editors can anchor an edit there.
+    printer.frontmatter_range = GeneratedRange::new(printer.position(), printer.position());
+
+    let frontmatter = root.frontmatter();
+    let body = root.html();
+
+    let content = frontmatter.as_ref().and_then(frontmatter_content);
+    let mut props_analysis = PropsAnalysis::default();
+    let mut rewritten: Option<(RewrittenFrontmatter, u32)> = None;
+    if let Some((text, start)) = &content
+        && !text.is_empty()
+    {
+        let parse = parse(text, JsFileSource::astro(), JsParserOptions::default());
+        let js_root = parse.tree();
+        if !parse.diagnostics().is_empty() {
+            printer.has_embedded_parse_errors = true;
+            for diagnostic in parse.diagnostics() {
+                let source = match biome_diagnostics::Diagnostic::location(diagnostic).span {
+                    Some(span) => SourceRange::new(
+                        start + u32::from(span.start()),
+                        start + u32::from(span.end()),
+                    ),
+                    None => SourceRange::new(*start, start + text.len() as u32),
+                };
+                printer.diagnostics.push(Diagnostic {
+                    message: diagnostic.message.to_string(),
+                    severity: DiagnosticSeverity::Error,
+                    source,
+                });
+            }
+        }
+        props_analysis = analyze_props(&js_root);
+        rewritten = Some((rewrite_top_level_returns(text, &js_root), *start));
+    }
+
+    if let Some(node) = &frontmatter {
+        emit_frontmatter(printer, node, rewritten.as_ref(), frontmatter_anchor(node));
+    }
+
+    printer.frontmatter_info = frontmatter_info(&frontmatter, printer.source.len() as u32);
+    let body_text_start = body_text_start_offset(&frontmatter);
+    // A childless body still needs its `<Fragment>` when comment trivia remains.
+    let has_body_children = body.iter().next().is_some()
+        || printer
+            .comment_ranges
+            .iter()
+            .any(|range| range_start(*range) >= body_text_start);
+    let body_start;
+
+    if has_body_children {
+        // Unterminated frontmatter would swallow the body as `x < Fragment > ...`.
+        let frontmatter_needs_terminator = match &frontmatter {
+            Some(AnyAstroFrontmatterElement::AstroFrontmatterElement(_)) => content
+                .as_ref()
+                .is_some_and(|(text, _)| !text.trim().is_empty()),
+            Some(AnyAstroFrontmatterElement::AstroBogusFrontmatter(_)) => true,
+            None => false,
+        };
+        if frontmatter_needs_terminator {
+            printer.map_nil();
+            printer.write("{};");
+        }
+        printer.map_nil();
+        printer.write("<Fragment>\n");
+        body_start = printer.position();
+
+        let mut prev_end = body_text_start;
+        // TSX has no doctype syntax, so the directive must not reach the output.
+        if let Some(directive) = root.directive() {
+            let directive_range = directive.range();
+            emit_source_gap(printer, prev_end, range_start(directive_range));
+            prev_end = prev_end.max(u32::from(directive_range.end()));
+        }
+        for element in body.iter() {
+            let element_range = element.range();
+            emit_source_gap(printer, prev_end, range_start(element_range));
+            render_element(printer, element);
+            prev_end = u32::from(element_range.end());
+        }
+        emit_source_gap(printer, prev_end, printer.source.len() as u32);
+        // Anchored at EOF so trailing whitespace still has a mapping.
+        printer.map_to_offset(printer.source.len() as u32);
+        printer.write("\n");
+
+        let body_end = printer.position();
+        printer.body_range = GeneratedRange::new(body_start, body_end);
+
+        printer.map_nil();
+        printer.write("</Fragment>\n");
+    } else {
+        if frontmatter.is_some() {
+            printer.map_nil();
+            printer.write("\n");
+        }
+        printer.body_range = GeneratedRange::new(printer.position(), printer.position());
+    }
+
+    let component_name = tsx_component_name(options.filename.as_deref());
+    emit_default_export(
+        printer,
+        &component_name,
+        &props_analysis,
+        options.ambient_types,
+    );
+}
+
+fn body_text_start_offset(frontmatter: &Option<AnyAstroFrontmatterElement>) -> u32 {
+    if let Some(AnyAstroFrontmatterElement::AstroFrontmatterElement(node)) = frontmatter
+        && let Ok(r_fence) = node.r_fence_token()
+    {
+        return u32::from(r_fence.text_trimmed_range().end());
+    }
+    0
+}
+
+fn frontmatter_info(
+    frontmatter: &Option<AnyAstroFrontmatterElement>,
+    source_len: u32,
+) -> FrontmatterInfo {
+    match frontmatter {
+        None => FrontmatterInfo::default(),
+        Some(AnyAstroFrontmatterElement::AstroBogusFrontmatter(node)) => FrontmatterInfo {
+            status: FrontmatterStatus::Open,
+            source: SourceRange::new(range_start(node.range()), source_len),
+        },
+        Some(AnyAstroFrontmatterElement::AstroFrontmatterElement(node)) => {
+            let start = node
+                .l_fence_token()
+                .map(|token| range_start(token.text_trimmed_range()))
+                .unwrap_or_else(|_| range_start(node.range()));
+            match node.r_fence_token() {
+                Ok(r_fence) => FrontmatterInfo {
+                    status: FrontmatterStatus::Closed,
+                    source: SourceRange::new(start, u32::from(r_fence.text_trimmed_range().end())),
+                },
+                Err(_) => FrontmatterInfo {
+                    status: FrontmatterStatus::Open,
+                    source: SourceRange::new(start, source_len),
+                },
+            }
+        }
+    }
+}
+
+fn frontmatter_content(node: &AnyAstroFrontmatterElement) -> Option<(String, u32)> {
+    if let AnyAstroFrontmatterElement::AstroFrontmatterElement(frontmatter) = node
+        && let Ok(content) = frontmatter.content()
+        && let Some(token) = content.content_token()
+    {
+        return Some((token.text().to_string(), range_start(token.text_range())));
+    }
+    None
+}
+
+fn emit_default_export(
+    printer: &mut Printer,
+    component: &str,
+    analysis: &PropsAnalysis,
+    ambient_types: bool,
+) {
+    let (props_param, props_global) = if analysis.has_props {
+        if analysis.generics_args.is_empty() {
+            ("Props".to_string(), "Props".to_string())
+        } else {
+            (
+                format!("Props{}", analysis.generics_args),
+                "Props".to_string(),
+            )
+        }
+    } else if analysis.has_get_static_paths {
+        let inferred = "ASTRO__MergeUnion<ASTRO__Get<ASTRO__InferredGetStaticPath, 'props'>>";
+        (inferred.to_string(), inferred.to_string())
+    } else {
+        (
+            "Record<string, any>".to_string(),
+            "Record<string, any>".to_string(),
+        )
+    };
+
+    let generics = if analysis.has_props {
+        analysis.generics_decl.as_str()
+    } else {
+        ""
+    };
+
+    printer.write(&format!(
+        "export default function {component}{generics}(_props: {props_param}): any {{}}\n"
+    ));
+
+    if analysis.has_get_static_paths {
+        printer.write(
+            "type ASTRO__ArrayElement<ArrayType extends readonly unknown[]> = ArrayType extends readonly (infer ElementType)[] ? ElementType : never;\n",
+        );
+        printer.write(
+            "type ASTRO__Flattened<T> = T extends Array<infer U> ? ASTRO__Flattened<U> : T;\n",
+        );
+        printer.write("type ASTRO__InferredGetStaticPath = ASTRO__Flattened<ASTRO__ArrayElement<Awaited<ReturnType<typeof getStaticPaths>>>>;\n");
+        printer.write("type ASTRO__MergeUnion<T, K extends PropertyKey = T extends unknown ? keyof T : never> = T extends unknown ? T & { [P in Exclude<K, keyof T>]?: never } extends infer O ? { [P in keyof O]: O[P] } : never : never;\n");
+        printer.write("type ASTRO__Get<T, K> = T extends undefined ? undefined : K extends keyof T ? T[K] : never;\n");
+    }
+
+    if ambient_types {
+        printer.write("declare const Fragment: any;\n");
+    }
+
+    if analysis.has_props || analysis.has_get_static_paths || ambient_types {
+        printer.write(
+            "/**\n * Astro global available in all contexts in .astro files\n *\n * [Astro documentation](https://docs.astro.build/reference/api-reference/#astro-global)\n*/\n",
+        );
+        printer.write(&format!(
+            "declare const Astro: Readonly<import('astro').AstroGlobal<{props_global}, typeof {component}"
+        ));
+        if analysis.has_get_static_paths {
+            printer.write(", ASTRO__Get<ASTRO__InferredGetStaticPath, 'params'>");
+        }
+        printer.write(">>");
+    }
+}
+
+/// Offset just after the opening fence, where an empty frontmatter's newline
+/// lives. Editors insert imports there, so it must carry a mapping.
+fn frontmatter_anchor(frontmatter: &AnyAstroFrontmatterElement) -> Option<u32> {
+    let AnyAstroFrontmatterElement::AstroFrontmatterElement(node) = frontmatter else {
+        return None;
+    };
+    node.l_fence_token()
+        .ok()
+        .map(|token| u32::from(token.text_trimmed_range().end()))
+}
+
+fn emit_frontmatter(
+    printer: &mut Printer,
+    frontmatter: &AnyAstroFrontmatterElement,
+    rewritten: Option<&(RewrittenFrontmatter, u32)>,
+    anchor: Option<u32>,
+) {
+    let frontmatter_start = printer.position();
+
+    match frontmatter {
+        AnyAstroFrontmatterElement::AstroFrontmatterElement(_) => {
+            printer.map_to_offset(0);
+            let emitted_content = match rewritten {
+                Some((frontmatter_text, start)) => {
+                    emit_rewritten_frontmatter(printer, frontmatter_text, *start);
+                    !frontmatter_text.text.is_empty()
+                }
+                None => false,
+            };
+            let anchor_newline = anchor.filter(|_| !emitted_content).and_then(|anchor| {
+                let rest = &printer.source[anchor as usize..];
+                if rest.starts_with("\r\n") {
+                    Some((anchor, "\r\n"))
+                } else if rest.starts_with('\n') {
+                    Some((anchor, "\n"))
+                } else {
+                    None
+                }
+            });
+            match anchor_newline {
+                Some((anchor, newline)) => {
+                    printer.map_to_offset(anchor);
+                    printer.write(newline);
+                }
+                None => {
+                    printer.map_nil();
+                    printer.write("\n");
+                }
+            }
+        }
+        AnyAstroFrontmatterElement::AstroBogusFrontmatter(_) => {
+            printer.map_to_offset(0);
+            printer.write(frontmatter.syntax().text_trimmed().to_string().as_str());
+        }
+    }
+
+    let frontmatter_end = printer.position();
+    printer.frontmatter_range = GeneratedRange::new(frontmatter_start, frontmatter_end);
+}
+
+/// Replaced spans stay nil-mapped; the cursors drift once a replacement outgrows its `return`.
+fn emit_rewritten_frontmatter(printer: &mut Printer, rewritten: &RewrittenFrontmatter, start: u32) {
+    let mut text_cursor = 0usize;
+    let mut source_cursor = 0usize;
+    for replacement in &rewritten.replaced {
+        let offset = replacement.text_offset as usize;
+        printer.write_with_mapping(
+            &rewritten.text[text_cursor..offset],
+            start + source_cursor as u32,
+        );
+        source_cursor += offset - text_cursor;
+        printer.map_nil();
+        printer.write(&rewritten.text[offset..offset + replacement.text_len as usize]);
+        text_cursor = offset + replacement.text_len as usize;
+        source_cursor += replacement.source_len as usize;
+    }
+    printer.write_with_mapping(&rewritten.text[text_cursor..], start + source_cursor as u32);
+}
+
+// #endregion
+
+// #region elements
+
+fn render_element(printer: &mut Printer, element: AnyHtmlElement) {
+    match element {
+        AnyHtmlElement::AnyHtmlContent(content) => render_content(printer, content),
+        AnyHtmlElement::HtmlElement(node) => render_html_element(printer, node),
+        AnyHtmlElement::AstroFragment(node) => render_astro_fragment(printer, &node),
+        AnyHtmlElement::HtmlSelfClosingElement(node) => {
+            render_self_closing_element(printer, node);
+        }
+        AnyHtmlElement::HtmlCdataSection(_)
+        | AnyHtmlElement::HtmlProcessingInstruction(_)
+        | AnyHtmlElement::HtmlBogusElement(_) => {
+            // Preserve unsupported syntax verbatim so error recovery loses no source text.
+            let range = element.range();
+            let text = slice_source(printer.source, range);
+            let start = range_start(range);
+            if let Some(range) = reconstructed_v_for_source_range(text, start) {
+                printer.suppressed_html_diagnostics.push(range);
+            }
+            // A stray doctype recovers as bogus text, but TSX has no doctype syntax.
+            if text
+                .get(..9)
+                .is_some_and(|prefix| prefix.eq_ignore_ascii_case("<!doctype"))
+            {
+                let rest_at = text.find('>').map(|i| i + 1).unwrap_or(text.len());
+                printer.write_with_mapping(&text[rest_at..], start + rest_at as u32);
+                return;
+            }
+            printer.write_with_mapping(text, start);
+        }
+    }
+}
+
+fn render_content(printer: &mut Printer, content: AnyHtmlContent) {
+    match content {
+        AnyHtmlContent::HtmlContent(node) => {
+            let Ok(token) = node.value_token() else {
+                return;
+            };
+            // Trimmed range: the parent's gap emission owns surrounding trivia, else it doubles.
+            let range = token.text_trimmed_range();
+            let text = token.text_trimmed();
+            printer.write_jsx_text_with_mapping(text, range_start(range));
+        }
+        AnyHtmlContent::HtmlEmbeddedContent(node) => {
+            let Ok(token) = node.value_token() else {
+                return;
+            };
+            let original_start = range_start(token.text_trimmed_range());
+            let raw = token.text_trimmed().to_string();
+            printer.map_nil();
+            printer.write("{`");
+            printer.write_template_text_with_mapping(&raw, original_start);
+            printer.map_nil();
+            printer.write("`}");
+        }
+        AnyHtmlContent::AnyHtmlTextExpression(expression) => {
+            render_text_expression(printer, expression);
+        }
+    }
+}
+
+fn render_text_expression(printer: &mut Printer, expression: AnyHtmlTextExpression) {
+    match expression {
+        AnyHtmlTextExpression::HtmlSingleTextExpression(node) => {
+            render_single_text_expression(printer, node);
+        }
+        AnyHtmlTextExpression::HtmlDoubleTextExpression(node) => {
+            // Preserve Vue-style `{{ … }}` verbatim in HTML mode.
+            let range = node.range();
+            let text = slice_source(printer.source, range);
+            printer.write_with_mapping(text, range_start(range));
+        }
+        AnyHtmlTextExpression::HtmlBogusTextExpression(node) => {
+            let range = node.range();
+            let text = slice_source(printer.source, range);
+            printer.write_with_mapping(text, range_start(range));
+        }
+        AnyHtmlTextExpression::AnySvelteBlock(_) => {}
+    }
+}
+
+fn render_single_text_expression(printer: &mut Printer, node: HtmlSingleTextExpression) {
+    let Ok(l_curly) = node.l_curly_token() else {
+        return;
+    };
+    let Some(expression) = node.expression() else {
+        return;
+    };
+    let Ok(r_curly) = node.r_curly_token() else {
+        return;
+    };
+
+    let l_curly_range = l_curly.text_trimmed_range();
+    let r_curly_range = r_curly.text_trimmed_range();
+
+    printer.map_to_offset(range_start(l_curly_range));
+    printer.write("{");
+
+    if expression.html_literal_token().is_ok() {
+        let original_start = u32::from(l_curly_range.end());
+        // Whitespace touching `{` is trivia, which the literal token drops.
+        let raw = slice_source(
+            printer.source,
+            TextRange::new(l_curly_range.end(), r_curly_range.start()),
+        );
+        if raw.is_empty() {
+            printer.map_nil();
+            printer.write("(void 0)");
+        } else {
+            emit_expression_body(printer, raw, original_start);
+        }
+    } else {
+        printer.map_nil();
+        printer.write("(void 0)");
+    }
+
+    printer.map_to_offset(range_start(r_curly_range));
+    printer.write("}");
+}
+
+/// Parse the tree to avoid rewriting markup-like strings and generics.
+fn parse_expression_body(text: &str, base_offset: u32) -> JsOffsetParse {
+    parse_js_with_offset(
+        text,
+        TextSize::from(base_offset),
+        JsFileSource::tsx().with_embedding_kind(JsEmbeddingKind::Astro {
+            frontmatter: false,
+            is_class_attribute: false,
+        }),
+        JsParserOptions::default(),
+    )
+}
+
+fn emit_expression_body(printer: &mut Printer, raw: &str, original_start: u32) {
+    let parse = parse_expression_body(raw, original_start);
+    if parse.diagnostics().is_empty() {
+        let syntax = parse.syntax();
+        emit_expression_tree(printer, syntax.inner(), original_start);
+        return;
+    }
+    printer.has_embedded_parse_errors = true;
+    for diagnostic in parse.diagnostics() {
+        printer.diagnostics.push(Diagnostic {
+            message: diagnostic.message.to_string(),
+            severity: DiagnosticSeverity::Error,
+            source: diagnostic_source_range(diagnostic, original_start, raw.len() as u32),
+        });
+    }
+    printer.write_with_mapping(raw, original_start);
+}
+
+/// Spanless expression diagnostics fall back to the whole expression body.
+fn diagnostic_source_range(
+    diagnostic: &biome_parser::diagnostic::ParseDiagnostic,
+    start: u32,
+    len: u32,
+) -> SourceRange {
+    match biome_diagnostics::Diagnostic::location(diagnostic).span {
+        Some(span) => SourceRange::new(
+            start + u32::from(span.start()),
+            start + u32::from(span.end()),
+        ),
+        None => SourceRange::new(start, start + len),
+    }
+}
+
+fn render_html_element(printer: &mut Printer, node: HtmlElement) {
+    let Ok(opening) = node.opening_element() else {
+        return;
+    };
+    let Ok(name) = opening.name() else {
+        return;
+    };
+    let Ok(open_l_angle) = opening.l_angle_token() else {
+        return;
+    };
+    let open_r_angle = opening.r_angle_token().ok();
+
+    // Preserve incomplete tags verbatim so error recovery loses no source text.
+    if open_r_angle.is_none() {
+        let range = node.syntax().text_trimmed_range();
+        let text = slice_source(printer.source, range);
+        printer.write_with_mapping(text, range_start(range));
+        return;
+    }
+
+    let tag_name = tag_name_text(&name);
+    let attributes: Vec<AnyHtmlAttribute> = opening.attributes().iter().collect();
+
+    emit_open_tag(
+        printer,
+        &tag_name,
+        range_start(open_l_angle.text_trimmed_range()),
+        range_start(name.range()),
+        &attributes,
+    );
+
+    let open_r_angle = open_r_angle.expect("checked above");
+    let r_angle_start = range_start(open_r_angle.text_trimmed_range());
+    let attrs_end = attributes
+        .last()
+        .map(|attr| u32::from(attr.range().end()))
+        .unwrap_or_else(|| u32::from(name.range().end()));
+    emit_intra_tag_space(printer, attrs_end, r_angle_start);
+    printer.map_to_offset(r_angle_start);
+    printer.write(">");
+
+    // `<Script>` is a component, not the HTML element, so match the node kind.
+    let is_html_tag = matches!(name, AnyHtmlTagName::HtmlTagName(_));
+    let is_script = is_html_tag && tag_name.eq_ignore_ascii_case("script");
+    let is_style = is_html_tag && tag_name.eq_ignore_ascii_case("style");
+
+    let children = node.children();
+    let body_start = printer.position();
+
+    let opening_end = u32::from(open_r_angle.text_trimmed_range().end());
+    let element_is_raw = attributes
+        .iter()
+        .any(|a| attribute_key(a).as_deref() == Some("is:raw"));
+    // Script and style win over `is:raw` when classifying the body.
+    let inline_raw_body = element_is_raw && !is_script && !is_style;
+
+    let closing_inner_start = node
+        .closing_element()
+        .ok()
+        .and_then(|c| c.l_angle_token().ok())
+        .map(|t| range_start(t.text_trimmed_range()));
+
+    if is_script || is_style {
+        // Keep the tag for TSX analysis while reporting its body separately.
+    } else if inline_raw_body {
+        // Unclosed raw-text content runs to the end of the node the parser built.
+        let inner_start = opening_end;
+        let inner_end = closing_inner_start.unwrap_or_else(|| u32::from(node.range().end()));
+        if inner_end > inner_start {
+            let raw = &printer.source[inner_start as usize..inner_end as usize];
+            printer.map_nil();
+            printer.write("{`");
+            printer.write_template_text_with_mapping(raw, inner_start);
+            printer.map_nil();
+            printer.write("`}");
+        }
+    } else {
+        let mut prev_end: Option<u32> = None;
+        for child in children.iter() {
+            let child_range = child.range();
+            let child_start = range_start(child_range);
+            let leading_from = prev_end.unwrap_or(opening_end);
+            emit_source_gap(printer, leading_from, child_start);
+            render_element(printer, child);
+            prev_end = Some(u32::from(child_range.end()));
+        }
+        if let Some(trailing_to) = closing_inner_start {
+            let leading_from = prev_end.unwrap_or(opening_end);
+            emit_source_gap(printer, leading_from, trailing_to);
+        }
+    }
+
+    let body_end = printer.position();
+
+    if is_script || is_style {
+        let inner_range = inner_range(&node);
+        if let Some((start, end)) = inner_range {
+            let content =
+                slice_source(printer.source, TextRange::new(start.into(), end.into())).to_string();
+            if is_script {
+                printer.add_script_block(
+                    GeneratedRange::new(body_start, body_end),
+                    SourceRange::new(start, end),
+                    content,
+                    classify_script(&attributes),
+                );
+            } else {
+                printer.add_style_block(
+                    GeneratedRange::new(body_start, body_end),
+                    SourceRange::new(start, end),
+                    content,
+                    style_lang_label(&attributes),
+                );
+            }
+        }
+    }
+
+    // Broken input is emitted as written; nothing is synthesized around missing tokens.
+    if let Ok(closing) = node.closing_element() {
+        if let Ok(l_angle) = closing.l_angle_token() {
+            printer.map_to_offset(range_start(l_angle.text_trimmed_range()));
+            printer.write("</");
+        }
+        if let Ok(closing_name) = closing.name() {
+            printer.map_to_offset(range_start(closing_name.range()));
+            printer.write(&tag_name_text(&closing_name));
+        }
+        if let Ok(r_angle) = closing.r_angle_token() {
+            printer.map_to_offset(range_start(r_angle.text_trimmed_range()));
+            printer.write(">");
+        }
+    }
+}
+
+fn render_self_closing_element(printer: &mut Printer, node: HtmlSelfClosingElement) {
+    let Ok(name) = node.name() else {
+        return;
+    };
+    let Ok(l_angle) = node.l_angle_token() else {
+        return;
+    };
+    // A truncated tag (`<img /`) round-trips whole instead of being dropped.
+    let Ok(r_angle) = node.r_angle_token() else {
+        let range = node.syntax().text_trimmed_range();
+        let text = slice_source(printer.source, range);
+        printer.write_with_mapping(text, range_start(range));
+        return;
+    };
+    let attributes: Vec<AnyHtmlAttribute> = node.attributes().iter().collect();
+    let tag_name = tag_name_text(&name);
+
+    emit_open_tag(
+        printer,
+        &tag_name,
+        range_start(l_angle.text_trimmed_range()),
+        range_start(name.range()),
+        &attributes,
+    );
+
+    // Measure before the slash to preserve whether the source included separating space.
+    let r_angle_start = range_start(r_angle.text_trimmed_range());
+    let pre_slash = node
+        .slash_token()
+        .map(|s| range_start(s.text_trimmed_range()))
+        .unwrap_or(r_angle_start);
+    let attrs_end = attributes
+        .last()
+        .map(|attr| u32::from(attr.range().end()))
+        .unwrap_or_else(|| u32::from(name.range().end()));
+    emit_intra_tag_space(printer, attrs_end, pre_slash);
+    match node.slash_token() {
+        Some(slash) => printer.map_to_offset(range_start(slash.text_trimmed_range())),
+        None => printer.map_nil(),
+    }
+    printer.write("/");
+    printer.map_to_offset(r_angle_start);
+    printer.write(">");
+}
+
+fn render_astro_fragment(printer: &mut Printer, node: &AstroFragment) {
+    let Ok(opening) = node.opening_fragment() else {
+        return;
+    };
+    let Ok(open_l) = opening.l_angle_token() else {
+        return;
+    };
+    let open_r = opening.r_angle_token().ok();
+
+    printer.map_to_offset(range_start(open_l.text_trimmed_range()));
+    printer.write("<");
+    if let Some(open_r) = open_r.as_ref() {
+        printer.map_to_offset(range_start(open_r.text_trimmed_range()));
+        printer.write(">");
+    }
+
+    let opening_end = open_r
+        .as_ref()
+        .map(|t| u32::from(t.text_trimmed_range().end()))
+        .unwrap_or_else(|| u32::from(opening.range().end()));
+
+    let closing_inner_start = node
+        .closing_fragment()
+        .ok()
+        .and_then(|c| c.l_angle_token().ok())
+        .map(|t| range_start(t.text_trimmed_range()));
+
+    let mut prev_end: Option<u32> = None;
+    for child in node.children() {
+        let child_range = child.range();
+        let leading_from = prev_end.unwrap_or(opening_end);
+        emit_source_gap(printer, leading_from, range_start(child_range));
+        render_element(printer, child);
+        prev_end = Some(u32::from(child_range.end()));
+    }
+    if let Some(trailing_to) = closing_inner_start {
+        emit_source_gap(printer, prev_end.unwrap_or(opening_end), trailing_to);
+    }
+
+    if let Ok(closing) = node.closing_fragment() {
+        if let Ok(l_angle) = closing.l_angle_token() {
+            printer.map_to_offset(range_start(l_angle.text_trimmed_range()));
+            printer.write("</");
+        }
+        if let Ok(r_angle) = closing.r_angle_token() {
+            printer.map_to_offset(range_start(r_angle.text_trimmed_range()));
+            printer.write(">");
+        }
+    }
+}
+
+// #endregion
+
+// #region attributes
+
+/// Tag-header gaps hold whitespace or JS comments — both valid TSX, so they round-trip whole.
+fn emit_intra_tag_space(printer: &mut Printer, from: u32, to: u32) {
+    if from < to {
+        let text = &printer.source[from as usize..to as usize];
+        printer.write_with_mapping(text, from);
+    }
+}
+
+fn emit_open_tag(
+    printer: &mut Printer,
+    tag_name: &str,
+    angle_start: u32,
+    name_start: u32,
+    attrs: &[AnyHtmlAttribute],
+) {
+    printer.map_to_offset(angle_start);
+    printer.write("<");
+    printer.map_to_offset(name_start);
+    printer.write(tag_name);
+
+    let mut invalid: Vec<&AnyHtmlAttribute> = Vec::new();
+
+    let mut index = 0;
+    while let Some(attr) = attrs.get(index) {
+        if let Some(range) = recovered_v_for_range(printer.source, attrs, index) {
+            printer.suppressed_html_diagnostics.push(SourceRange::new(
+                range_start(attr.range()),
+                u32::from(attr.range().end()),
+            ));
+            emit_vue_as_html_attribute(printer, range, None);
+            index += 1;
+            while attrs
+                .get(index)
+                .is_some_and(|attr| attr.range().start() < range.end())
+            {
+                index += 1;
+            }
+            continue;
+        }
+        if let Some(name) = attribute_key(attr)
+            && !is_valid_tsx_attribute_name(&name)
+        {
+            invalid.push(attr);
+            index += 1;
+            continue;
+        }
+        emit_attribute(printer, attr);
+        index += 1;
+    }
+
+    if !invalid.is_empty() {
+        printer.map_nil();
+        printer.write(" {...{");
+        let mut wrote_entry = false;
+        for attr in invalid {
+            wrote_entry |= emit_invalid_attribute(printer, attr, wrote_entry);
+        }
+        printer.map_nil();
+        printer.write("}}");
+    }
+}
+
+fn recovered_v_for_range(
+    source: &str,
+    attrs: &[AnyHtmlAttribute],
+    index: usize,
+) -> Option<TextRange> {
+    let current = attrs.get(index)?;
+    let AnyHtmlAttribute::HtmlBogusAttribute(_) = current else {
+        return None;
+    };
+    if slice_source(source, current.range()).trim() != "v-for=" {
+        return None;
+    }
+    let next = attrs.get(index + 1)?;
+    if current.range().end() != next.range().start()
+        || !matches!(
+            next,
+            AnyHtmlAttribute::HtmlAttribute(_)
+                | AnyHtmlAttribute::HtmlAttributeSingleTextExpression(_)
+        )
+    {
+        return None;
+    }
+    let end = match next {
+        AnyHtmlAttribute::HtmlAttributeSingleTextExpression(_) => next.range().end(),
+        AnyHtmlAttribute::HtmlAttribute(_) => {
+            let value_start = u32::from(current.range().end()) as usize;
+            let value_len = reconstructed_v_for_value_len(&source[value_start..])?;
+            TextSize::from((value_start + value_len) as u32)
+        }
+        _ => return None,
+    };
+    Some(TextRange::new(current.range().start(), end))
+}
+
+fn reconstructed_v_for_source_range(text: &str, start: u32) -> Option<SourceRange> {
+    let (attribute_start, _) = text.match_indices("v-for=").find(|(index, _)| {
+        text[..*index]
+            .chars()
+            .next_back()
+            .is_some_and(char::is_whitespace)
+    })?;
+    let value_start = attribute_start + "v-for=".len();
+    let attribute_end = value_start + reconstructed_v_for_value_len(&text[value_start..])?;
+    let trailing = text[attribute_end..].trim_start();
+    let end = if matches!(trailing, ">" | "/>") {
+        text.len()
+    } else {
+        attribute_end
+    };
+    Some(SourceRange::new(
+        start + attribute_start as u32,
+        start + end as u32,
+    ))
+}
+
+fn reconstructed_v_for_value_len(value: &str) -> Option<usize> {
+    match value.chars().next()? {
+        delimiter @ ('"' | '\'') => {
+            Some(delimiter.len_utf8() + value[delimiter.len_utf8()..].find(delimiter)? + 1)
+        }
+        '{' => None,
+        _ => Some(
+            value
+                .find(|ch: char| ch.is_whitespace() || matches!(ch, '/' | '>'))
+                .unwrap_or(value.len()),
+        ),
+    }
+}
+
+fn emit_attribute(printer: &mut Printer, attr: &AnyHtmlAttribute) {
+    match attr {
+        AnyHtmlAttribute::HtmlAttribute(attr_node) => emit_html_attribute(printer, attr_node),
+        AnyHtmlAttribute::HtmlSpreadAttribute(spread) => emit_spread_attribute(printer, spread),
+        AnyHtmlAttribute::HtmlAttributeSingleTextExpression(node) => {
+            if let Ok(expression) = node.expression()
+                && let Ok(token) = expression.html_literal_token()
+            {
+                let trimmed = token.text_trimmed().to_string();
+                let original_start = range_start(token.text_trimmed_range());
+                printer.map_nil();
+                printer.write(" ");
+                printer.write_with_mapping(&trimmed, original_start);
+                printer.map_nil();
+                printer.write("=");
+                printer.map_nil();
+                printer.write("{");
+                printer.write_with_mapping(&trimmed, original_start);
+                printer.map_nil();
+                printer.write("}");
+            }
+        }
+        AnyHtmlAttribute::AnyAstroDirective(directive) => emit_astro_directive(printer, directive),
+        AnyHtmlAttribute::AnyVueDirective(directive) if directive.as_vue_directive().is_some() => {
+            emit_vue_as_html_attribute(
+                printer,
+                directive.range(),
+                directive
+                    .as_vue_directive()
+                    .and_then(|directive| directive.initializer()),
+            );
+        }
+        AnyHtmlAttribute::HtmlBogusAttribute(attribute)
+            if slice_source(printer.source, attribute.range())
+                .trim_start()
+                .starts_with("v-") =>
+        {
+            emit_vue_as_html_attribute(printer, attribute.range(), None);
+        }
+        AnyHtmlAttribute::AnyAngularBinding(_)
+        | AnyHtmlAttribute::AngularStructuralDirective(_)
+        | AnyHtmlAttribute::AngularTemplateRefVariable(_)
+        | AnyHtmlAttribute::AnySvelteDirective(_)
+        | AnyHtmlAttribute::AnyVueDirective(_)
+        | AnyHtmlAttribute::HtmlAttributeDoubleTextExpression(_)
+        | AnyHtmlAttribute::HtmlBogusAttribute(_)
+        | AnyHtmlAttribute::SvelteAttachAttribute(_) => {
+            // Foreign or recovery kinds; emitting them would produce invalid TSX.
+        }
+    }
+}
+
+fn emit_html_attribute(printer: &mut Printer, attr_node: &HtmlAttribute) {
+    let Ok(name) = attr_node.name() else {
+        return;
+    };
+    let Ok(name_token) = name.value_token() else {
+        return;
+    };
+    let key_text = name_token.text_trimmed().to_string();
+    let key_start = range_start(name_token.text_trimmed_range());
+
+    printer.map_nil();
+    printer.write(" ");
+    printer.map_to_offset(key_start);
+    printer.write(&key_text);
+
+    emit_attribute_initializer(printer, &key_text, attr_node.initializer());
+}
+
+fn emit_vue_as_html_attribute(
+    printer: &mut Printer,
+    range: TextRange,
+    initializer: Option<HtmlAttributeInitializerClause>,
+) {
+    let start = range_start(range);
+    let raw = slice_source(printer.source, range).trim();
+
+    printer
+        .suppressed_html_diagnostics
+        .push(SourceRange::new(start, u32::from(range.end())));
+    printer.map_nil();
+    printer.write(" ");
+
+    if let Some(initializer) = initializer {
+        let Ok(eq_token) = initializer.eq_token() else {
+            return;
+        };
+        let key = slice_source(
+            printer.source,
+            TextRange::new(range.start(), eq_token.text_trimmed_range().start()),
+        )
+        .trim_end();
+        printer.write_with_mapping(key, start);
+        emit_attribute_initializer(printer, key, Some(initializer));
+        return;
+    }
+
+    let Some((key, value)) = raw.split_once('=') else {
+        printer.write_with_mapping(raw, start);
+        return;
+    };
+    let key = key.trim_end();
+    let value = value.trim_start();
+    let eq_offset = start + raw.find('=').unwrap_or(key.len()) as u32;
+    let value_offset = start + raw.len() as u32 - value.len() as u32;
+    printer.write_with_mapping(key, start);
+    printer.map_to_offset(eq_offset);
+    printer.write("=");
+    if strip_matching_quotes(value).is_some() {
+        printer.write_with_mapping(value, value_offset);
+    } else if let Some(inner) = value
+        .strip_prefix('{')
+        .and_then(|value| value.strip_suffix('}'))
+    {
+        emit_attribute_expression(printer, inner, value_offset + 1);
+    } else {
+        printer.map_nil();
+        printer.write("\"");
+        printer.write_attribute_value_with_mapping(value, value_offset);
+        printer.map_nil();
+        printer.write("\"");
+    }
+}
+
+fn emit_attribute_initializer(
+    printer: &mut Printer,
+    key_text: &str,
+    initializer: Option<HtmlAttributeInitializerClause>,
+) {
+    let Some(initializer) = initializer else {
+        return;
+    };
+    let Ok(value) = initializer.value() else {
+        return;
+    };
+    let Ok(eq_token) = initializer.eq_token() else {
+        return;
+    };
+    let eq_start = range_start(eq_token.text_trimmed_range());
+
+    match value {
+        AnyHtmlAttributeInitializer::HtmlString(s) => {
+            let Ok(value_token) = s.value_token() else {
+                return;
+            };
+            let raw = value_token.text_trimmed().to_string();
+            // The lexer files template-literal values under `HtmlString` too.
+            if raw.starts_with('`') && raw.ends_with('`') && raw.len() >= 2 {
+                let inner = &raw[1..raw.len() - 1];
+                let value_start = range_start(value_token.text_trimmed_range()) + 1;
+                printer.map_to_offset(eq_start);
+                printer.write("=");
+                printer.map_nil();
+                printer.write("{");
+                printer.map_to_offset(value_start - 1);
+                printer.write("`");
+                printer.write_with_mapping(inner, value_start);
+                printer.map_to_offset(value_start + inner.len() as u32);
+                printer.write("`");
+                printer.map_nil();
+                printer.write("}");
+                return;
+            }
+            let token_start = range_start(value_token.text_trimmed_range());
+            // Astro allows unquoted values, so the token may carry no quotes to strip.
+            let quoted = strip_matching_quotes(&raw).is_some();
+            let (inner, value_start) = if quoted {
+                (&raw[1..raw.len() - 1], token_start + 1)
+            } else {
+                (raw.as_str(), token_start)
+            };
+            let inner_end = value_start + inner.len() as u32;
+
+            printer.map_to_offset(eq_start);
+            printer.write("=");
+            let (generated_start, generated_end);
+            if quoted {
+                let token_generated_start = printer.position();
+                printer.write_with_mapping(&raw, token_start);
+                generated_start = token_generated_start + 1;
+                generated_end = printer.position() - 1;
+            } else {
+                printer.map_nil();
+                printer.write("\"");
+                generated_start = printer.position();
+                printer.write_attribute_value_with_mapping(inner, value_start);
+                generated_end = printer.position();
+                printer.map_nil();
+                printer.write("\"");
+            }
+
+            let lower_key = key_text.to_ascii_lowercase();
+            if is_html_event_attribute(&lower_key) {
+                printer.add_event_attribute(
+                    GeneratedRange::new(generated_start, generated_end),
+                    SourceRange::new(value_start, inner_end),
+                    inner.to_string(),
+                );
+            }
+            if lower_key == "style" {
+                printer.add_style_attribute(
+                    GeneratedRange::new(generated_start, generated_end),
+                    SourceRange::new(value_start, inner_end),
+                    inner.to_string(),
+                );
+            }
+        }
+        AnyHtmlAttributeInitializer::HtmlAttributeSingleTextExpression(expr) => {
+            let literal = expr
+                .expression()
+                .ok()
+                .and_then(|e| e.html_literal_token().ok());
+            printer.map_to_offset(eq_start);
+            printer.write("=");
+            match literal {
+                Some(literal) if !literal.text_trimmed().trim().is_empty() => {
+                    let value = literal.text_trimmed().to_string();
+                    emit_attribute_expression(
+                        printer,
+                        &value,
+                        range_start(literal.text_trimmed_range()),
+                    );
+                }
+                _ => emit_attribute_expression(printer, "", eq_start + 1),
+            }
+        }
+        AnyHtmlAttributeInitializer::SvelteTemplateAttributeValue(_)
+        | AnyHtmlAttributeInitializer::VueVForValue(_) => {}
+    }
+}
+
+fn emit_attribute_expression(printer: &mut Printer, value: &str, value_start: u32) {
+    printer.map_nil();
+    printer.write("{");
+    if value.trim().is_empty() {
+        printer.write("(void 0)");
+    } else {
+        emit_expression_body(printer, value, value_start);
+    }
+    printer.map_nil();
+    printer.write("}");
+}
+
+fn emit_spread_attribute(printer: &mut Printer, spread: &HtmlSpreadAttribute) {
+    let Ok(argument) = spread.argument() else {
+        return;
+    };
+    let Ok(literal) = argument.html_literal_token() else {
+        return;
+    };
+    let value = literal.text_trimmed().to_string();
+    let value_start = range_start(literal.text_trimmed_range());
+
+    printer.map_nil();
+    printer.write(" {");
+    printer.map_nil();
+    printer.write("...");
+    printer.write_with_mapping(&value, value_start);
+    printer.map_nil();
+    printer.write("}");
+}
+
+fn emit_astro_directive(printer: &mut Printer, directive: &AnyAstroDirective) {
+    // Astro directives are valid TSX attributes because JSX supports `:` namespaces.
+    let range = directive.range();
+    let text = slice_source(printer.source, range);
+    printer.map_nil();
+    printer.write(" ");
+    printer.write_with_mapping(text, range_start(range));
+}
+
+/// A skipped entry must not advance comma insertion.
+fn emit_invalid_attribute(
+    printer: &mut Printer,
+    attr: &AnyHtmlAttribute,
+    needs_separator: bool,
+) -> bool {
+    let AnyHtmlAttribute::HtmlAttribute(attr_node) = attr else {
+        return false;
+    };
+    let Ok(name) = attr_node.name() else {
+        return false;
+    };
+    let Ok(name_token) = name.value_token() else {
+        return false;
+    };
+    let key_text = name_token.text_trimmed().to_string();
+    let key_start = range_start(name_token.text_trimmed_range());
+
+    if needs_separator {
+        printer.map_nil();
+        printer.write(",");
+    }
+    printer.map_nil();
+    printer.write("\"");
+    printer.write_with_mapping(&key_text, key_start);
+    printer.map_nil();
+    printer.write("\"");
+
+    match attr_node.initializer() {
+        None => {
+            printer.map_nil();
+            printer.write(":");
+            printer.map_to_offset(key_start);
+            printer.write("true");
+        }
+        Some(initializer) => match initializer.value() {
+            Ok(AnyHtmlAttributeInitializer::HtmlString(s)) => {
+                let Ok(value_token) = s.value_token() else {
+                    printer.map_nil();
+                    printer.write(":true");
+                    return true;
+                };
+                let raw = value_token.text_trimmed().to_string();
+                let inner = strip_matching_quotes(&raw).unwrap_or(raw.as_str());
+                printer.map_nil();
+                printer.write(":");
+                printer.map_nil();
+                printer.write(&format!(
+                    "\"{}\"",
+                    escape_javascript_string(&decode_html_entities(inner))
+                ));
+            }
+            Ok(AnyHtmlAttributeInitializer::HtmlAttributeSingleTextExpression(expr)) => {
+                let Ok(text) = expr.expression() else {
+                    printer.map_nil();
+                    printer.write(":true");
+                    return true;
+                };
+                let Ok(literal) = text.html_literal_token() else {
+                    printer.map_nil();
+                    printer.write(":true");
+                    return true;
+                };
+                let value = literal.text_trimmed().to_string();
+                let value_start = range_start(literal.text_trimmed_range());
+                printer.map_nil();
+                printer.write(":(");
+                printer.write_with_mapping(&value, value_start);
+                printer.map_nil();
+                printer.write(")");
+            }
+            _ => {
+                printer.map_nil();
+                printer.write(":true");
+            }
+        },
+    }
+    true
+}
+
+fn attribute_key(attr: &AnyHtmlAttribute) -> Option<String> {
+    match attr {
+        AnyHtmlAttribute::HtmlAttribute(attr_node) => {
+            let attr_name = attr_node.name().ok()?;
+            Some(attr_name.value_token().ok()?.text_trimmed().to_string())
+        }
+        AnyHtmlAttribute::AnyAstroDirective(directive) => {
+            let prefix = match directive {
+                AnyAstroDirective::AstroIsDirective(_) => "is",
+                AnyAstroDirective::AstroClientDirective(_) => "client",
+                AnyAstroDirective::AstroClassDirective(_) => "class",
+                AnyAstroDirective::AstroDefineDirective(_) => "define",
+                AnyAstroDirective::AstroServerDirective(_) => "server",
+                AnyAstroDirective::AstroSetDirective(_) => "set",
+            };
+            let name = directive_value_name(directive)?;
+            Some(format!("{prefix}:{name}"))
+        }
+        _ => None,
+    }
+}
+
+fn directive_value_name(directive: &AnyAstroDirective) -> Option<String> {
+    let value = match directive {
+        AnyAstroDirective::AstroIsDirective(d) => d.value().ok()?,
+        AnyAstroDirective::AstroClientDirective(d) => d.value().ok()?,
+        AnyAstroDirective::AstroClassDirective(d) => d.value().ok()?,
+        AnyAstroDirective::AstroDefineDirective(d) => d.value().ok()?,
+        AnyAstroDirective::AstroServerDirective(d) => d.value().ok()?,
+        AnyAstroDirective::AstroSetDirective(d) => d.value().ok()?,
+    };
+    let name = value.name().ok()?;
+    Some(name.value_token().ok()?.text_trimmed().to_string())
+}
+
+// #endregion
+
+// #region scripts and styles
+
+/// Only a bare `<script>` is processed by Astro; any attribute (`is:inline`,
+/// `define:vars`, …) leaves the script inline, sharing one scope with its peers.
+fn classify_script(attrs: &[AnyHtmlAttribute]) -> ExtractedScriptType {
+    if attrs.is_empty() {
+        return ExtractedScriptType::ProcessedModule;
+    }
+    if attrs
+        .iter()
+        .any(|a| attribute_key(a).as_deref() == Some("is:raw"))
+    {
+        return ExtractedScriptType::Raw;
+    }
+    script_type_for_attr(find_attr_value(attrs, "type"))
+}
+
+/// `attr` distinguishes a missing `type` from one whose value is dynamic.
+pub(crate) fn script_type_for_attr(attr: Option<Option<String>>) -> ExtractedScriptType {
+    match attr {
+        None => ExtractedScriptType::Inline,
+        Some(None) => ExtractedScriptType::Unknown,
+        Some(Some(value)) => match classify_script_type(Some(&value)) {
+            ScriptKind::Script => {
+                if value.trim().eq_ignore_ascii_case("module") {
+                    ExtractedScriptType::Module
+                } else {
+                    ExtractedScriptType::Inline
+                }
+            }
+            ScriptKind::Json => ExtractedScriptType::Json,
+            ScriptKind::Unknown => ExtractedScriptType::Unknown,
+        },
+    }
+}
+
+fn style_lang_label(attrs: &[AnyHtmlAttribute]) -> String {
+    match find_attr_value(attrs, "lang") {
+        None => "css".to_string(),
+        Some(None) => "unknown".to_string(),
+        Some(Some(value)) => value.trim().to_ascii_lowercase(),
+    }
+}
+
+/// `None`: absent. `Some(None)`: present but not statically knowable.
+/// `Some(Some(value))`: string value with any matching quotes stripped.
+fn find_attr_value(attrs: &[AnyHtmlAttribute], name: &str) -> Option<Option<String>> {
+    for attr in attrs {
+        let AnyHtmlAttribute::HtmlAttribute(attr_node) = attr else {
+            continue;
+        };
+        let Ok(attr_name) = attr_node.name() else {
+            continue;
+        };
+        let Ok(token) = attr_name.value_token() else {
+            continue;
+        };
+        if !token.text_trimmed().eq_ignore_ascii_case(name) {
+            continue;
+        }
+        let Some(initializer) = attr_node.initializer() else {
+            return Some(None);
+        };
+        let Ok(value) = initializer.value() else {
+            return Some(None);
+        };
+        if let AnyHtmlAttributeInitializer::HtmlString(s) = value
+            && let Ok(value_token) = s.value_token()
+        {
+            let raw = value_token.text_trimmed().to_string();
+            let inner = strip_matching_quotes(&raw).unwrap_or(&raw);
+            return Some(Some(inner.to_string()));
+        }
+        return Some(None);
+    }
+    None
+}
+
+fn inner_range(node: &HtmlElement) -> Option<(u32, u32)> {
+    let opening = node.opening_element().ok()?;
+    let start = u32::from(opening.r_angle_token().ok()?.text_trimmed_range().end());
+    let end = match node
+        .closing_element()
+        .ok()
+        .and_then(|c| c.l_angle_token().ok())
+    {
+        Some(l_angle) => range_start(l_angle.text_trimmed_range()),
+        None => u32::from(node.range().end()),
+    };
+    if start <= end {
+        Some((start, end))
+    } else {
+        None
+    }
+}
+
+// #endregion
+
+// #region shared text helpers
+
+fn tag_name_text(name: &AnyHtmlTagName) -> String {
+    match name {
+        AnyHtmlTagName::HtmlTagName(node) => node
+            .value_token()
+            .map(|t| t.text_trimmed().to_string())
+            .unwrap_or_default(),
+        AnyHtmlTagName::HtmlComponentName(node) => node
+            .value_token()
+            .map(|t| t.text_trimmed().to_string())
+            .unwrap_or_default(),
+        AnyHtmlTagName::HtmlMemberName(node) => member_name_text(node),
+    }
+}
+
+fn member_name_text(node: &biome_html_syntax::HtmlMemberName) -> String {
+    let object = node
+        .object()
+        .ok()
+        .map(|object| match object {
+            AnyHtmlComponentObjectName::HtmlComponentName(c) => c
+                .value_token()
+                .map(|t| t.text_trimmed().to_string())
+                .unwrap_or_default(),
+            AnyHtmlComponentObjectName::HtmlTagName(t) => t
+                .value_token()
+                .map(|t| t.text_trimmed().to_string())
+                .unwrap_or_default(),
+            AnyHtmlComponentObjectName::HtmlMemberName(inner) => member_name_text(&inner),
+        })
+        .unwrap_or_default();
+    let member = node
+        .member()
+        .ok()
+        .and_then(|m| m.value_token().ok())
+        .map(|t| t.text_trimmed().to_string())
+        .unwrap_or_default();
+    format!("{object}.{member}")
+}
+
+/// HTML comments never become nodes; the lexer stores them as token trivia.
+fn comment_trivia_ranges(root: &HtmlRoot) -> Vec<TextRange> {
+    let mut ranges = Vec::new();
+    for token in root
+        .syntax()
+        .descendants_with_tokens(Direction::Next)
+        .filter_map(|element| element.into_token())
+    {
+        for piece in token
+            .leading_trivia()
+            .pieces()
+            .chain(token.trailing_trivia().pieces())
+        {
+            if piece.is_comments() {
+                ranges.push(piece.text_range());
+            }
+        }
+    }
+    ranges
+}
+
+fn emit_source_gap(printer: &mut Printer, from: u32, to: u32) {
+    let source = printer.source;
+    let to = (to as usize).min(source.len());
+    let mut cursor = from as usize;
+    if to <= cursor {
+        return;
+    }
+
+    let first = printer
+        .comment_ranges
+        .partition_point(|range| u32::from(range.end()) as usize <= cursor);
+    for index in first..printer.comment_ranges.len() {
+        let range = printer.comment_ranges[index];
+        let (start, end) = (range_start(range) as usize, u32::from(range.end()) as usize);
+        if start >= to {
+            break;
+        }
+        if start < cursor || end > to {
+            continue;
+        }
+        printer.write_with_mapping(&source[cursor..start], cursor as u32);
+        let text = &source[start..end];
+        match text
+            .strip_prefix("<!--")
+            .and_then(|t| t.strip_suffix("-->"))
+        {
+            Some(body) => emit_html_comment(printer, body, start as u32 + 4),
+            // An unterminated comment runs to the end of the file, as in HTML.
+            None => {
+                let body = text.strip_prefix("<!--").unwrap_or(text);
+                let body_start = start as u32 + (text.len() - body.len()) as u32;
+                printer.diagnostics.push(Diagnostic {
+                    message: "Unterminated comment".to_string(),
+                    severity: DiagnosticSeverity::Warning,
+                    source: SourceRange::new(start as u32, end as u32),
+                });
+                emit_html_comment(printer, body, body_start);
+            }
+        }
+        cursor = end;
+    }
+    printer.write_with_mapping(&source[cursor..to], cursor as u32);
+}
+
+fn emit_html_comment(printer: &mut Printer, body: &str, original_offset: u32) {
+    printer.map_nil();
+    printer.write("{/**");
+    if comment_needs_leading_space(body) {
+        printer.write(" ");
+    }
+    printer.write_comment_body_with_mapping(body, original_offset);
+    printer.map_nil();
+    printer.write("*/}");
+}
+
+fn slice_source(source: &str, range: TextRange) -> &str {
+    let start = range_start(range) as usize;
+    let end = u32::from(range.end()) as usize;
+    source.get(start..end).unwrap_or("")
+}
+
+// #endregion

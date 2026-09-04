@@ -1,0 +1,36 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+info:
+  has_parse_errors: false
+  frontmatter_status: DoesntExist
+  frontmatter_source:
+    start: 0
+    end: 0
+  frontmatter:
+    start: 30
+    end: 30
+  body:
+    start: 41
+    end: 70
+  scripts:
+    - kind: Script
+      lang: processed-module
+      generated:
+        start: 58
+        end: 58
+      source:
+        start: 17
+        end: 37
+      content: "if (a < b) { go(); }"
+  styles: []
+input_file: crates/astro2tsx/tests/fixtures/expression_script_exclusion.astro
+---
+/* @jsxImportSource astro */
+
+<Fragment>
+{cond && <script></script>}
+
+</Fragment>
+export default function __AstroComponent_(_props: Record<string, any>): any {}
+
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiaW5wdXQuYXN0cm8iXSwic291cmNlc0NvbnRlbnQiOlsie2NvbmQgJiYgPHNjcmlwdD5pZiAoYSA8IGIpIHsgZ28oKTsgfTwvc2NyaXB0Pn1cbiJdLCJtYXBwaW5ncyI6IkE7OztBQUFBLGlCQUFxQztBQUNyQztBIn0=

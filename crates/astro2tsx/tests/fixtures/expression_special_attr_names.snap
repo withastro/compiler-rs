@@ -1,0 +1,27 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+info:
+  has_parse_errors: false
+  frontmatter_status: DoesntExist
+  frontmatter_source:
+    start: 0
+    end: 0
+  frontmatter:
+    start: 30
+    end: 30
+  body:
+    start: 41
+    end: 140
+  scripts: []
+  styles: []
+input_file: crates/astro2tsx/tests/fixtures/expression_special_attr_names.astro
+---
+/* @jsxImportSource astro */
+
+<Fragment>
+{cond && <div v-if="y"  {...{"@click":"x","client:load.foo":true,"x-on:keyup.enter":"w"}}></div>}
+
+</Fragment>
+export default function __AstroComponent_(_props: Record<string, any>): any {}
+
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiaW5wdXQuYXN0cm8iXSwic291cmNlc0NvbnRlbnQiOlsie2NvbmQgJiYgPGRpdiBAY2xpY2s9XCJ4XCIgY2xpZW50OmxvYWQuZm9vIHYtaWY9XCJ5XCIgeC1vbjprZXl1cC5lbnRlcj1cIndcIj48L2Rpdj59XG4iXSwibWFwcGluZ3MiOiJBOzs7QUFBQSxjQUF5QyxTLE9BQTNCLE0sT0FBVyxlLFFBQXlCLGdCLE9BQW9CO0FBQ3RFO0EifQ==

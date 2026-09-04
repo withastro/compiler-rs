@@ -1,0 +1,41 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+info:
+  has_parse_errors: false
+  frontmatter_status: Closed
+  frontmatter_source:
+    start: 0
+    end: 53
+  frontmatter:
+    start: 30
+    end: 78
+  body:
+    start: 92
+    end: 106
+  scripts: []
+  styles: []
+input_file: crates/astro2tsx/tests/fixtures/get_static_paths_export.astro
+---
+/* @jsxImportSource astro */
+
+
+export const getStaticPaths = async () => [];
+
+{};<Fragment>
+
+<div></div>
+
+</Fragment>
+export default function __AstroComponent_(_props: ASTRO__MergeUnion<ASTRO__Get<ASTRO__InferredGetStaticPath, 'props'>>): any {}
+type ASTRO__ArrayElement<ArrayType extends readonly unknown[]> = ArrayType extends readonly (infer ElementType)[] ? ElementType : never;
+type ASTRO__Flattened<T> = T extends Array<infer U> ? ASTRO__Flattened<U> : T;
+type ASTRO__InferredGetStaticPath = ASTRO__Flattened<ASTRO__ArrayElement<Awaited<ReturnType<typeof getStaticPaths>>>>;
+type ASTRO__MergeUnion<T, K extends PropertyKey = T extends unknown ? keyof T : never> = T extends unknown ? T & { [P in Exclude<K, keyof T>]?: never } extends infer O ? { [P in keyof O]: O[P] } : never : never;
+type ASTRO__Get<T, K> = T extends undefined ? undefined : K extends keyof T ? T[K] : never;
+/**
+ * Astro global available in all contexts in .astro files
+ *
+ * [Astro documentation](https://docs.astro.build/reference/api-reference/#astro-global)
+*/
+declare const Astro: Readonly<import('astro').AstroGlobal<ASTRO__MergeUnion<ASTRO__Get<ASTRO__InferredGetStaticPath, 'props'>>, typeof __AstroComponent_, ASTRO__Get<ASTRO__InferredGetStaticPath, 'params'>>>
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiaW5wdXQuYXN0cm8iXSwic291cmNlc0NvbnRlbnQiOlsiLS0tXG5leHBvcnQgY29uc3QgZ2V0U3RhdGljUGF0aHMgPSBhc3luYyAoKSA9PiBbXTtcbi0tLVxuPGRpdj48L2Rpdj5cbiJdLCJtYXBwaW5ncyI6IkE7O0FBQUc7QUFDSDtBOztBQUNHO0FBQ0g7QUFDQTtBIn0=

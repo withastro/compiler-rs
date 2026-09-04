@@ -1,0 +1,27 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+info:
+  has_parse_errors: false
+  frontmatter_status: DoesntExist
+  frontmatter_source:
+    start: 0
+    end: 0
+  frontmatter:
+    start: 30
+    end: 30
+  body:
+    start: 41
+    end: 78
+  scripts: []
+  styles: []
+input_file: crates/astro2tsx/tests/fixtures/expression_single_element.astro
+---
+/* @jsxImportSource astro */
+
+<Fragment>
+<div>{cond && <span>a</span>}</div>
+
+</Fragment>
+export default function __AstroComponent_(_props: Record<string, any>): any {}
+
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiaW5wdXQuYXN0cm8iXSwic291cmNlc0NvbnRlbnQiOlsiPGRpdj57Y29uZCAmJiA8c3Bhbj5hPC9zcGFuPn08L2Rpdj5cbiJdLCJtYXBwaW5ncyI6IkE7OztBQUFBO0FBQ0E7QSJ9

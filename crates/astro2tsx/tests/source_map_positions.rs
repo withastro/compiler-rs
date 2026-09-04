@@ -1,0 +1,256 @@
+use astro2tsx::{ConvertOptions, Mapping, convert_to_tsx};
+
+fn convert(input: &str) -> astro2tsx::ConvertResult {
+    convert_to_tsx(
+        input,
+        ConvertOptions {
+            filename: Some("index.astro".to_string()),
+            ..Default::default()
+        },
+    )
+}
+
+fn line_col(source: &str, byte_offset: usize) -> (usize, usize) {
+    let mut line = 1usize;
+    let mut col = 0usize;
+    for (idx, ch) in source.char_indices() {
+        if idx >= byte_offset {
+            break;
+        }
+        if ch == '\n' {
+            line += 1;
+            col = 0;
+        } else {
+            col += ch.len_utf16();
+        }
+    }
+    (line, col)
+}
+
+fn snippet_offset(source: &str, snippet: &str) -> usize {
+    source
+        .find(snippet)
+        .unwrap_or_else(|| panic!("snippet {snippet:?} not found in input"))
+}
+
+fn original_to_generated(mappings: &[Mapping], code_len: u32, byte: u32) -> Vec<u32> {
+    let mut candidates = Vec::new();
+    for (index, mapping) in mappings.iter().enumerate() {
+        let Some(original) = mapping.original else {
+            continue;
+        };
+        let run_end = mappings
+            .get(index + 1)
+            .map(|next| next.generated)
+            .unwrap_or(code_len);
+        let run_len = run_end - mapping.generated;
+        if byte >= original && byte - original < run_len {
+            candidates.push(mapping.generated + (byte - original));
+        }
+    }
+    candidates
+}
+
+enum Resolution {
+    Exact,
+    Wrong(String),
+    Unmapped,
+}
+
+fn resolve(input: &str, snippet: &str) -> Resolution {
+    let result = convert(input);
+    let offset = snippet_offset(input, snippet) as u32;
+    let candidates = original_to_generated(&result.mappings, result.code.len() as u32, offset);
+    if candidates.is_empty() {
+        return Resolution::Unmapped;
+    }
+    for generated in &candidates {
+        if result
+            .code
+            .get(*generated as usize..)
+            .is_some_and(|at| at.starts_with(snippet))
+        {
+            return Resolution::Exact;
+        }
+    }
+    let at = result.code.get(candidates[0] as usize..).unwrap_or("");
+    let found: String = at.chars().take(snippet.chars().count().max(12)).collect();
+    Resolution::Wrong(found)
+}
+
+const SOURCEMAP_CASES: &[(&str, &str, &str)] = &[
+    ("attributes/shorthand", "<div {name} />", "name"),
+    ("attributes/empty-quoted", "<div src=\"\" />", "\""),
+    (
+        "attributes/template-literal",
+        "---\n---\n<Tag src=`bar${foo}` />",
+        "foo",
+    ),
+    (
+        "attributes/multiline-quoted",
+        "<path d=\"M 0\nC100 0\nZ\" />",
+        "Z",
+    ),
+    (
+        "deprecated/jsdoc",
+        "---\n    /** @deprecated */\nconst deprecated = \"Astro\"\ndeprecated;\nconst hello = \"Astro\"\n---\n",
+        "deprecated;",
+    ),
+    (
+        "error/svelte",
+        "---\nimport SvelteOptionalProps from \"./SvelteOptionalProps.svelte\"\n---\n\n<SvelteOptionalProps></SvelteOptionalProps>",
+        "<SvelteOptionalProps>",
+    ),
+    (
+        "error/vue",
+        "---\nimport SvelteError from \"./SvelteError.svelte\"\nimport VueError from \"./VueError.vue\"\n---\n\n<SvelteError></SvelteError>\n<VueError></VueError>",
+        "<VueError>",
+    ),
+    ("frontmatter/bare", "---\nnonexistent\n---\n", "nonexistent"),
+    (
+        "hover/plain",
+        "---\n    const MyVariable = \"Astro\"\n\n    /** Documentation */\n    const MyDocumentedVariable = \"Astro\"\n\n    /** @author Astro */\n    const MyJSDocVariable = \"Astro\"\n---\n",
+        "MyVariable",
+    ),
+    (
+        "hover/documented",
+        "---\n    const MyVariable = \"Astro\"\n\n    /** Documentation */\n    const MyDocumentedVariable = \"Astro\"\n\n    /** @author Astro */\n    const MyJSDocVariable = \"Astro\"\n---\n",
+        "MyDocumentedVariable",
+    ),
+    (
+        "hover/jsdoc",
+        "---\n    const MyVariable = \"Astro\"\n\n    /** Documentation */\n    const MyDocumentedVariable = \"Astro\"\n\n    /** @author Astro */\n    const MyJSDocVariable = \"Astro\"\n---\n",
+        "MyJSDocVariable",
+    ),
+    (
+        "module/invalid-import",
+        "---\n  // valid\n  import { foo } from './script.js';\n    import ComponentAstro from './astro.astro';\n  // invalid\n  import { baz } from './script';\n  foo;baz;ComponentAstro;\n---\n",
+        "'./script'",
+    ),
+    ("multibyte/content", "<h1>ツ</h1>", "ツ"),
+    ("multibyte/after", "<h1>ツ</h1><p>foobar</p>", "foobar"),
+    ("multibyte/many-n", "<h1>こんにちは</h1>", "ん"),
+    ("multibyte/many-ni", "<h1>こんにちは</h1>", "に"),
+    ("tags/close", "<Hello></Hello>", ">"),
+    ("template/basic", "<div>{nonexistent}</div>", "nonexistent"),
+    ("template/dot", "<div>{console.log(hey)}</div>", "log"),
+    ("template/addition", "{\"hello\" + hey}", "hey"),
+    (
+        "template/html-attribute",
+        "<svg color=\"#000\"></svg>",
+        "color",
+    ),
+    (
+        "template/complex-item",
+        "{[].map(ITEM => {\nv = \"what\";\nreturn <div>{ITEMS}</div>\n})}",
+        "ITEM",
+    ),
+    (
+        "template/complex-items",
+        "{[].map(ITEM => {\nv = \"what\";\nreturn <div>{ITEMS}</div>\n})}",
+        "ITEMS",
+    ),
+    (
+        "template/attributes",
+        "<div className=\"hello\" />",
+        "className",
+    ),
+    (
+        "template/special-attributes",
+        "<div @on.click=\"fn\" />",
+        "@on.click",
+    ),
+    (
+        "windows/crlf-last-char",
+        "---\r\nimport { Meta } from '$lib/components/Meta.astro';\r\n---\r\n",
+        ";",
+    ),
+    (
+        "windows/template-basic",
+        "<div>{\r\nnonexistent\r\n}</div>",
+        "nonexistent",
+    ),
+    (
+        "windows/template-dot-lf",
+        "<div>{\nconsole.log(hey)\n}</div>",
+        "log",
+    ),
+    (
+        "windows/template-dot-crlf",
+        "<div>{\r\nconsole.log(hey)\r\n}</div>",
+        "log",
+    ),
+    ("windows/addition-lf", "{\"hello\" + \nhey}", "hey"),
+    ("windows/addition-crlf", "{\"hello\" + \r\nhey}", "hey"),
+    (
+        "windows/html-attribute-lf",
+        "<svg\nvalue=\"foo\" color=\"#000\"></svg>",
+        "color",
+    ),
+    (
+        "windows/html-attribute-crlf",
+        "<svg\r\nvalue=\"foo\" color=\"#000\"></svg>",
+        "color",
+    ),
+    (
+        "windows/complex-items",
+        "{[].map(ITEM => {\r\nv = \"what\";\r\nreturn <div>{ITEMS}</div>\r\n})}",
+        "ITEMS",
+    ),
+    (
+        "windows/attributes",
+        "<div\r\na=\"b\" className=\"hello\" />",
+        "className",
+    ),
+    (
+        "windows/special-attributes",
+        "<div\r\na=\"b\" @on.click=\"fn\" />",
+        "@on.click",
+    ),
+    (
+        "windows/whitespace",
+        "---\r\nimport A from \"a\";\r\n\timport B from \"b\";\r\n---\r\n",
+        "B",
+    ),
+];
+
+const KNOWN_GAPS: &[&str] = &[];
+
+#[test]
+fn sourcemap_resolves_to_snippet() {
+    let mut failures = Vec::new();
+    let mut fixed = Vec::new();
+    for (label, input, snippet) in SOURCEMAP_CASES {
+        let (line, col) = line_col(input, snippet_offset(input, snippet));
+        let known = KNOWN_GAPS.contains(label);
+        match resolve(input, snippet) {
+            Resolution::Exact if known => fixed.push(*label),
+            Resolution::Exact => {}
+            _ if known => {}
+            Resolution::Wrong(found) => failures.push(format!(
+                "  {label}: {snippet:?} at {line}:{col} maps onto {found:?}"
+            )),
+            Resolution::Unmapped => failures.push(format!(
+                "  {label}: {snippet:?} at {line}:{col} has no mapping"
+            )),
+        }
+    }
+
+    let mut failure = String::new();
+    if !failures.is_empty() {
+        failure.push_str(&format!(
+            "{}/{} sourcemap positions do not resolve to their snippet:\n{}\n",
+            failures.len(),
+            SOURCEMAP_CASES.len(),
+            failures.join("\n"),
+        ));
+    }
+    if !fixed.is_empty() {
+        failure.push_str(&format!(
+            "{} KNOWN_GAPS entr(y/ies) now resolve and must be removed:\n  {}\n",
+            fixed.len(),
+            fixed.join("\n  "),
+        ));
+    }
+    assert!(failure.is_empty(), "\n{failure}");
+}

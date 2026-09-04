@@ -1,0 +1,27 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+info:
+  has_parse_errors: false
+  frontmatter_status: Closed
+  frontmatter_source:
+    start: 0
+    end: 20
+  frontmatter:
+    start: 30
+    end: 45
+  body:
+    start: 46
+    end: 46
+  scripts: []
+  styles: []
+input_file: crates/astro2tsx/tests/fixtures/frontmatter_only.astro
+---
+/* @jsxImportSource astro */
+
+
+const a = 1;
+
+
+export default function __AstroComponent_(_props: Record<string, any>): any {}
+
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiaW5wdXQuYXN0cm8iXSwic291cmNlc0NvbnRlbnQiOlsiLS0tXG5jb25zdCBhID0gMTtcbi0tLVxuIl0sIm1hcHBpbmdzIjoiQTs7QUFBRztBQUNIO0EifQ==

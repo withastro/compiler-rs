@@ -1,0 +1,36 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+info:
+  has_parse_errors: false
+  frontmatter_status: DoesntExist
+  frontmatter_source:
+    start: 0
+    end: 0
+  frontmatter:
+    start: 30
+    end: 30
+  body:
+    start: 41
+    end: 84
+  scripts:
+    - kind: Script
+      lang: json
+      generated:
+        start: 73
+        end: 73
+      source:
+        start: 32
+        end: 39
+      content: "{\"a\":1}"
+  styles: []
+input_file: crates/astro2tsx/tests/fixtures/raw_text_script_json.astro
+---
+/* @jsxImportSource astro */
+
+<Fragment>
+<script type="application/json"></script>
+
+</Fragment>
+export default function __AstroComponent_(_props: Record<string, any>): any {}
+
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiaW5wdXQuYXN0cm8iXSwic291cmNlc0NvbnRlbnQiOlsiPHNjcmlwdCB0eXBlPVwiYXBwbGljYXRpb24vanNvblwiPntcImFcIjoxfTwvc2NyaXB0PlxuIl0sIm1hcHBpbmdzIjoiQTs7O0FBQUEsTyxDQUFRLHdCQUErQjtBQUN2QztBIn0=

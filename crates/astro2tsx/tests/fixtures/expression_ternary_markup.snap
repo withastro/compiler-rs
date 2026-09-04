@@ -1,0 +1,27 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+info:
+  has_parse_errors: false
+  frontmatter_status: DoesntExist
+  frontmatter_source:
+    start: 0
+    end: 0
+  frontmatter:
+    start: 30
+    end: 30
+  body:
+    start: 41
+    end: 95
+  scripts: []
+  styles: []
+input_file: crates/astro2tsx/tests/fixtures/expression_ternary_markup.astro
+---
+/* @jsxImportSource astro */
+
+<Fragment>
+<div>{cond ? <a href='/x'>yes</a> : <b>no</b>}</div>
+
+</Fragment>
+export default function __AstroComponent_(_props: Record<string, any>): any {}
+
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiaW5wdXQuYXN0cm8iXSwic291cmNlc0NvbnRlbnQiOlsiPGRpdj57Y29uZCA/IDxhIGhyZWY9Jy94Jz55ZXM8L2E+IDogPGI+bm88L2I+fTwvZGl2PlxuIl0sIm1hcHBpbmdzIjoiQTs7O0FBQUE7QUFDQTtBIn0=

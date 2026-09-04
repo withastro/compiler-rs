@@ -1,0 +1,27 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+info:
+  has_parse_errors: false
+  frontmatter_status: DoesntExist
+  frontmatter_source:
+    start: 0
+    end: 0
+  frontmatter:
+    start: 30
+    end: 30
+  body:
+    start: 41
+    end: 103
+  scripts: []
+  styles: []
+input_file: crates/astro2tsx/tests/fixtures/attribute_invalid_names.astro
+---
+/* @jsxImportSource astro */
+
+<Fragment>
+<div name="ok" {...{"@click":(handler),":class":"x"}}></div>
+
+</Fragment>
+export default function __AstroComponent_(_props: Record<string, any>): any {}
+
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiaW5wdXQuYXN0cm8iXSwic291cmNlc0NvbnRlbnQiOlsiPGRpdiBAY2xpY2s9e2hhbmRsZXJ9IDpjbGFzcz1cInhcIiBuYW1lPVwib2tcIj48L2Rpdj5cbiJdLCJtYXBwaW5ncyI6IkE7OztBQUFBLEksQ0FBaUMsUyxPQUE1QixNLEdBQVEsTyxHQUFTLE0sT0FBb0I7QUFDMUM7QSJ9

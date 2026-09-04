@@ -1,0 +1,46 @@
+[package]
+name                 = "astro2tsx"
+version              = "0.1.0"
+authors.workspace    = true
+edition.workspace    = true
+license.workspace    = true
+repository.workspace = true
+rust-version.workspace = true
+publish              = false
+description          = "Converts .astro files to .tsx for type checking"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+test       = true
+doctest    = false
+
+[dependencies]
+biome_diagnostics = { workspace = true }
+biome_html_parser = { workspace = true }
+biome_html_syntax = { workspace = true }
+biome_js_parser   = { workspace = true }
+biome_parser      = { workspace = true }
+biome_js_syntax   = { workspace = true }
+biome_languages   = { workspace = true }
+biome_rowan       = { workspace = true }
+biome_string_case = { workspace = true }
+htmlize           = { version = "1.1.0", features = ["unescape"] }
+
+napi          = { workspace = true }
+napi-derive   = { workspace = true }
+oxc_sourcemap = { workspace = true }
+oxc_syntax    = { workspace = true }
+
+[dev-dependencies]
+divan      = { workspace = true }
+insta      = { workspace = true, features = ["glob", "serde"] }
+serde      = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[build-dependencies]
+napi-build          = { workspace = true }
+napi-derive-backend = { workspace = true }
+
+[[bench]]
+name    = "convert"
+harness = false

@@ -1,0 +1,27 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+info:
+  has_parse_errors: false
+  frontmatter_status: DoesntExist
+  frontmatter_source:
+    start: 0
+    end: 0
+  frontmatter:
+    start: 30
+    end: 30
+  body:
+    start: 41
+    end: 107
+  scripts: []
+  styles: []
+input_file: crates/astro2tsx/tests/fixtures/expression_unquoted_attr.astro
+---
+/* @jsxImportSource astro */
+
+<Fragment>
+{cond && <div class="foo" maxlength="255" href="/about">x</div>}
+
+</Fragment>
+export default function __AstroComponent_(_props: Record<string, any>): any {}
+
+//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiaW5wdXQuYXN0cm8iXSwic291cmNlc0NvbnRlbnQiOlsie2NvbmQgJiYgPGRpdiBjbGFzcz1mb28gbWF4bGVuZ3RoPTI1NSBocmVmPS9hYm91dD54PC9kaXY+fVxuIl0sIm1hcHBpbmdzIjoiQTs7O0FBQUEsb0IsQ0FBb0IsRyxDQUFHLFcsQ0FBVyxHLENBQUcsTSxDQUFNLE0sQ0FBTTtBQUNqRDtBIn0=
