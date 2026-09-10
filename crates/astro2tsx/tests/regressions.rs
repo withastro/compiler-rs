@@ -1,12 +1,23 @@
 mod common;
 
 use astro2tsx::{ConvertOptions, SourceRange, convert_to_tsx};
+use biome_js_parser::{JsParserOptions, parse};
+use biome_languages::JsFileSource;
 use common::assert_mapped_runs_are_verbatim;
 
 const PREFIX: &str = "/* @jsxImportSource astro */\n\n";
 
 fn convert(source: &str) -> String {
     convert_to_tsx(source, ConvertOptions::default()).code
+}
+
+fn assert_valid_tsx(code: &str, source: &str) {
+    let parsed = parse(code, JsFileSource::tsx(), JsParserOptions::default());
+    assert!(
+        parsed.diagnostics().is_empty(),
+        "generated invalid TSX for {source:?}:\n{:?}\n{code}",
+        parsed.diagnostics()
+    );
 }
 
 #[test]
@@ -572,7 +583,7 @@ fn unclosed_elements_are_emitted_as_written_and_flagged() {
         ("<>x", "<>x"),
         ("<img /", "<img /"),
     ] {
-        let result = convert_external(input);
+        let result = convert_source(input);
         assert!(
             result.code.contains(expected),
             "content lost for {input:?}:\n{}",
@@ -587,9 +598,9 @@ fn unclosed_elements_are_emitted_as_written_and_flagged() {
         assert_mapped_runs_are_verbatim(input, &result, "unclosed as written");
     }
 
-    let truncated = convert_external("<div>x</div");
+    let truncated = convert_source("<div>x</div");
     assert!(!truncated.code.contains("</div>"), "{}", truncated.code);
-    let fragment = convert_external("<>x");
+    let fragment = convert_source("<>x");
     assert!(!fragment.code.contains("</>"), "{}", fragment.code);
 }
 
@@ -605,14 +616,11 @@ fn every_fixture_keeps_mapped_runs_verbatim() {
         let name = path.file_name().unwrap().to_str().unwrap().to_string();
         let raw = std::fs::read_to_string(&path).unwrap();
         let (source, options) = common::parse_fixture(&raw);
-        let result = convert_to_tsx(
-            &source,
-            ConvertOptions {
-                sourcemap: astro2tsx::SourceMapMode::External,
-                ..options
-            },
-        );
+        let result = convert_to_tsx(&source, options);
         assert_mapped_runs_are_verbatim(&source, &result, &name);
+        if !result.has_parse_errors {
+            assert_valid_tsx(&result.code, &name);
+        }
         checked += 1;
     }
     assert!(
@@ -621,20 +629,14 @@ fn every_fixture_keeps_mapped_runs_verbatim() {
     );
 }
 
-fn convert_external(source: &str) -> astro2tsx::ConvertResult {
-    convert_to_tsx(
-        source,
-        ConvertOptions {
-            sourcemap: astro2tsx::SourceMapMode::External,
-            ..Default::default()
-        },
-    )
+fn convert_source(source: &str) -> astro2tsx::ConvertResult {
+    convert_to_tsx(source, ConvertOptions::default())
 }
 
 #[test]
 fn bare_less_than_in_text_is_escaped() {
     for input in ["<p>a < b</p>", "<div>5 < 10 is true</div>"] {
-        let result = convert_external(input);
+        let result = convert_source(input);
         assert!(
             result.code.contains("{`<`}"),
             "bare < survived for {input:?}:\n{}",
@@ -643,6 +645,88 @@ fn bare_less_than_in_text_is_escaped() {
         assert!(!result.has_parse_errors, "{input:?} should parse cleanly");
         assert_mapped_runs_are_verbatim(input, &result, "bare <");
     }
+}
+
+#[test]
+fn astro_text_that_is_not_tsx_text_is_escaped() {
+    for input in [
+        r#"<math><annotation>f\colon X \to \mathbb{R}^{2x}</annotation></math>"#,
+        "<日本>hi</日本>",
+    ] {
+        let result = convert_source(input);
+        assert!(
+            !result.has_parse_errors,
+            "{input:?}: {:?}",
+            result.diagnostics
+        );
+        assert_valid_tsx(&result.code, input);
+        assert_mapped_runs_are_verbatim(input, &result, "Astro-only text");
+    }
+
+    for element in [
+        "iframe",
+        "noembed",
+        "noframes",
+        "plaintext",
+        "textarea",
+        "title",
+        "xmp",
+    ] {
+        let input = format!("<{element}>{{value}} with <b>tags</b></{element}>");
+        let result = convert_source(&input);
+        assert!(
+            !result.has_parse_errors,
+            "{input:?}: {:?}",
+            result.diagnostics
+        );
+        assert_valid_tsx(&result.code, &input);
+        assert!(
+            result
+                .code
+                .contains("{value} with {`<`}b{`>`}tags{`<`}/b{`>`}"),
+            "tag-looking content should be text for {element}:\n{}",
+            result.code
+        );
+        assert_mapped_runs_are_verbatim(&input, &result, "text-only HTML children");
+    }
+
+    for element in ["pre", "listing"] {
+        let input = format!("<{element}>{{value}} with <b>tags</b></{element}>");
+        let result = convert_source(&input);
+        assert!(result.code.contains("{value} with <b>tags</b>"));
+        assert_mapped_runs_are_verbatim(&input, &result, "structured raw-space children");
+    }
+}
+
+#[test]
+fn astro_attribute_syntax_that_tsx_rejects_is_normalized() {
+    for input in [
+        r#"<Component set:html=`${content}` />"#,
+        r#"<article set:text=`content` />"#,
+        r#"<div class=`item-${id}` />"#,
+        r#"<h1 {/* comment */} value="1">Hello</h1>"#,
+        r#"<Component foo{value} />"#,
+    ] {
+        let result = convert_source(input);
+        assert!(
+            !result.has_parse_errors,
+            "{input:?}: {:?}",
+            result.diagnostics
+        );
+        assert_valid_tsx(&result.code, input);
+        assert_mapped_runs_are_verbatim(input, &result, "Astro attributes");
+    }
+}
+
+#[test]
+fn generated_get_static_paths_types_are_valid_tsx() {
+    let input =
+        "---\nexport const getStaticPaths = () => ([\n  { params: { id: '1' } }\n])\n---\n<p/>";
+    let result = convert_source(input);
+
+    assert!(!result.has_parse_errors, "{:?}", result.diagnostics);
+    assert_valid_tsx(&result.code, input);
+    assert_mapped_runs_are_verbatim(input, &result, "getStaticPaths types");
 }
 
 #[test]
@@ -668,7 +752,7 @@ fn returns_in_default_exported_functions_are_preserved() {
 #[test]
 fn variable_length_return_rewrites_keep_runs_verbatim() {
     let source = "---\nconst é = 1;\nif (é) {\n\treturn;\n}\nconst after = é;\n---\n<p>{after}</p>";
-    let result = convert_external(source);
+    let result = convert_source(source);
     assert!(result.code.contains("throw undefined;"), "{}", result.code);
     assert!(result.code.contains("const after = é;"), "{}", result.code);
     assert_mapped_runs_are_verbatim(source, &result, "bare return drift");
@@ -677,7 +761,7 @@ fn variable_length_return_rewrites_keep_runs_verbatim() {
 #[test]
 fn single_quoted_attributes_round_trip_with_their_quotes() {
     let source = "<div data-x='a\"b' title='plain'></div>";
-    let result = convert_external(source);
+    let result = convert_source(source);
     assert!(result.code.contains("data-x='a\"b'"), "{}", result.code);
     assert_mapped_runs_are_verbatim(source, &result, "single quotes");
 }
@@ -685,7 +769,7 @@ fn single_quoted_attributes_round_trip_with_their_quotes() {
 #[test]
 fn raw_template_escapes_are_present_but_unmapped() {
     let source = "<div is:raw>a`b ${x}</div>";
-    let result = convert_external(source);
+    let result = convert_source(source);
     assert!(result.code.contains("{`a\\`b \\${x}`}"), "{}", result.code);
     assert_mapped_runs_are_verbatim(source, &result, "raw escapes");
 }
@@ -693,7 +777,7 @@ fn raw_template_escapes_are_present_but_unmapped() {
 #[test]
 fn multiline_tag_headers_keep_their_whitespace() {
     let source = "<Comp\n  foo={bar}\n/>";
-    let result = convert_external(source);
+    let result = convert_source(source);
     assert!(result.code.contains("foo={bar}\n/>"), "{}", result.code);
     assert_mapped_runs_are_verbatim(source, &result, "multiline tag");
 }
@@ -826,7 +910,7 @@ fn v_for_attributes_preserve_their_complete_value() {
         ("<div v-for />", "v-for"),
         ("<Component v-for={items} />", "v-for={items}"),
     ] {
-        let result = convert_external(input);
+        let result = convert_source(input);
         assert!(
             !result.has_parse_errors,
             "{input:?}: {:?}",
@@ -933,7 +1017,7 @@ fn reconstructed_v_for_uses_the_complete_expression_boundary() {
             "v-for={items.filter(x => /}/.test(x))}",
         ),
     ] {
-        let result = convert_external(input);
+        let result = convert_source(input);
         assert!(
             !result.has_parse_errors,
             "{input:?}: {:?}",
@@ -954,7 +1038,7 @@ fn reconstructed_v_for_uses_the_complete_expression_boundary() {
     }
 
     let malformed = r#"<Component v-for={items.map(x => ({x})} data-after="yes" />"#;
-    let result = convert_external(malformed);
+    let result = convert_source(malformed);
     assert!(result.has_parse_errors, "{}", result.code);
     assert!(!result.diagnostics.is_empty(), "{}", result.code);
     assert!(
@@ -993,7 +1077,7 @@ fn invalid_attribute_string_values_are_html_decoded() {
         format!("<Component @event='{encoded}' />"),
         format!("{{ok && <Component @event='{encoded}' />}}"),
     ] {
-        let result = convert_external(&input);
+        let result = convert_source(&input);
         assert!(
             result
                 .code
@@ -1012,7 +1096,6 @@ fn stripping_the_doctype_keeps_mapped_runs_verbatim() {
         let result = convert_to_tsx(
             source,
             ConvertOptions {
-                sourcemap: astro2tsx::SourceMapMode::External,
                 ambient_types,
                 ..Default::default()
             },

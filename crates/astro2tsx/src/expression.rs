@@ -6,7 +6,7 @@ use biome_js_syntax::{
 use biome_rowan::{AstNode, AstNodeList, SyntaxNode, SyntaxToken, SyntaxTriviaPiece, TextSize};
 
 use crate::printer::Printer;
-use crate::sourcemap::{ExtractedScriptType, GeneratedRange, SourceRange};
+use crate::types::{ExtractedScriptType, GeneratedRange, SourceRange};
 use crate::utils::{
     comment_needs_leading_space, decode_html_entities, escape_javascript_string,
     is_html_event_attribute, is_valid_tsx_attribute_name, strip_matching_quotes,

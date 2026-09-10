@@ -10,8 +10,8 @@ info:
     start: 30
     end: 45
   body:
-    start: 59
-    end: 106
+    start: 60
+    end: 107
   scripts: []
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/doctype.astro
@@ -21,7 +21,7 @@ input_file: crates/astro2tsx/tests/fixtures/doctype.astro
 
 const a = 1;
 
-{};<Fragment>
+;{};<Fragment>
 
 
 
@@ -31,5 +31,3 @@ const a = 1;
 
 </Fragment>
 export default function __AstroComponent_(_props: Record<string, any>): any {}
-
-//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiaW5wdXQuYXN0cm8iXSwic291cmNlc0NvbnRlbnQiOlsiLS0tXG5jb25zdCBhID0gMTtcbi0tLVxuXG48IWRvY3R5cGUgaHRtbD5cbjxodG1sIGxhbmc9XCJlblwiPlxuXHQ8Ym9keT57YX08L2JvZHk+XG48L2h0bWw+XG4iXSwibWFwcGluZ3MiOiJBOztBQUFHO0FBQ0g7QTs7QUFDRztBQUNIO0FBQ2U7QUFDZixLLENBQU07QUFDTjtBQUNBO0FBQ0E7QSJ9

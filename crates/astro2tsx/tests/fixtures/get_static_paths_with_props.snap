@@ -10,8 +10,8 @@ info:
     start: 30
     end: 119
   body:
-    start: 133
-    end: 147
+    start: 134
+    end: 148
   scripts: []
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/get_static_paths_with_props.astro
@@ -22,7 +22,7 @@ input_file: crates/astro2tsx/tests/fixtures/get_static_paths_with_props.astro
 interface Props { slug: string }
 export async function getStaticPaths() { return []; }
 
-{};<Fragment>
+;{};<Fragment>
 
 <div></div>
 
@@ -38,5 +38,4 @@ type ASTRO__Get<T, K> = T extends undefined ? undefined : K extends keyof T ? T[
  *
  * [Astro documentation](https://docs.astro.build/reference/api-reference/#astro-global)
 */
-declare const Astro: Readonly<import('astro').AstroGlobal<Props, typeof __AstroComponent_, ASTRO__Get<ASTRO__InferredGetStaticPath, 'params'>>>
-//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiaW5wdXQuYXN0cm8iXSwic291cmNlc0NvbnRlbnQiOlsiLS0tXG5pbnRlcmZhY2UgUHJvcHMgeyBzbHVnOiBzdHJpbmcgfVxuZXhwb3J0IGFzeW5jIGZ1bmN0aW9uIGdldFN0YXRpY1BhdGhzKCkgeyByZXR1cm4gW107IH1cbi0tLVxuPGRpdj48L2Rpdj5cbiJdLCJtYXBwaW5ncyI6IkE7O0FBQUc7QUFDSDtBQUNBO0E7O0FBQ0c7QUFDSDtBQUNBO0EifQ==
+declare const Astro: Readonly<import('astro').AstroGlobal<Props, typeof __AstroComponent_, ASTRO__Get<ASTRO__InferredGetStaticPath, 'params'>>>;

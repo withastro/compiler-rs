@@ -13,24 +13,22 @@ mod napi;
 mod printer;
 mod props;
 mod render;
-mod sourcemap;
+mod types;
 mod utf16;
 mod utils;
 
 use biome_html_parser::parse_html;
 use biome_languages::HtmlFileSource;
 
-pub use crate::sourcemap::{
-    DEFAULT_SOURCE_NAME, Diagnostic, DiagnosticSeverity, ExtractedKind, ExtractedScriptType,
-    ExtractedTag, FrontmatterInfo, FrontmatterStatus, GeneratedRange, Mapping, SourceMap,
-    SourceMapMode, SourceRange,
+pub use crate::types::{
+    Diagnostic, DiagnosticSeverity, ExtractedKind, ExtractedScriptType, ExtractedTag,
+    FrontmatterInfo, FrontmatterStatus, GeneratedRange, Mapping, SourceRange,
 };
 
 #[derive(Clone, Debug, Default)]
 pub struct ConvertOptions {
-    /// Component identifier source, and `sources[0]` in the source map.
+    /// Component identifier source.
     pub filename: Option<String>,
-    pub sourcemap: SourceMapMode,
     /// Appends `declare` statements resolving the `Fragment` and `Astro` globals.
     pub ambient_types: bool,
 }
@@ -56,14 +54,6 @@ pub struct ConvertResult {
     /// Parse diagnostics from the document and its expression bodies.
     pub diagnostics: Vec<Diagnostic>,
     pub frontmatter: FrontmatterInfo,
-}
-
-impl ConvertResult {
-    /// Encodes [`Self::mappings`] as a Source Map v3 document, embedding
-    /// `source` as `sourcesContent` so the map stands alone.
-    pub fn source_map(&self, source: &str, source_name: &str) -> SourceMap {
-        sourcemap::encode(source, &self.code, &self.mappings, source_name)
-    }
 }
 
 pub fn convert_to_tsx(source: &str, options: ConvertOptions) -> ConvertResult {
@@ -102,7 +92,7 @@ pub fn convert_to_tsx(source: &str, options: ConvertOptions) -> ConvertResult {
     diagnostics.sort_by_key(|diagnostic| (diagnostic.source.start, diagnostic.source.end));
     diagnostics.dedup();
 
-    let mut result = ConvertResult {
+    ConvertResult {
         code: printer.output,
         mappings: printer.mappings,
         frontmatter_range: printer.frontmatter_range,
@@ -112,14 +102,5 @@ pub fn convert_to_tsx(source: &str, options: ConvertOptions) -> ConvertResult {
         has_parse_errors: html_has_errors || printer.has_embedded_parse_errors,
         diagnostics,
         frontmatter: printer.frontmatter_info,
-    };
-
-    if options.sourcemap == SourceMapMode::Inline {
-        let source_name = options.filename.as_deref().unwrap_or(DEFAULT_SOURCE_NAME);
-        let comment = sourcemap::to_inline_comment(&result.source_map(source, source_name));
-        result.code.push('\n');
-        result.code.push_str(&comment);
     }
-
-    result
 }

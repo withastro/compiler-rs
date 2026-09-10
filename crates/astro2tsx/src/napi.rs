@@ -1,15 +1,18 @@
 //! NAPI uses UTF-16 offsets; napi-derive registers nothing in test builds.
 
-use napi::Either;
-use napi::bindgen_prelude::Uint32Array;
 use napi_derive::napi;
 
 use crate::utf16::Utf16Index;
 use crate::{
-    ConvertOptions, DEFAULT_SOURCE_NAME, DiagnosticSeverity as CoreDiagnosticSeverity,
-    ExtractedKind, ExtractedScriptType as CoreScriptType, FrontmatterStatus, SourceMapMode,
-    convert_to_tsx as convert_rs,
+    ConvertOptions, DiagnosticSeverity as CoreDiagnosticSeverity, ExtractedKind,
+    ExtractedScriptType as CoreScriptType, FrontmatterStatus, convert_to_tsx as convert_rs,
 };
+
+const SPAN_MAP_KIND_VERBATIM: u32 = 0;
+const SPAN_MAP_KIND_ATOM: u32 = 1;
+const SPAN_MAP_FEATURE_DEFINITION: u32 = 1 << 3;
+const SPAN_MAP_FEATURE_REFERENCES: u32 = 1 << 6;
+const COMPONENT_SUFFIX: &str = "__AstroComponent_";
 
 #[napi(object)]
 pub struct Range {
@@ -84,11 +87,6 @@ pub struct ConvertToTsxOptions {
     /// Filename used to derive the default-exported component identifier
     /// (e.g. `MyPage.astro` produces `MyPage__AstroComponent_`). Optional.
     pub filename: Option<String>,
-    /// `false` skips building the map entirely, `"external"` returns it in
-    /// `map` without touching `code`, and `true` / `"inline"` (the default)
-    /// also appends a `//# sourceMappingURL=` comment. Unrecognized strings
-    /// behave as `"inline"`.
-    pub sourcemap: Option<Either<bool, String>>,
     /// Appends unmapped `declare` statements resolving the `Fragment` and
     /// `Astro` globals the TSX references but never declares. Off by default:
     /// consumers that inject their own ambient types must not receive them.
@@ -98,20 +96,15 @@ pub struct ConvertToTsxOptions {
 #[napi(object)]
 pub struct ConvertToTsxResult {
     pub code: String,
-    /// Offsets into `code` where each mapped run starts, ascending. Positions
-    /// inside a run resolve as `sourceOffsets[i] + (offset -
-    /// generatedOffsets[i])` while within `lengths[i]` — the shape Volar
-    /// mappings use. Output outside every run is synthetic.
-    pub generated_offsets: Uint32Array,
-    pub source_offsets: Uint32Array,
-    pub lengths: Uint32Array,
+    /// TypeScript Content Mapper span mappings in UTF-16 code units.
+    #[napi(
+        ts_type = "[virtualStart: number, virtualLength: number, originalStart: number, originalLength: number, kind: 0 | 1 | 2, features?: number][]"
+    )]
+    pub mappings: Vec<Vec<u32>>,
     /// Range of the frontmatter section within `code`.
     pub frontmatter: Range,
     /// Range of the `<Fragment>` body within `code`.
     pub body: Range,
-    /// Source Map v3 JSON for `code`, with `sourcesContent` embedded. `None`
-    /// when the caller opted out with `sourcemap: false`.
-    pub map: Option<String>,
     pub frontmatter_status: AstroFrontmatterStatus,
     /// Range of the frontmatter in the original source, fences included.
     pub frontmatter_source: Range,
@@ -121,26 +114,7 @@ pub struct ConvertToTsxResult {
     pub has_parse_errors: bool,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum MapRequest {
-    Skip,
-    External,
-    Inline,
-}
-
-fn map_request(sourcemap: Option<&Either<bool, String>>) -> MapRequest {
-    match sourcemap {
-        Some(Either::A(false)) => MapRequest::Skip,
-        Some(Either::B(mode)) => match mode.as_str() {
-            "none" | "false" => MapRequest::Skip,
-            "external" => MapRequest::External,
-            _ => MapRequest::Inline,
-        },
-        _ => MapRequest::Inline,
-    }
-}
-
-/// Convert an Astro source file to TSX for tsserver intellisense.
+/// Convert an Astro source file to TSX for TypeScript editor tooling.
 ///
 /// The conversion is error-tolerant: malformed input produces a
 /// best-effort TSX output rather than throwing, and `hasParseErrors` is
@@ -148,16 +122,10 @@ fn map_request(sourcemap: Option<&Either<bool, String>>) -> MapRequest {
 #[napi(js_name = "convertToTsx")]
 pub fn convert_to_tsx(source: String, options: Option<ConvertToTsxOptions>) -> ConvertToTsxResult {
     let options = options.unwrap_or_default();
-    let request = map_request(options.sourcemap.as_ref());
-    let source_name = options
-        .filename
-        .clone()
-        .unwrap_or_else(|| DEFAULT_SOURCE_NAME.to_string());
-    let mut result = convert_rs(
+    let result = convert_rs(
         &source,
         ConvertOptions {
             filename: options.filename,
-            sourcemap: SourceMapMode::External,
             ambient_types: options.ambient_types.unwrap_or(false),
         },
     );
@@ -166,9 +134,7 @@ pub fn convert_to_tsx(source: String, options: Option<ConvertToTsxOptions>) -> C
     let code_len = result.code.len() as u32;
     let source_len = source_index.convert(source.len() as u32);
 
-    let mut generated_offsets = Vec::new();
-    let mut source_offsets = Vec::new();
-    let mut lengths = Vec::new();
+    let mut mappings = Vec::new();
     for (index, mapping) in result.mappings.iter().enumerate() {
         let Some(original) = mapping.original else {
             continue;
@@ -180,33 +146,35 @@ pub fn convert_to_tsx(source: String, options: Option<ConvertToTsxOptions>) -> C
             .unwrap_or(code_len);
         let generated = generated_index.convert(mapping.generated);
         let source = source_index.convert(original);
-        // ASCII escapes preserve equal UTF-16 run lengths; clamp EOF runs to remaining source.
+        // EOF anchors may extend into generated separators, so their runs stop at the source end.
         let length =
             (generated_index.convert(run_end) - generated).min(source_len.saturating_sub(source));
         if length == 0 {
             continue;
         }
-        generated_offsets.push(generated);
-        source_offsets.push(source);
-        lengths.push(length);
+        mappings.push(vec![
+            generated,
+            length,
+            source,
+            length,
+            SPAN_MAP_KIND_VERBATIM,
+        ]);
     }
 
-    let map = match request {
-        MapRequest::Skip => None,
-        _ => {
-            let document = result.source_map(&source, &source_name);
-            if request == MapRequest::Inline {
-                result.code.push('\n');
-                result
-                    .code
-                    .push_str(&crate::sourcemap::to_inline_comment(&document));
-            }
-            Some(document.to_json_string())
-        }
-    };
+    if let Some((start, end)) = component_export_range(&result.code) {
+        // TypeScript does not resolve definitions or references through an unmapped virtual export.
+        // See https://github.com/microsoft/TypeScript/pull/63936.
+        mappings.push(vec![
+            generated_index.convert(start),
+            generated_index.convert(end) - generated_index.convert(start),
+            0,
+            0,
+            SPAN_MAP_KIND_ATOM,
+            SPAN_MAP_FEATURE_DEFINITION | SPAN_MAP_FEATURE_REFERENCES,
+        ]);
+    }
 
     ConvertToTsxResult {
-        map,
         frontmatter: Range {
             start: generated_index.convert(result.frontmatter_range.start),
             end: generated_index.convert(result.frontmatter_range.end),
@@ -252,11 +220,18 @@ pub fn convert_to_tsx(source: String, options: Option<ConvertToTsxOptions>) -> C
             })
             .collect(),
         code: result.code,
-        generated_offsets: Uint32Array::new(generated_offsets),
-        source_offsets: Uint32Array::new(source_offsets),
-        lengths: Uint32Array::new(lengths),
+        mappings,
         has_parse_errors: result.has_parse_errors,
     }
+}
+
+fn component_export_range(code: &str) -> Option<(u32, u32)> {
+    const EXPORT_PREFIX: &str = "export default function ";
+
+    let start = code.rfind(EXPORT_PREFIX)? + EXPORT_PREFIX.len();
+    let suffix = code[start..].find(COMPONENT_SUFFIX)?;
+    let end = start + suffix + COMPONENT_SUFFIX.len();
+    Some((start as u32, end as u32))
 }
 
 fn source_position(tag: &crate::ExtractedTag, source_index: &Utf16Index) -> Range {

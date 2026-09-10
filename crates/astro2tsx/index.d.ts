@@ -13,7 +13,7 @@ export declare const enum AstroFrontmatterStatus {
 }
 
 /**
- * Convert an Astro source file to TSX for tsserver intellisense.
+ * Convert an Astro source file to TSX for TypeScript editor tooling.
  *
  * The conversion is error-tolerant: malformed input produces a
  * best-effort TSX output rather than throwing, and `hasParseErrors` is
@@ -28,13 +28,6 @@ export interface ConvertToTsxOptions {
    */
   filename?: string
   /**
-   * `false` skips building the map entirely, `"external"` returns it in
-   * `map` without touching `code`, and `true` / `"inline"` (the default)
-   * also appends a `//# sourceMappingURL=` comment. Unrecognized strings
-   * behave as `"inline"`.
-   */
-  sourcemap?: boolean | string
-  /**
    * Appends unmapped `declare` statements resolving the `Fragment` and
    * `Astro` globals the TSX references but never declares. Off by default:
    * consumers that inject their own ambient types must not receive them.
@@ -44,24 +37,12 @@ export interface ConvertToTsxOptions {
 
 export interface ConvertToTsxResult {
   code: string
-  /**
-   * Offsets into `code` where each mapped run starts, ascending. Positions
-   * inside a run resolve as `sourceOffsets[i] + (offset -
-   * generatedOffsets[i])` while within `lengths[i]` — the shape Volar
-   * mappings use. Output outside every run is synthetic.
-   */
-  generatedOffsets: Uint32Array
-  sourceOffsets: Uint32Array
-  lengths: Uint32Array
+  /** TypeScript Content Mapper span mappings in UTF-16 code units. */
+  mappings: [virtualStart: number, virtualLength: number, originalStart: number, originalLength: number, kind: 0 | 1 | 2, features?: number][]
   /** Range of the frontmatter section within `code`. */
   frontmatter: Range
   /** Range of the `<Fragment>` body within `code`. */
   body: Range
-  /**
-   * Source Map v3 JSON for `code`, with `sourcesContent` embedded. `None`
-   * when the caller opted out with `sourcemap: false`.
-   */
-  map?: string
   frontmatterStatus: AstroFrontmatterStatus
   /** Range of the frontmatter in the original source, fences included. */
   frontmatterSource: Range

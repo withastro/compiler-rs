@@ -14,7 +14,7 @@ use crate::expression::emit_expression_tree;
 use crate::frontmatter::{RewrittenFrontmatter, rewrite_top_level_returns};
 use crate::printer::{Printer, range_start};
 use crate::props::{PropsAnalysis, analyze as analyze_props};
-use crate::sourcemap::{
+use crate::types::{
     Diagnostic, DiagnosticSeverity, ExtractedScriptType, FrontmatterInfo, FrontmatterStatus,
     GeneratedRange, SourceRange,
 };
@@ -92,7 +92,7 @@ pub(crate) fn render_root(printer: &mut Printer, root: HtmlRoot, options: &Conve
         };
         if frontmatter_needs_terminator {
             printer.map_nil();
-            printer.write("{};");
+            printer.write(";{};");
         }
         printer.map_nil();
         printer.write("<Fragment>\n");
@@ -247,7 +247,7 @@ fn emit_default_export(
         if analysis.has_get_static_paths {
             printer.write(", ASTRO__Get<ASTRO__InferredGetStaticPath, 'params'>");
         }
-        printer.write(">>");
+        printer.write(">>;\n");
     }
 }
 
@@ -345,7 +345,7 @@ fn render_element(printer: &mut Printer, element: AnyHtmlElement) {
         AnyHtmlElement::HtmlCdataSection(_)
         | AnyHtmlElement::HtmlProcessingInstruction(_)
         | AnyHtmlElement::HtmlBogusElement(_) => {
-            // Preserve unsupported syntax verbatim so error recovery loses no source text.
+            // Incomplete TSX-compatible syntax stays verbatim so editor completion can consume it.
             let range = element.range();
             let text = slice_source(printer.source, range);
             let start = range_start(range);
@@ -361,7 +361,11 @@ fn render_element(printer: &mut Printer, element: AnyHtmlElement) {
                 printer.write_with_mapping(&text[rest_at..], start + rest_at as u32);
                 return;
             }
-            printer.write_with_mapping(text, start);
+            if contains_non_ascii_tag_name(text) {
+                printer.write_jsx_text_with_mapping(text, start);
+            } else {
+                printer.write_with_mapping(text, start);
+            }
         }
     }
 }
@@ -545,6 +549,19 @@ fn render_html_element(printer: &mut Printer, node: HtmlElement) {
     let is_html_tag = matches!(name, AnyHtmlTagName::HtmlTagName(_));
     let is_script = is_html_tag && tag_name.eq_ignore_ascii_case("script");
     let is_style = is_html_tag && tag_name.eq_ignore_ascii_case("style");
+    // Expressions remain active, but tag-looking children render as text in these HTML elements.
+    let has_text_only_children = is_html_tag
+        && [
+            "iframe",
+            "noembed",
+            "noframes",
+            "plaintext",
+            "textarea",
+            "title",
+            "xmp",
+        ]
+        .iter()
+        .any(|name| tag_name.eq_ignore_ascii_case(name));
 
     let children = node.children();
     let body_start = printer.position();
@@ -575,6 +592,25 @@ fn render_html_element(printer: &mut Printer, node: HtmlElement) {
             printer.write_template_text_with_mapping(raw, inner_start);
             printer.map_nil();
             printer.write("`}");
+        }
+    } else if has_text_only_children {
+        let mut prev_end = opening_end;
+        for child in children.iter() {
+            let child_range = child.range();
+            let child_start = range_start(child_range);
+            emit_jsx_text_range(printer, prev_end, child_start);
+            if let AnyHtmlElement::AnyHtmlContent(AnyHtmlContent::AnyHtmlTextExpression(
+                expression,
+            )) = child
+            {
+                render_text_expression(printer, expression);
+            } else {
+                emit_jsx_text_range(printer, child_start, u32::from(child_range.end()));
+            }
+            prev_end = u32::from(child_range.end());
+        }
+        if let Some(trailing_to) = closing_inner_start {
+            emit_jsx_text_range(printer, prev_end, trailing_to);
         }
     } else {
         let mut prev_end: Option<u32> = None;
@@ -877,14 +913,16 @@ fn emit_attribute(printer: &mut Printer, attr: &AnyHtmlAttribute) {
                 let original_start = range_start(token.text_trimmed_range());
                 printer.map_nil();
                 printer.write(" ");
-                printer.write_with_mapping(&trimmed, original_start);
-                printer.map_nil();
-                printer.write("=");
-                printer.map_nil();
-                printer.write("{");
-                printer.write_with_mapping(&trimmed, original_start);
-                printer.map_nil();
-                printer.write("}");
+                if trimmed.starts_with("/*") && trimmed.ends_with("*/") {
+                    printer.write_with_mapping(&trimmed, original_start);
+                } else {
+                    printer.write_with_mapping(&trimmed, original_start);
+                    printer.map_nil();
+                    printer.write("={");
+                    printer.write_with_mapping(&trimmed, original_start);
+                    printer.map_nil();
+                    printer.write("}");
+                }
             }
         }
         AnyHtmlAttribute::AnyAstroDirective(directive) => emit_astro_directive(printer, directive),
@@ -1129,12 +1167,34 @@ fn emit_spread_attribute(printer: &mut Printer, spread: &HtmlSpreadAttribute) {
 }
 
 fn emit_astro_directive(printer: &mut Printer, directive: &AnyAstroDirective) {
-    // Astro directives are valid TSX attributes because JSX supports `:` namespaces.
     let range = directive.range();
-    let text = slice_source(printer.source, range);
+    let start = range_start(range);
+    let value = match directive {
+        AnyAstroDirective::AstroIsDirective(directive) => directive.value(),
+        AnyAstroDirective::AstroClientDirective(directive) => directive.value(),
+        AnyAstroDirective::AstroClassDirective(directive) => directive.value(),
+        AnyAstroDirective::AstroDefineDirective(directive) => directive.value(),
+        AnyAstroDirective::AstroServerDirective(directive) => directive.value(),
+        AnyAstroDirective::AstroSetDirective(directive) => directive.value(),
+    };
+    let initializer = value.ok().and_then(|value| value.initializer());
+
     printer.map_nil();
     printer.write(" ");
-    printer.write_with_mapping(text, range_start(range));
+    if let Some(initializer) = initializer {
+        let Ok(eq_token) = initializer.eq_token() else {
+            return;
+        };
+        let key = slice_source(
+            printer.source,
+            TextRange::new(range.start(), eq_token.text_trimmed_range().start()),
+        )
+        .trim_end();
+        printer.write_with_mapping(key, start);
+        emit_attribute_initializer(printer, key, Some(initializer));
+    } else {
+        printer.write_with_mapping(slice_source(printer.source, range), start);
+    }
 }
 
 /// A skipped entry must not advance comma insertion.
@@ -1168,9 +1228,7 @@ fn emit_invalid_attribute(
     match attr_node.initializer() {
         None => {
             printer.map_nil();
-            printer.write(":");
-            printer.map_to_offset(key_start);
-            printer.write("true");
+            printer.write(":true");
         }
         Some(initializer) => match initializer.value() {
             Ok(AnyHtmlAttributeInitializer::HtmlString(s)) => {
@@ -1414,6 +1472,15 @@ fn comment_trivia_ranges(root: &HtmlRoot) -> Vec<TextRange> {
     ranges
 }
 
+fn emit_jsx_text_range(printer: &mut Printer, from: u32, to: u32) {
+    if from >= to {
+        return;
+    }
+    if let Some(text) = printer.source.get(from as usize..to as usize) {
+        printer.write_jsx_text_with_mapping(text, from);
+    }
+}
+
 fn emit_source_gap(printer: &mut Printer, from: u32, to: u32) {
     let source = printer.source;
     let to = (to as usize).min(source.len());
@@ -1434,7 +1501,7 @@ fn emit_source_gap(printer: &mut Printer, from: u32, to: u32) {
         if start < cursor || end > to {
             continue;
         }
-        printer.write_with_mapping(&source[cursor..start], cursor as u32);
+        write_source_gap_text(printer, cursor as u32, start as u32);
         let text = &source[start..end];
         match text
             .strip_prefix("<!--")
@@ -1455,7 +1522,16 @@ fn emit_source_gap(printer: &mut Printer, from: u32, to: u32) {
         }
         cursor = end;
     }
-    printer.write_with_mapping(&source[cursor..to], cursor as u32);
+    write_source_gap_text(printer, cursor as u32, to as u32);
+}
+
+fn write_source_gap_text(printer: &mut Printer, from: u32, to: u32) {
+    let text = &printer.source[from as usize..to as usize];
+    if contains_non_ascii_tag_name(text) {
+        printer.write_jsx_text_with_mapping(text, from);
+    } else {
+        printer.write_with_mapping(text, from);
+    }
 }
 
 fn emit_html_comment(printer: &mut Printer, body: &str, original_offset: u32) {
@@ -1467,6 +1543,18 @@ fn emit_html_comment(printer: &mut Printer, body: &str, original_offset: u32) {
     printer.write_comment_body_with_mapping(body, original_offset);
     printer.map_nil();
     printer.write("*/}");
+}
+
+fn contains_non_ascii_tag_name(text: &str) -> bool {
+    text.match_indices('<').any(|(start, _)| {
+        let rest = &text[start + 1..];
+        let rest = rest.strip_prefix('/').unwrap_or(rest);
+        let name = rest
+            .split(|ch: char| ch.is_ascii_whitespace() || ch == '/' || ch == '>')
+            .next()
+            .unwrap_or_default();
+        !name.is_empty() && !name.is_ascii()
+    })
 }
 
 fn slice_source(source: &str, range: TextRange) -> &str {

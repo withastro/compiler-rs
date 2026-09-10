@@ -10,8 +10,8 @@ info:
     start: 30
     end: 52
   body:
-    start: 66
-    end: 85
+    start: 67
+    end: 86
   scripts: []
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/multibyte_astral.astro
@@ -21,11 +21,9 @@ input_file: crates/astro2tsx/tests/fixtures/multibyte_astral.astro
 
 const π = Math.PI;
 
-{};<Fragment>
+;{};<Fragment>
 
 <p>🦄 {π}</p>
 
 </Fragment>
 export default function __AstroComponent_(_props: Record<string, any>): any {}
-
-//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiaW5wdXQuYXN0cm8iXSwic291cmNlc0NvbnRlbnQiOlsiLS0tXG5jb25zdCDPgCA9IE1hdGguUEk7XG4tLS1cbjxwPvCfpoQge8+AfTwvcD5cbiJdLCJtYXBwaW5ncyI6IkE7O0FBQUc7QUFDSDtBOztBQUNHO0FBQ0g7QUFDQTtBIn0=

@@ -1,6 +1,6 @@
 use biome_rowan::TextRange;
 
-use crate::sourcemap::{
+use crate::types::{
     Diagnostic, ExtractedKind, ExtractedScriptType, ExtractedTag, FrontmatterInfo, GeneratedRange,
     Mapping, SourceRange,
 };
@@ -89,11 +89,11 @@ impl<'a> Printer<'a> {
         self.output.push_str(text);
     }
 
-    /// JSX text cannot contain raw `<`, `>`, or `}`; they emit as `{\`>\`}`.
+    /// Characters that JSX reserves in text emit through mapped template expressions.
     pub(crate) fn write_jsx_text_with_mapping(&mut self, text: &str, original_start: u32) {
         let mut original = original_start;
         for ch in text.chars() {
-            if ch == '<' || ch == '>' || ch == '}' {
+            if ch == '<' || ch == '>' || ch == '{' || ch == '}' {
                 self.map_nil();
                 self.output.push_str("{`");
                 self.map_to_offset(original);

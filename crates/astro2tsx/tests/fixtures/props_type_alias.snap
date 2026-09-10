@@ -10,8 +10,8 @@ info:
     start: 30
     end: 64
   body:
-    start: 78
-    end: 92
+    start: 79
+    end: 93
   scripts: []
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/props_type_alias.astro
@@ -21,7 +21,7 @@ input_file: crates/astro2tsx/tests/fixtures/props_type_alias.astro
 
 type Props = { title: string };
 
-{};<Fragment>
+;{};<Fragment>
 
 <div></div>
 
@@ -32,5 +32,4 @@ export default function __AstroComponent_(_props: Props): any {}
  *
  * [Astro documentation](https://docs.astro.build/reference/api-reference/#astro-global)
 */
-declare const Astro: Readonly<import('astro').AstroGlobal<Props, typeof __AstroComponent_>>
-//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiaW5wdXQuYXN0cm8iXSwic291cmNlc0NvbnRlbnQiOlsiLS0tXG50eXBlIFByb3BzID0geyB0aXRsZTogc3RyaW5nIH07XG4tLS1cbjxkaXY+PC9kaXY+XG4iXSwibWFwcGluZ3MiOiJBOztBQUFHO0FBQ0g7QTs7QUFDRztBQUNIO0FBQ0E7QSJ9
+declare const Astro: Readonly<import('astro').AstroGlobal<Props, typeof __AstroComponent_>>;

@@ -1,4 +1,4 @@
-use astro2tsx::{ConvertOptions, SourceMapMode, convert_to_tsx};
+use astro2tsx::{ConvertOptions, convert_to_tsx};
 use divan::counter::BytesCount;
 
 fn main() {
@@ -8,7 +8,6 @@ fn main() {
 fn options() -> ConvertOptions {
     ConvertOptions {
         filename: Some("Component.astro".to_string()),
-        sourcemap: SourceMapMode::External,
         ..Default::default()
     }
 }
@@ -86,28 +85,6 @@ mod phases {
         bencher
             .counter(BytesCount::of_str(&source))
             .with_inputs(options)
-            .bench_local_values(|options| convert_to_tsx(divan::black_box(&source), options));
-    }
-
-    #[divan::bench]
-    fn sourcemap_encode(bencher: divan::Bencher<'_, '_>) {
-        let source = build_page(64);
-        let result = convert_to_tsx(&source, options());
-        bencher
-            .counter(BytesCount::of_str(&result.code))
-            .bench_local(|| result.source_map(divan::black_box(&source), "Component.astro"));
-    }
-
-    // Inline maps are the NAPI default exercised in production.
-    #[divan::bench]
-    fn convert_with_inline_map(bencher: divan::Bencher<'_, '_>) {
-        let source = build_page(64);
-        bencher
-            .counter(BytesCount::of_str(&source))
-            .with_inputs(|| ConvertOptions {
-                sourcemap: SourceMapMode::Inline,
-                ..options()
-            })
             .bench_local_values(|options| convert_to_tsx(divan::black_box(&source), options));
     }
 }

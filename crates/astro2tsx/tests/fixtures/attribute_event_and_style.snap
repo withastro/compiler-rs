@@ -14,7 +14,7 @@ info:
     end: 87
   scripts:
     - kind: EventAttribute
-      lang: event-attribute
+      lang: ~
       generated:
         start: 55
         end: 59
@@ -41,5 +41,3 @@ input_file: crates/astro2tsx/tests/fixtures/attribute_event_and_style.astro
 
 </Fragment>
 export default function __AstroComponent_(_props: Record<string, any>): any {}
-
-//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiaW5wdXQuYXN0cm8iXSwic291cmNlc0NvbnRlbnQiOlsiPGRpdiBvbmNsaWNrPVwiZ28oKVwiIHN0eWxlPVwiY29sb3I6cmVkXCI+PC9kaXY+XG4iXSwibWFwcGluZ3MiOiJBOzs7QUFBQSxJLENBQUssYyxDQUFlO0FBQ3BCO0EifQ==

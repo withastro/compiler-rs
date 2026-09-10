@@ -26,5 +26,3 @@ input_file: crates/astro2tsx/tests/fixtures/fragment_shorthand.astro
 
 </Fragment>
 export default function __AstroComponent_(_props: Record<string, any>): any {}
-
-//# sourceMappingURL=data:application/json;charset=utf-8;base64,eyJ2ZXJzaW9uIjozLCJuYW1lcyI6W10sInNvdXJjZXMiOlsiaW5wdXQuYXN0cm8iXSwic291cmNlc0NvbnRlbnQiOlsiPD5cbjxkaXY+YTwvZGl2PlxuPGRpdj5iPC9kaXY+XG48Lz5cbiJdLCJtYXBwaW5ncyI6IkE7OztBQUFBO0FBQ0E7QUFDQTtBQUNBO0FBQ0E7QSJ9

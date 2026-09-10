@@ -1,12 +1,13 @@
 {
   "name": "@astrojs/astro2tsx",
   "version": "0.1.0",
-  "description": "Convert .astro files to TSX for tsserver intellisense",
+  "description": "Convert .astro files to TSX for TypeScript editor tooling",
   "keywords": [
     "astro",
     "tsx",
     "intellisense",
-    "language-server"
+    "language-server",
+    "content-mapper"
   ],
   "license": "MIT",
   "type": "module",
