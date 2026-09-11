@@ -7,12 +7,13 @@
 #![deny(clippy::use_self)]
 
 mod expression;
-mod frontmatter;
 #[cfg(not(test))]
 mod napi;
 mod printer;
 mod props;
 mod render;
+#[cfg(test)]
+mod test_utils;
 mod types;
 mod utf16;
 mod utils;
@@ -102,5 +103,98 @@ pub fn convert_to_tsx(source: &str, options: ConvertOptions) -> ConvertResult {
         has_parse_errors: html_has_errors || printer.has_embedded_parse_errors,
         diagnostics,
         frontmatter: printer.frontmatter_info,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::test_utils::assert_mapped_runs_are_verbatim;
+    use crate::{ConvertOptions, convert_to_tsx};
+
+    const PREFIX: &str = "/* @jsxImportSource astro */\n\n";
+
+    #[test]
+    fn parser_errors_surface_but_do_not_block_emission() {
+        let result = convert_to_tsx(
+            "---\nconst items = [1];\n---\n{items.map(i => <div>{i}</div>)",
+            ConvertOptions::default(),
+        );
+        assert!(result.has_parse_errors);
+        assert!(result.code.starts_with(PREFIX));
+    }
+
+    #[test]
+    fn diagnostics_carry_positions_pointing_at_the_problem() {
+        let source = "<div>{x ==}</div>";
+        let result = convert_to_tsx(source, ConvertOptions::default());
+        assert!(!result.diagnostics.is_empty());
+        for diagnostic in &result.diagnostics {
+            assert!(!diagnostic.message.is_empty());
+            assert!(
+                diagnostic.source.end as usize <= source.len(),
+                "{diagnostic:?} runs past the source"
+            );
+            assert!(diagnostic.source.start <= diagnostic.source.end);
+        }
+    }
+
+    #[test]
+    fn tolerates_line_separators() {
+        for input in [
+            "\u{2028}",
+            "something\u{2029}something",
+            "something\u{2028}\u{2029}",
+            "\u{2028}\u{2029}\u{2028}",
+        ] {
+            let actual = convert_to_tsx(input, ConvertOptions::default()).code;
+            assert!(
+                actual.starts_with(PREFIX),
+                "input {input:?} produced no usable output"
+            );
+        }
+    }
+
+    #[test]
+    fn malformed_input_never_panics_in_the_parser() {
+        for input in ["<div></{<//", "<a></", "</", "<//", "<div></{", "{<//}"] {
+            let result = convert_to_tsx(input, ConvertOptions::default());
+            assert!(result.code.starts_with(PREFIX), "no output for {input:?}");
+        }
+    }
+
+    #[test]
+    fn unclosed_elements_are_emitted_as_written_and_flagged() {
+        for (input, expected) in [
+            ("<div>hello", "<div>hello"),
+            ("<Card>\n  <p>text</p>", "<Card>\n  <p>text</p>"),
+            ("<p>one<p>two", "<p>one<p>two"),
+            ("<>{1}<p>x</p>", "<>{1}<p>x</p>"),
+            (
+                "<table><tr><td>a<td>b</tr></table>",
+                "<td>a<td>b</tr></table>",
+            ),
+            ("<div>x</div", "<div>x</div"),
+            ("<>x", "<>x"),
+            ("<img /", "<img /"),
+        ] {
+            let result = convert_to_tsx(input, ConvertOptions::default());
+            assert!(
+                result.code.contains(expected),
+                "content lost for {input:?}:\n{}",
+                result.code
+            );
+            assert!(
+                !result.code.contains("</div>") || input.contains("</div>"),
+                "a closing tag was synthesized for {input:?}:\n{}",
+                result.code
+            );
+            assert!(result.has_parse_errors, "{input:?} must stay flagged");
+            assert_mapped_runs_are_verbatim(input, &result, "unclosed as written");
+        }
+
+        let truncated = convert_to_tsx("<div>x</div", ConvertOptions::default());
+        assert!(!truncated.code.contains("</div>"), "{}", truncated.code);
+        let fragment = convert_to_tsx("<>x", ConvertOptions::default());
+        assert!(!fragment.code.contains("</>"), "{}", fragment.code);
     }
 }

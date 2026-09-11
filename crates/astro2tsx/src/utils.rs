@@ -62,24 +62,25 @@ pub(crate) fn strip_matching_quotes(text: &str) -> Option<&str> {
     text.strip_prefix(quote)?.strip_suffix(quote)
 }
 
+pub(crate) const COMPONENT_SUFFIX: &str = "__AstroComponent_";
+
 pub(crate) fn tsx_component_name(filename: Option<&str>) -> String {
-    const PLACEHOLDER: &str = "__AstroComponent_";
     let Some(filename) = filename else {
-        return PLACEHOLDER.to_string();
+        return COMPONENT_SUFFIX.to_string();
     };
     if filename.is_empty() || filename == "<stdin>" {
-        return PLACEHOLDER.to_string();
+        return COMPONENT_SUFFIX.to_string();
     }
     let last_segment = filename.rsplit('/').next().unwrap_or("");
     let basename = last_segment.split('.').next().unwrap_or("");
     if basename.is_empty() {
-        return PLACEHOLDER.to_string();
+        return COMPONENT_SUFFIX.to_string();
     }
     let pascal = Case::Pascal.convert(basename);
     if is_identifier(&pascal) {
-        format!("{pascal}{PLACEHOLDER}")
+        format!("{pascal}{COMPONENT_SUFFIX}")
     } else {
-        PLACEHOLDER.to_string()
+        COMPONENT_SUFFIX.to_string()
     }
 }
 

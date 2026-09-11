@@ -1,4 +1,5 @@
 use astro2tsx::{ConvertOptions, convert_to_tsx};
+
 const CONSTRUCTS: &[&str] = &[
     "<div>{\"<br/>\"}</div>",
     "<div>{'<b>y</b>'}</div>",
@@ -42,13 +43,9 @@ fn never_fails_on_truncated_input() {
     }
 }
 
-fn convert(source: &str) -> astro2tsx::ConvertResult {
-    convert_to_tsx(source, ConvertOptions::default())
-}
-
 #[test]
 fn script_text_is_excluded_but_the_tag_remains() {
-    let result = convert("<script>const a = 1;</script>");
+    let result = convert_to_tsx("<script>const a = 1;</script>", ConvertOptions::default());
     assert!(result.code.contains("<script>"));
     assert!(result.code.contains("</script>"));
     assert!(!result.code.contains("const a = 1;"));
@@ -56,21 +53,30 @@ fn script_text_is_excluded_but_the_tag_remains() {
 
 #[test]
 fn json_script_text_is_excluded_but_the_tag_remains() {
-    let result = convert("<script type=\"application/json\">{\"a\":1}</script>");
+    let result = convert_to_tsx(
+        "<script type=\"application/json\">{\"a\":1}</script>",
+        ConvertOptions::default(),
+    );
     assert!(result.code.contains("<script type=\"application/json\">"));
     assert!(!result.code.contains("\"a\":1"));
 }
 
 #[test]
 fn unknown_script_text_is_excluded_but_the_tag_remains() {
-    let result = convert("<script type=\"text/nonsense\">wat wat</script>");
+    let result = convert_to_tsx(
+        "<script type=\"text/nonsense\">wat wat</script>",
+        ConvertOptions::default(),
+    );
     assert!(result.code.contains("<script type=\"text/nonsense\">"));
     assert!(!result.code.contains("wat wat"));
 }
 
 #[test]
 fn style_text_is_excluded_but_the_tag_remains() {
-    let result = convert("<style>.a { color: red; }</style>");
+    let result = convert_to_tsx(
+        "<style>.a { color: red; }</style>",
+        ConvertOptions::default(),
+    );
     assert!(result.code.contains("<style>"));
     assert!(result.code.contains("</style>"));
     assert!(!result.code.contains("color: red"));
@@ -78,7 +84,10 @@ fn style_text_is_excluded_but_the_tag_remains() {
 
 #[test]
 fn raw_text_is_still_emitted() {
-    let result = convert("<div is:raw><b>not markup</b></div>");
+    let result = convert_to_tsx(
+        "<div is:raw><b>not markup</b></div>",
+        ConvertOptions::default(),
+    );
     assert!(
         result.code.contains("{`<b>not markup</b>`}"),
         "is:raw content is not gated:\n{}",
@@ -88,16 +97,25 @@ fn raw_text_is_still_emitted() {
 
 #[test]
 fn script_and_style_win_over_is_raw() {
-    let script = convert("<script is:raw>const a = 1;</script>");
+    let script = convert_to_tsx(
+        "<script is:raw>const a = 1;</script>",
+        ConvertOptions::default(),
+    );
     assert!(!script.code.contains("const a = 1;"), "{}", script.code);
 
-    let style = convert("<style is:raw>.a { color: red; }</style>");
+    let style = convert_to_tsx(
+        "<style is:raw>.a { color: red; }</style>",
+        ConvertOptions::default(),
+    );
     assert!(!style.code.contains("color: red"), "{}", style.code);
 }
 
 #[test]
 fn excluded_bodies_are_still_reported_as_extracted_tags() {
-    let result = convert("<script>const a = 1;</script><style>.a{color:red}</style>");
+    let result = convert_to_tsx(
+        "<script>const a = 1;</script><style>.a{color:red}</style>",
+        ConvertOptions::default(),
+    );
     assert_eq!(result.scripts.len(), 1);
     assert_eq!(result.scripts[0].content, "const a = 1;");
     assert_eq!(result.styles.len(), 1);

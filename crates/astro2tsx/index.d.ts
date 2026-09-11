@@ -8,6 +8,7 @@ export interface AstroDiagnostic {
 
 export declare const enum AstroFrontmatterStatus {
   DoesntExist = 'doesnt-exist',
+  /** An opening fence with no closing one. */
   Open = 'open',
   Closed = 'closed'
 }
@@ -67,8 +68,8 @@ export interface ExtractedScript {
 }
 
 /**
- * How a `<script>`'s contents should be treated. A bare `<script>` is
- * processed by Astro; anything else is inlined as written.
+ * A bare `<script>` is processed by Astro; anything else is inlined as
+ * written. `Unknown` covers a `type` whose value cannot be known statically.
  */
 export declare const enum ExtractedScriptType {
   ProcessedModule = 'processed-module',

@@ -567,3 +567,88 @@ fn jsx_attribute_value(attributes: &JsxAttributeList, name: &str) -> Option<Opti
     }
     None
 }
+
+#[cfg(test)]
+mod tests {
+    use crate::{ConvertOptions, convert_to_tsx};
+
+    #[test]
+    fn unparseable_expression_bodies_are_not_silent() {
+        let broken = convert_to_tsx("<div>{x ==}</div>", ConvertOptions::default());
+        assert!(broken.has_parse_errors, "raw fallback must flag the result");
+
+        let empty = convert_to_tsx("<div>{}</div>", ConvertOptions::default());
+        assert!(!empty.has_parse_errors, "an empty expression is fine");
+    }
+
+    #[test]
+    fn expression_string_literals_keep_their_value() {
+        for (input, expected) in [
+            ("<div>{\"<br/>\"}</div>", "{\"<br/>\"}"),
+            ("<div>{'<b>y</b>'}</div>", "{'<b>y</b>'}"),
+            ("<div>{`<b>y</b>`}</div>", "{`<b>y</b>`}"),
+        ] {
+            let actual = convert_to_tsx(input, ConvertOptions::default()).code;
+            assert!(
+                actual.contains(expected),
+                "string value was rewritten for {input:?}:\n{actual}"
+            );
+        }
+    }
+
+    #[test]
+    fn expression_generics_are_not_markup() {
+        for (input, expected) in [
+            ("<div>{foo<Bar>(x)}</div>", "{foo<Bar>(x)}"),
+            ("<div>{a.b<C<D>>(y)}</div>", "{a.b<C<D>>(y)}"),
+        ] {
+            let actual = convert_to_tsx(input, ConvertOptions::default()).code;
+            assert!(
+                actual.contains(expected),
+                "generics were treated as markup for {input:?}:\n{actual}"
+            );
+        }
+    }
+
+    #[test]
+    fn only_adjacent_siblings_are_wrapped_in_a_fragment() {
+        let adjacent = convert_to_tsx(
+            "<div>{c && <span>a</span> <span>b</span>}</div>",
+            ConvertOptions::default(),
+        )
+        .code;
+        assert!(
+            adjacent.contains("{c && <Fragment><span>a</span> <span>b</span></Fragment>}"),
+            "adjacent siblings were not wrapped:\n{adjacent}"
+        );
+
+        for input in [
+            "<div>{c && <span>a</span>}</div>",
+            "<div>{l.map(i => <span>{i}</span>)}</div>",
+        ] {
+            let actual = convert_to_tsx(input, ConvertOptions::default()).code;
+            assert!(
+                !actual.contains("<Fragment><span"),
+                "a lone element was wrapped for {input:?}:\n{actual}"
+            );
+        }
+    }
+
+    #[test]
+    fn html_comments_inside_expressions_become_jsx_comments() {
+        for input in [
+            "{list.map(() => <Component><!--Hi--></Component>)}",
+            "<div>{x && <span><!--hi--></span>}</div>",
+        ] {
+            let actual = convert_to_tsx(input, ConvertOptions::default()).code;
+            assert!(
+                !actual.contains("<!--"),
+                "an html comment survived into TSX for {input:?}:\n{actual}"
+            );
+            assert!(
+                actual.contains("{/**"),
+                "no jsx comment emitted for {input:?}:\n{actual}"
+            );
+        }
+    }
+}

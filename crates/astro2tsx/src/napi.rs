@@ -3,34 +3,21 @@
 use napi_derive::napi;
 
 use crate::utf16::Utf16Index;
+use crate::utils::COMPONENT_SUFFIX;
 use crate::{
-    ConvertOptions, DiagnosticSeverity as CoreDiagnosticSeverity, ExtractedKind,
-    ExtractedScriptType as CoreScriptType, FrontmatterStatus, convert_to_tsx as convert_rs,
+    ConvertOptions, DiagnosticSeverity, ExtractedKind, ExtractedScriptType, FrontmatterStatus,
+    GeneratedRange, SourceRange, convert_to_tsx as convert_rs,
 };
 
 const SPAN_MAP_KIND_VERBATIM: u32 = 0;
 const SPAN_MAP_KIND_ATOM: u32 = 1;
 const SPAN_MAP_FEATURE_DEFINITION: u32 = 1 << 3;
 const SPAN_MAP_FEATURE_REFERENCES: u32 = 1 << 6;
-const COMPONENT_SUFFIX: &str = "__AstroComponent_";
 
 #[napi(object)]
 pub struct Range {
     pub start: u32,
     pub end: u32,
-}
-
-/// How a `<script>`'s contents should be treated. A bare `<script>` is
-/// processed by Astro; anything else is inlined as written.
-#[napi(string_enum = "kebab-case")]
-pub enum ExtractedScriptType {
-    ProcessedModule,
-    Module,
-    Inline,
-    EventAttribute,
-    Json,
-    Raw,
-    Unknown,
 }
 
 #[napi(string_enum = "kebab-case")]
@@ -57,21 +44,6 @@ pub struct ExtractedStyle {
     pub r#type: ExtractedStyleType,
     /// `css`, `scss`, `less`, … taken from the `lang` attribute.
     pub lang: String,
-}
-
-#[napi(string_enum = "kebab-case")]
-pub enum AstroFrontmatterStatus {
-    DoesntExist,
-    Open,
-    Closed,
-}
-
-#[napi]
-pub enum DiagnosticSeverity {
-    Error = 1,
-    Warning = 2,
-    Information = 3,
-    Hint = 4,
 }
 
 #[napi(object)]
@@ -105,7 +77,8 @@ pub struct ConvertToTsxResult {
     pub frontmatter: Range,
     /// Range of the `<Fragment>` body within `code`.
     pub body: Range,
-    pub frontmatter_status: AstroFrontmatterStatus,
+    #[napi(ts_type = "AstroFrontmatterStatus")]
+    pub frontmatter_status: FrontmatterStatus,
     /// Range of the frontmatter in the original source, fences included.
     pub frontmatter_source: Range,
     pub scripts: Vec<ExtractedScript>,
@@ -175,23 +148,10 @@ pub fn convert_to_tsx(source: String, options: Option<ConvertToTsxOptions>) -> C
     }
 
     ConvertToTsxResult {
-        frontmatter: Range {
-            start: generated_index.convert(result.frontmatter_range.start),
-            end: generated_index.convert(result.frontmatter_range.end),
-        },
-        body: Range {
-            start: generated_index.convert(result.body.start),
-            end: generated_index.convert(result.body.end),
-        },
-        frontmatter_status: match result.frontmatter.status {
-            FrontmatterStatus::DoesntExist => AstroFrontmatterStatus::DoesntExist,
-            FrontmatterStatus::Open => AstroFrontmatterStatus::Open,
-            FrontmatterStatus::Closed => AstroFrontmatterStatus::Closed,
-        },
-        frontmatter_source: Range {
-            start: source_index.convert(result.frontmatter.source.start),
-            end: source_index.convert(result.frontmatter.source.end),
-        },
+        frontmatter: generated_range_to_napi(result.frontmatter_range, &generated_index),
+        body: generated_range_to_napi(result.body, &generated_index),
+        frontmatter_status: result.frontmatter.status,
+        frontmatter_source: source_range_to_napi(result.frontmatter.source, &source_index),
         scripts: result
             .scripts
             .iter()
@@ -207,16 +167,8 @@ pub fn convert_to_tsx(source: String, options: Option<ConvertToTsxOptions>) -> C
             .iter()
             .map(|diagnostic| AstroDiagnostic {
                 message: diagnostic.message.clone(),
-                severity: match diagnostic.severity {
-                    CoreDiagnosticSeverity::Error => DiagnosticSeverity::Error,
-                    CoreDiagnosticSeverity::Warning => DiagnosticSeverity::Warning,
-                    CoreDiagnosticSeverity::Information => DiagnosticSeverity::Information,
-                    CoreDiagnosticSeverity::Hint => DiagnosticSeverity::Hint,
-                },
-                position: Range {
-                    start: source_index.convert(diagnostic.source.start),
-                    end: source_index.convert(diagnostic.source.end),
-                },
+                severity: diagnostic.severity,
+                position: source_range_to_napi(diagnostic.source, &source_index),
             })
             .collect(),
         code: result.code,
@@ -234,10 +186,17 @@ fn component_export_range(code: &str) -> Option<(u32, u32)> {
     Some((start as u32, end as u32))
 }
 
-fn source_position(tag: &crate::ExtractedTag, source_index: &Utf16Index) -> Range {
+fn generated_range_to_napi(range: GeneratedRange, index: &Utf16Index) -> Range {
     Range {
-        start: source_index.convert(tag.source.start),
-        end: source_index.convert(tag.source.end),
+        start: index.convert(range.start),
+        end: index.convert(range.end),
+    }
+}
+
+fn source_range_to_napi(range: SourceRange, index: &Utf16Index) -> Range {
+    Range {
+        start: index.convert(range.start),
+        end: index.convert(range.end),
     }
 }
 
@@ -246,23 +205,15 @@ fn extracted_script_to_napi(
     source_index: &Utf16Index,
 ) -> ExtractedScript {
     ExtractedScript {
-        position: source_position(tag, source_index),
+        position: source_range_to_napi(tag.source, source_index),
         content: tag.content.clone(),
-        r#type: match tag.script_type {
-            Some(CoreScriptType::ProcessedModule) => ExtractedScriptType::ProcessedModule,
-            Some(CoreScriptType::Module) => ExtractedScriptType::Module,
-            Some(CoreScriptType::Inline) => ExtractedScriptType::Inline,
-            Some(CoreScriptType::EventAttribute) => ExtractedScriptType::EventAttribute,
-            Some(CoreScriptType::Json) => ExtractedScriptType::Json,
-            Some(CoreScriptType::Raw) => ExtractedScriptType::Raw,
-            Some(CoreScriptType::Unknown) | None => ExtractedScriptType::Unknown,
-        },
+        r#type: tag.script_type.unwrap_or(ExtractedScriptType::Unknown),
     }
 }
 
 fn extracted_style_to_napi(tag: &crate::ExtractedTag, source_index: &Utf16Index) -> ExtractedStyle {
     ExtractedStyle {
-        position: source_position(tag, source_index),
+        position: source_range_to_napi(tag.source, source_index),
         content: tag.content.clone(),
         r#type: match tag.kind {
             ExtractedKind::StyleAttribute => ExtractedStyleType::StyleAttribute,

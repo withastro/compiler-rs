@@ -1,26 +1,6 @@
-#![allow(dead_code)]
+use crate::ConvertResult;
 
-use astro2tsx::{ConvertOptions, ConvertResult};
-
-pub fn parse_fixture(raw: &str) -> (String, ConvertOptions) {
-    let mut options = ConvertOptions::default();
-
-    let mut remaining = raw;
-    loop {
-        let line = remaining.lines().next().unwrap_or("");
-        let Some(config) = line.strip_prefix("// @config ") else {
-            break;
-        };
-        if let Some(value) = config.strip_prefix("filename=") {
-            options.filename = Some(value.trim().to_string());
-        }
-        remaining = remaining[line.len()..].trim_start_matches('\n');
-    }
-
-    (remaining.to_string(), options)
-}
-
-pub fn assert_mapped_runs_are_verbatim(source: &str, result: &ConvertResult, label: &str) {
+pub(crate) fn assert_mapped_runs_are_verbatim(source: &str, result: &ConvertResult, label: &str) {
     let code_len = result.code.len() as u32;
     let mut previous_generated = 0;
     for (index, mapping) in result.mappings.iter().enumerate() {

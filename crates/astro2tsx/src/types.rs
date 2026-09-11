@@ -50,6 +50,7 @@ impl SourceRange {
     }
 }
 
+#[napi_derive::napi]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DiagnosticSeverity {
     Error = 1,
@@ -65,6 +66,7 @@ pub struct Diagnostic {
     pub source: SourceRange,
 }
 
+#[napi_derive::napi(string_enum = "kebab-case", js_name = "AstroFrontmatterStatus")]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum FrontmatterStatus {
     #[default]
@@ -106,6 +108,7 @@ pub enum ExtractedKind {
 
 /// A bare `<script>` is processed by Astro; anything else is inlined as
 /// written. `Unknown` covers a `type` whose value cannot be known statically.
+#[napi_derive::napi(string_enum = "kebab-case")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ExtractedScriptType {
     ProcessedModule,
