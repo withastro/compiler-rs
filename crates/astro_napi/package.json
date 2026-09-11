@@ -33,7 +33,7 @@
     "postbuild-dev": "node patch-binding.js",
     "build-test": "pnpm run build-dev",
     "prepublishOnly": "napi prepublish -t npm",
-    "test": "node --import tsx --test ./test/*.test.ts",
+    "test": "node --test ./test/*.test.ts",
     "version": "napi version"
   },
   "devDependencies": {

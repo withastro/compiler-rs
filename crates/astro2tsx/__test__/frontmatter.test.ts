@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import { typecheckAstro } from './typecheck.js';
+import { typecheckAstro } from './typecheck.ts';
 
 test('TS-to-TSX rewrites preserve assertion precedence and generic inference', () => {
 	assert.deepEqual(

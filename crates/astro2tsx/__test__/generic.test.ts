@@ -1,7 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
 import { convertToTsx } from '../index.js';
-import { typecheckAstro, typecheck } from './typecheck.js';
+import { typecheckAstro, typecheck } from './typecheck.ts';
 
 test('generic Props retain useful global prop checking', () => {
 	for (const declaration of [

@@ -3,7 +3,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import ts from 'typescript';
 import { convertToTsx } from '../index.js';
-import { typecheck } from './typecheck.js';
+import { typecheck } from './typecheck.ts';
 
 test('default and clean-name exports preserve generic props without shadowing local names', () => {
 	const { code } = convertToTsx(

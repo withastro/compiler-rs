@@ -21,7 +21,7 @@
     "build": "napi build --platform --no-js --target wasm32-wasip1-threads --release",
     "build-dev": "napi build --platform --no-js --target wasm32-wasip1-threads",
     "prepack": "pnpm run build",
-    "test": "node --import tsx --test ./__test__/*.test.ts",
+    "test": "node --test ./__test__/*.test.ts",
     "version": "napi version"
   },
   "dependencies": {

@@ -355,6 +355,36 @@ mod tests {
     use crate::test_utils::convert;
 
     #[test]
+    fn aliases_do_not_inherit_nested_type_parameters() {
+        for fields in ["", "src: Promise<{ default: string }>;"] {
+            let result = convert(&format!(
+                "---\ninterface LocalImageProps {{ {fields} }}\ntype Props = LocalImageProps;\n---"
+            ));
+            assert!(
+                result
+                    .code
+                    .contains("function AstroComponent(_props: Props)"),
+                "{}",
+                result.code
+            );
+        }
+    }
+
+    #[test]
+    fn nested_generic_constraints_are_preserved() {
+        let result = convert(
+            "---\ninterface Props<T extends Other<{ [key: string]: any }>> {}\n---\n<div/>",
+        );
+        assert!(
+            result.code.contains(
+                "function AstroComponent<T extends Other<{ [key: string]: any }>>(_props: Props<T>)"
+            ),
+            "{}",
+            result.code
+        );
+    }
+
+    #[test]
     fn props_names_and_export_bindings_are_scope_aware() {
         for declaration in [
             "declare interface Props { value: string }",

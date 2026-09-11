@@ -1,5 +1,6 @@
 ---
 source: crates/astro2tsx/tests/snapshots.rs
+assertion_line: 134
 info:
   has_parse_errors: false
   frontmatter_status: DoesntExist
@@ -11,7 +12,7 @@ info:
     end: 30
   body:
     start: 41
-    end: 116
+    end: 206
   scripts: []
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/escape_comment_bodies.astro
@@ -21,6 +22,8 @@ input_file: crates/astro2tsx/tests/fixtures/escape_comment_bodies.astro
 <Fragment>
 {/** outer \\{ braces \\} and *\/ star-slash */}
 <div>{/** tight*/}</div>
+{/** /<div>Error?<div/>*/}
+{/** ***\/*\/**\/*\/*\/*\/<div>Even more evil comment<div/>*/}
 
 </Fragment>
 export default function AstroComponent(_props: Record<string, any>): any {}

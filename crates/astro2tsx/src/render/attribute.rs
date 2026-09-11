@@ -518,6 +518,38 @@ mod tests {
     }
 
     #[test]
+    fn valid_jsx_attribute_names_are_preserved() {
+        let source = "<div 丽dfds_fsfdsfs aria-blarg name=\"value\"></div>";
+        let result = convert_to_tsx(source, ConvertOptions::default());
+        assert!(result.code.contains(source), "{}", result.code);
+        assert_mapped_runs_are_verbatim(source, &result, source);
+    }
+
+    #[test]
+    fn dotted_attribute_names_are_lowered_to_spreads() {
+        let result =
+            convert("<div x-on:keyup.shift.enter=\"alert('Astro')\" name=\"value\"></div>");
+        assert!(
+            result
+                .code
+                .contains("{...{\"x-on:keyup.shift.enter\":\"alert('Astro')\"}} name=\"value\""),
+            "{}",
+            result.code
+        );
+    }
+
+    #[test]
+    fn spread_objects_preserve_nested_values() {
+        for source in [
+            "<DocSearch {...{ lang, labels: { modal, placeholder } }} client:only=\"preact\" />",
+            "<MainLayout {...Astro.props}>\n</MainLayout>",
+        ] {
+            let result = convert(source);
+            assert!(result.code.contains(source), "{}", result.code);
+        }
+    }
+
+    #[test]
     fn single_quoted_attributes_round_trip_with_their_quotes() {
         let source = "<div data-x='a\"b' title='plain'></div>";
         let result = convert_to_tsx(source, ConvertOptions::default());

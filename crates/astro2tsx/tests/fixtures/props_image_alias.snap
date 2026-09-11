@@ -1,0 +1,54 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+assertion_line: 134
+info:
+  has_parse_errors: false
+  frontmatter_status: Closed
+  frontmatter_source:
+    start: 0
+    end: 786
+  frontmatter:
+    start: 30
+    end: 811
+  body:
+    start: 812
+    end: 812
+  scripts: []
+  styles: []
+input_file: crates/astro2tsx/tests/fixtures/props_image_alias.astro
+---
+/* @jsxImportSource astro */
+
+
+interface LocalImageProps
+  extends Omit<HTMLAttributes, 'src' | 'width' | 'height'>,
+    Omit<TransformOptions, 'src'>,
+    Pick<astroHTML.JSX.ImgHTMLAttributes, 'loading' | 'decoding'> {
+  src: ImageMetadata | Promise<{ default: ImageMetadata }>;
+  alt: string;
+  sizes: HTMLImageElement['sizes'];
+  widths: number[];
+  formats?: OutputFormat[];
+}
+interface RemoteImageProps
+  extends Omit<HTMLAttributes, 'src' | 'width' | 'height'>,
+    TransformOptions,
+    Pick<ImgHTMLAttributes, 'loading' | 'decoding'> {
+  src: string;
+  alt: string;
+  sizes: HTMLImageElement['sizes'];
+  widths: number[];
+  aspectRatio: TransformOptions['aspectRatio'];
+  formats?: OutputFormat[];
+  background: TransformOptions['background'];
+}
+export type Props = LocalImageProps | RemoteImageProps;
+
+
+export default function AstroComponent(_props: Props): any {}
+/**
+ * Astro global available in all contexts in .astro files
+ *
+ * [Astro documentation](https://docs.astro.build/reference/api-reference/#astro-global)
+*/
+declare const Astro: Readonly<import('astro').AstroGlobal<Props, typeof AstroComponent>>;

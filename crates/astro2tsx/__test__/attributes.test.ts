@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import { typecheckAstro } from './typecheck.js';
+import { typecheckAstro } from './typecheck.ts';
 
 test('comment-only attributes type-check as undefined', () => {
 	const declarations = `declare function C(props: { foo?: string; '@foo'?: string }): any;`;

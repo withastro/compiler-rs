@@ -73,9 +73,6 @@ pub(super) fn render(
     if let Some(node) = frontmatter {
         emit_frontmatter(printer, node, rewritten.as_ref());
     }
-    if let Some((root, _)) = rewritten {
-        crate::syntax::drop_syntax_tree(root.into_syntax());
-    }
 
     printer.frontmatter_info = frontmatter_info(frontmatter, printer.source.len() as u32);
     RenderedFrontmatter {
@@ -558,6 +555,7 @@ mod tests {
     fn props_binding_needs_a_local_name() {
         for (input, has_props) in [
             ("---\nimport Foo from './Props';\nFoo;\n---\n<div/>", false),
+            ("---\nfunction DoTheThing(Props) {}\n---", false),
             (
                 "---\nimport { Props as Other } from './t';\n---\n<div/>",
                 false,
@@ -588,16 +586,21 @@ mod tests {
     }
 
     #[test]
-    fn frontmatter_is_terminated_even_when_a_comment_ends_with_a_semicolon() {
-        let actual = convert_to_tsx(
-            "---\nconst x = foo\n// note;\n---\n<div/>",
-            ConvertOptions::default(),
-        )
-        .code;
-        assert!(
-            actual.contains("{};<Fragment>"),
-            "`<Fragment>` can continue the unterminated expression:\n{actual}"
-        );
+    fn frontmatter_is_terminated_before_the_template() {
+        for frontmatter in [
+            "const x = foo\n// note;",
+            "console.log(\"hello\")",
+            "const { hello } = Astro.props",
+        ] {
+            let result = convert(&format!(
+                "---\n{frontmatter}\n---\n<div class={{hello}}></div>"
+            ));
+            assert!(
+                result.code.contains("{};<Fragment>"),
+                "`<Fragment>` can continue the unterminated expression:\n{}",
+                result.code,
+            );
+        }
     }
 
     #[test]
@@ -632,7 +635,7 @@ mod tests {
 
     #[test]
     fn handles_non_latin_identifiers() {
-        let frontmatter = "var π = Math.PI;\nvar ಠ_ಠ = eval;\nvar ლ_ಠ益ಠ_ლ = 42;\nvar λ = function() {};\nvar Ꙭൽↈⴱ = 'huh';\nvar 〱〱 = 2;\nvar Ⅳ = 4;";
+        let frontmatter = "var π = Math.PI;\nvar ಠ_ಠ = eval;\nvar ლ_ಠ益ಠ_ლ = 42;\nvar λ = function() {};\nvar Ꙭൽↈⴱ = 'huh';\nvar 〱〱 = 2;\nvar Ⅳ = 4;\nvar Ⅴ = 5;\nⅣ + Ⅴ;\nvar ᱹ = 1;\nconsole.assert([1, 2, 3][ᱹ] === 2);\nvar foo\u{200c}bar = 42;\nvar price_9\u{336}9\u{336}_89 = 'cheap';";
         let input = format!("---\n{frontmatter}\n---\n\n<div></div>\n");
         let actual = convert_to_tsx(&input, ConvertOptions::default()).code;
         assert!(

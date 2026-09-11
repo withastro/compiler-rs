@@ -122,6 +122,7 @@ mod tests {
             ("lang=\" SCSS \"", "scss"),
             ("LANG='scss'", "scss"),
             ("lang='s&#99;ss'", "scss"),
+            ("lang='pcss'", "pcss"),
         ] {
             let markup = format!("<style {attribute}>x</style>");
             for source in [markup.clone(), format!("{{{markup}}}")] {
@@ -142,6 +143,13 @@ mod tests {
             ("TYPE='module'", ExtractedScriptType::Module),
             ("type={mime}", ExtractedScriptType::Unknown),
             ("type='application/json'", ExtractedScriptType::Json),
+            ("type='application/ld+json'", ExtractedScriptType::Json),
+            ("type='text/partytown'", ExtractedScriptType::Inline),
+            (
+                "type='text/unknown' is:inline",
+                ExtractedScriptType::Unknown,
+            ),
+            ("is:raw", ExtractedScriptType::Raw),
         ] {
             let markup = format!("<script {attribute}>run()</script>");
             for source in [markup.clone(), format!("{{{markup}}}")] {
@@ -162,6 +170,52 @@ mod tests {
                 assert_eq!(result.scripts[0].content, "handle(event)");
             }
         }
+    }
+
+    #[test]
+    fn style_tags_keep_their_position_in_html_documents() {
+        for source in [
+            "<html><body><h1>Hello world!</h1></body></html>\n<style></style>",
+            "<html></html>\n<style></style>",
+            "<html lang=\"en\"><head><BaseHead /></head></html>\n<style>@use \"../styles/global.scss\";</style>",
+            "<html lang=\"en\"><head><BaseHead /></head><body><Header /></body></html>\n<style>@use \"../styles/global.scss\";</style>",
+            "<html lang=\"en\"><head><BaseHead /></head><body><Header /></body><style>@use \"../styles/global.scss\";</style></html>",
+        ] {
+            let result = convert(source);
+            assert_eq!(result.styles.len(), 1);
+            let style = &result.styles[0];
+            assert_eq!(
+                &source[style.source.start as usize..style.source.end as usize],
+                style.content
+            );
+            let expected = source.replace(&style.content, "");
+            assert_eq!(
+                &result.code[result.body.start as usize..result.body.end as usize],
+                format!("{expected}\n")
+            );
+            assert_eq!(style.range.start, style.range.end);
+            assert!(result.code[..style.range.start as usize].ends_with("<style>"));
+            assert!(result.code[style.range.end as usize..].starts_with("</style>"));
+        }
+    }
+
+    #[test]
+    fn inline_script_newlines_belong_to_the_extracted_source() {
+        let source = "<script is:inline>\n  const MyNumber = 3;\n  console.log(MyNumber.toStrang());\n</script>\n";
+        let result = convert(source);
+        assert_eq!(result.scripts.len(), 1);
+        let script = &result.scripts[0];
+        assert_eq!(script.source.start as usize, source.find('\n').unwrap());
+        assert_eq!(
+            script.content,
+            "\n  const MyNumber = 3;\n  console.log(MyNumber.toStrang());\n"
+        );
+        assert_eq!(
+            &source[script.source.start as usize..script.source.end as usize],
+            script.content
+        );
+        assert_eq!(script.range.start, script.range.end);
+        assert!(result.code.contains("<script is:inline></script>"));
     }
 
     #[test]
@@ -253,9 +307,16 @@ mod tests {
 
     #[test]
     fn extracted_tag_sources_slice_to_their_content() {
-        let source = "---\nconst x = 1;\n---\n<style>.a{color:red}</style>\n<div onclick=\"go()\" style=color:red data-x='a\"b'></div>\n<script>run();</script>";
+        let source = "---\nconst x = '𝒳';\n---\n<style>.a{background:url('𝒳.png')}</style>\n<style lang='pcss'>.b{color:red}</style>\n<div onclick=\"go('𝒳')\" style=color:red data-x='a\"b'></div>\n<script>run('𝒳');</script>\n<script>after();</script>";
         let result = convert_to_tsx(source, ConvertOptions::default());
-        assert!(!result.scripts.is_empty() && !result.styles.is_empty());
+        assert_eq!(result.scripts.len(), 3);
+        assert_eq!(result.styles.len(), 3);
+        assert_eq!(result.scripts[0].content, "go('𝒳')");
+        assert_eq!(result.scripts[1].content, "run('𝒳');");
+        assert_eq!(result.scripts[2].content, "after();");
+        assert_eq!(result.styles[0].content, ".a{background:url('𝒳.png')}");
+        assert_eq!(result.styles[1].lang.as_deref(), Some("pcss"));
+        assert_eq!(result.styles[2].content, "color:red");
         for tag in result.scripts.iter().chain(result.styles.iter()) {
             assert_eq!(
                 &source[tag.source.start as usize..tag.source.end as usize],

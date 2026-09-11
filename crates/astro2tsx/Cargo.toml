@@ -39,7 +39,3 @@ serde = { version = "1", features = ["derive"] }
 [build-dependencies]
 napi-build          = { workspace = true }
 napi-derive-backend = { workspace = true }
-
-[[bench]]
-name    = "convert"
-harness = false

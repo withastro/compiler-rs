@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import { typecheckAstro } from './typecheck.js';
+import { typecheckAstro } from './typecheck.ts';
 
 test('expressions inside literal tags in title and textarea retain type checking', () => {
 	for (const tag of ['title', 'textarea']) {

@@ -11,7 +11,6 @@ mod napi;
 mod printer;
 mod props;
 mod render;
-mod syntax;
 #[cfg(test)]
 mod test_utils;
 mod types;
@@ -294,8 +293,38 @@ mod tests {
     }
 
     #[test]
+    fn malformed_comments_and_fragments_report_the_offending_line() {
+        for (line, problem) in [
+            ("      {/*", "/*"),
+            ("    < data-test=\"hello\"><div></div></>", "</>"),
+        ] {
+            let source = format!(
+                "<html>\n  <head>\n    <title>Hello world</title>\n  </head>\n  <body>\n{line}\n  </body>\n</html>"
+            );
+            let result = convert_to_tsx(&source, ConvertOptions::default());
+            assert!(result.has_parse_errors);
+            assert!(result.code.contains(line));
+            let start = source.find(problem).unwrap() as u32;
+            assert!(
+                result.diagnostics.iter().any(|diagnostic| {
+                    diagnostic.source.start <= start
+                        && diagnostic.source.end > start
+                        && !diagnostic.message.is_empty()
+                }),
+                "{:?}",
+                result.diagnostics
+            );
+            assert_mapped_runs_are_verbatim(&source, &result, line);
+        }
+    }
+
+    #[test]
     fn tolerates_line_separators() {
         for input in [
+            " ",
+            "something something",
+            "something  ",
+            "   ",
             "\u{2028}",
             "something\u{2029}something",
             "something\u{2028}\u{2029}",
@@ -331,6 +360,18 @@ mod tests {
             ("<div>x</div", "<div>x</div"),
             ("<>x", "<>x"),
             ("<img /", "<img /"),
+            ("<components.", "<components."),
+            ("<myMarkdown.\n", "<myMarkdown.\n"),
+            ("<div></div>\n<div", "<div></div>\n<div"),
+            ("<div>\n<div\n</div>\n", "<div>\n<div\n</div>\n"),
+            ("<div class={", "<div class={"),
+            ("<div class=`></div>\n  ", "<div class=`></div>\n  "),
+            ("<main id=\"gotcha />", "<main id=\"gotcha />"),
+            ("<main id='gotcha/>", "<main id='gotcha/>"),
+            (
+                "<div>{[].map((something) => <div><Blocknote</div><div><Image</div>)}</div>",
+                "<div>{[].map((something) => <div><Blocknote</div><div><Image</div>)}</div>",
+            ),
         ] {
             let result = convert_to_tsx(input, ConvertOptions::default());
             assert!(

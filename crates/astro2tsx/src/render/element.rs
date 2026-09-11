@@ -179,8 +179,6 @@ pub(super) fn emit_expression_body(
         }
         printer.write_with_mapping(raw, original_start);
     }
-    drop(parse);
-    crate::syntax::drop_syntax_tree(syntax);
 }
 
 fn diagnostic_source_range(
@@ -457,6 +455,35 @@ mod tests {
         let body_slice = &result.code[result.body.start as usize..result.body.end as usize];
         assert!(body_slice.contains("<h1>"));
         assert!(body_slice.contains("</h1>"));
+    }
+
+    #[test]
+    fn tag_headers_and_leading_fragments_preserve_whitespace() {
+        for source in [
+            "<Button ></Button>",
+            "<Button a=\"b\" ></Button>",
+            "<Button      ></Button>",
+            "<Button\n\t></Button>",
+            "\n<>Test123</>",
+        ] {
+            let result = crate::test_utils::convert(source);
+            assert!(result.code.contains(source), "{}", result.code);
+        }
+    }
+
+    #[test]
+    fn jsx_comments_preserve_surrounding_whitespace() {
+        for comment in ["/* @ts-expect-error */", "// @ts-expect-error"] {
+            for source in [
+                format!("{{\n{comment}\n}}\n<Component prop=\"value\"></Component>"),
+                format!("{{\n{comment}\n<Component prop=\"value\"></Component>\n}}"),
+            ] {
+                let result = crate::test_utils::convert(&source);
+                assert!(result.code.contains(&source), "{}", result.code);
+            }
+        }
+        let source = "{/* @ts-expect-error */}\n<Component prop=\"value\"></Component>";
+        assert!(crate::test_utils::convert(source).code.contains(source));
     }
 
     #[test]
