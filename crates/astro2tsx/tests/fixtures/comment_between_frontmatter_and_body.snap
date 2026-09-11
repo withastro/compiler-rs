@@ -1,0 +1,30 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+info:
+  has_parse_errors: false
+  frontmatter_status: Closed
+  frontmatter_source:
+    start: 0
+    end: 20
+  frontmatter:
+    start: 30
+    end: 45
+  body:
+    start: 60
+    end: 92
+  scripts: []
+  styles: []
+input_file: crates/astro2tsx/tests/fixtures/comment_between_frontmatter_and_body.astro
+---
+/* @jsxImportSource astro */
+
+
+const a = 1;
+
+;{};<Fragment>
+
+{/** between */}
+<div>x</div>
+
+</Fragment>
+export default function AstroComponent(_props: Record<string, any>): any {}

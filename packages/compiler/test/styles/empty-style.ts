@@ -1,7 +1,7 @@
 import { type TransformResult, transform, preprocessStyles } from '@astrojs/compiler-rs';
 import { describe, it, before } from 'node:test';
 import assert from 'node:assert/strict';
-import { preprocessStyle } from '../utils.js';
+import { preprocessStyle } from '../utils.ts';
 
 const FIXTURE = `
 ---

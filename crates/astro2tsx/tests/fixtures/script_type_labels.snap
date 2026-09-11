@@ -1,0 +1,54 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+info:
+  has_parse_errors: false
+  frontmatter_status: DoesntExist
+  frontmatter_source:
+    start: 0
+    end: 0
+  frontmatter:
+    start: 30
+    end: 30
+  body:
+    start: 41
+    end: 174
+  scripts:
+    - kind: Script
+      lang: ~
+      generated:
+        start: 71
+        end: 71
+      source:
+        start: 30
+        end: 35
+      content: go();
+    - kind: Script
+      lang: ~
+      generated:
+        start: 113
+        end: 113
+      source:
+        start: 77
+        end: 84
+      content: "{\"a\":1}"
+    - kind: Script
+      lang: ~
+      generated:
+        start: 163
+        end: 163
+      source:
+        start: 134
+        end: 137
+      content: wat
+  styles: []
+input_file: crates/astro2tsx/tests/fixtures/script_type_labels.astro
+---
+/* @jsxImportSource astro */
+
+<Fragment>
+<script type="text/partytown"></script>
+<script type="speculationrules"></script>
+<script is:inline type="text/x-unknown"></script>
+
+</Fragment>
+export default function AstroComponent(_props: Record<string, any>): any {}

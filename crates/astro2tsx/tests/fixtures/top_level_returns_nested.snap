@@ -1,0 +1,35 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+info:
+  has_parse_errors: false
+  frontmatter_status: Closed
+  frontmatter_source:
+    start: 0
+    end: 165
+  frontmatter:
+    start: 30
+    end: 190
+  body:
+    start: 205
+    end: 214
+  scripts: []
+  styles: []
+input_file: crates/astro2tsx/tests/fixtures/top_level_returns_nested.astro
+---
+/* @jsxImportSource astro */
+
+
+if (broken) {
+  throw  Astro.redirect("/");
+}
+const fn = () => { return 1; };
+function inner() { return 2; }
+class C { method() { return 3; } }
+throw  "top";
+
+;{};<Fragment>
+
+<div/>
+
+</Fragment>
+export default function AstroComponent(_props: Record<string, any>): any {}

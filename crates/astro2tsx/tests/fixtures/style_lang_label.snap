@@ -1,0 +1,34 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+info:
+  has_parse_errors: false
+  frontmatter_status: DoesntExist
+  frontmatter_source:
+    start: 0
+    end: 0
+  frontmatter:
+    start: 30
+    end: 30
+  body:
+    start: 41
+    end: 70
+  scripts: []
+  styles:
+    - kind: Style
+      lang: scss
+      generated:
+        start: 60
+        end: 60
+      source:
+        start: 19
+        end: 37
+      content: ".a { color: red; }"
+input_file: crates/astro2tsx/tests/fixtures/style_lang_label.astro
+---
+/* @jsxImportSource astro */
+
+<Fragment>
+<style lang="scss"></style>
+
+</Fragment>
+export default function AstroComponent(_props: Record<string, any>): any {}

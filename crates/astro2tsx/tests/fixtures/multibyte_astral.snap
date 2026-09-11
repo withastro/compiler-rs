@@ -1,0 +1,29 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+info:
+  has_parse_errors: false
+  frontmatter_status: Closed
+  frontmatter_source:
+    start: 0
+    end: 27
+  frontmatter:
+    start: 30
+    end: 52
+  body:
+    start: 67
+    end: 86
+  scripts: []
+  styles: []
+input_file: crates/astro2tsx/tests/fixtures/multibyte_astral.astro
+---
+/* @jsxImportSource astro */
+
+
+const π = Math.PI;
+
+;{};<Fragment>
+
+<p>🦄 {π}</p>
+
+</Fragment>
+export default function AstroComponent(_props: Record<string, any>): any {}

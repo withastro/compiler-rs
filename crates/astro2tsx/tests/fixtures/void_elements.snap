@@ -1,0 +1,25 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+info:
+  has_parse_errors: false
+  frontmatter_status: DoesntExist
+  frontmatter_source:
+    start: 0
+    end: 0
+  frontmatter:
+    start: 30
+    end: 30
+  body:
+    start: 41
+    end: 103
+  scripts: []
+  styles: []
+input_file: crates/astro2tsx/tests/fixtures/void_elements.astro
+---
+/* @jsxImportSource astro */
+
+<Fragment>
+<div><br/><hr /><img src="a.png"/><input type="text"/></div>
+
+</Fragment>
+export default function AstroComponent(_props: Record<string, any>): any {}
