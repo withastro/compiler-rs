@@ -5,15 +5,14 @@ use biome_html_syntax::{
 use biome_js_parser::{JsOffsetParse, JsParserOptions, parse_js_with_offset};
 use biome_languages::JsFileSource;
 use biome_languages::javascript::JsEmbeddingKind;
-use biome_rowan::{AstNode, AstNodeList, TextRange, TextSize};
+use biome_rowan::{AstNode, AstNodeList, TextRange, TextSize, WalkEvent};
 
 use crate::expression::emit_expression_tree;
 use crate::printer::{Printer, range_start};
 use crate::types::{Diagnostic, DiagnosticSeverity, GeneratedRange, SourceRange};
+use crate::utils::{BodyMode, body_mode};
 
-use super::attribute::{
-    attribute_key, emit_intra_tag_space, emit_open_tag, reconstructed_v_for_source_range,
-};
+use super::attribute::{attribute_key, emit_intra_tag_space, emit_open_tag};
 use super::extracted::{classify_script, inner_range, style_lang_label};
 use super::text::{
     contains_non_ascii_tag_name, emit_jsx_text_range, emit_source_gap, slice_source, tag_name_text,
@@ -34,9 +33,6 @@ pub(super) fn render_element(printer: &mut Printer, element: AnyHtmlElement) {
             let range = element.range();
             let text = slice_source(printer.source, range);
             let start = range_start(range);
-            if let Some(range) = reconstructed_v_for_source_range(text, start) {
-                printer.suppressed_html_diagnostics.push(range);
-            }
             // A stray doctype recovers as bogus text, but TSX has no doctype syntax.
             if text
                 .get(..9)
@@ -90,7 +86,6 @@ fn render_text_expression(printer: &mut Printer, expression: AnyHtmlTextExpressi
             render_single_text_expression(printer, node);
         }
         AnyHtmlTextExpression::HtmlDoubleTextExpression(node) => {
-            // Preserve Vue-style `{{ … }}` verbatim in HTML mode.
             let range = node.range();
             let text = slice_source(printer.source, range);
             printer.write_with_mapping(text, range_start(range));
@@ -132,7 +127,7 @@ fn render_single_text_expression(printer: &mut Printer, node: HtmlSingleTextExpr
             printer.map_nil();
             printer.write("(void 0)");
         } else {
-            emit_expression_body(printer, raw, original_start);
+            emit_expression_body(printer, raw, original_start, false);
         }
     } else {
         printer.map_nil();
@@ -143,7 +138,6 @@ fn render_single_text_expression(printer: &mut Printer, node: HtmlSingleTextExpr
     printer.write("}");
 }
 
-/// Parse the tree to avoid rewriting markup-like strings and generics.
 fn parse_expression_body(text: &str, base_offset: u32) -> JsOffsetParse {
     parse_js_with_offset(
         text,
@@ -156,25 +150,39 @@ fn parse_expression_body(text: &str, base_offset: u32) -> JsOffsetParse {
     )
 }
 
-pub(super) fn emit_expression_body(printer: &mut Printer, raw: &str, original_start: u32) {
+pub(super) fn emit_expression_body(
+    printer: &mut Printer,
+    raw: &str,
+    original_start: u32,
+    require_value: bool,
+) {
     let parse = parse_expression_body(raw, original_start);
+    let syntax = parse.syntax().into_inner();
     if parse.diagnostics().is_empty() {
-        let syntax = parse.syntax();
-        emit_expression_tree(printer, syntax.inner(), original_start);
-        return;
+        if require_value
+            && syntax
+                .first_token()
+                .is_some_and(|token| token.kind() == biome_js_syntax::JsSyntaxKind::EOF)
+        {
+            printer.map_nil();
+            printer.write("(void 0)");
+        }
+        emit_expression_tree(printer, &syntax, original_start);
+    } else {
+        printer.has_embedded_parse_errors = true;
+        for diagnostic in parse.diagnostics() {
+            printer.diagnostics.push(Diagnostic {
+                message: diagnostic.message.to_string(),
+                severity: DiagnosticSeverity::Error,
+                source: diagnostic_source_range(diagnostic, original_start, raw.len() as u32),
+            });
+        }
+        printer.write_with_mapping(raw, original_start);
     }
-    printer.has_embedded_parse_errors = true;
-    for diagnostic in parse.diagnostics() {
-        printer.diagnostics.push(Diagnostic {
-            message: diagnostic.message.to_string(),
-            severity: DiagnosticSeverity::Error,
-            source: diagnostic_source_range(diagnostic, original_start, raw.len() as u32),
-        });
-    }
-    printer.write_with_mapping(raw, original_start);
+    drop(parse);
+    crate::syntax::drop_syntax_tree(syntax);
 }
 
-/// Spanless expression diagnostics fall back to the whole expression body.
 fn diagnostic_source_range(
     diagnostic: &biome_parser::diagnostic::ParseDiagnostic,
     start: u32,
@@ -201,7 +209,6 @@ fn render_html_element(printer: &mut Printer, node: HtmlElement) {
     };
     let open_r_angle = opening.r_angle_token().ok();
 
-    // Preserve incomplete tags verbatim so error recovery loses no source text.
     if open_r_angle.is_none() {
         let range = node.syntax().text_trimmed_range();
         let text = slice_source(printer.source, range);
@@ -232,31 +239,18 @@ fn render_html_element(printer: &mut Printer, node: HtmlElement) {
 
     // `<Script>` is a component, not the HTML element, so match the node kind.
     let is_html_tag = matches!(name, AnyHtmlTagName::HtmlTagName(_));
-    let is_script = is_html_tag && tag_name.eq_ignore_ascii_case("script");
-    let is_style = is_html_tag && tag_name.eq_ignore_ascii_case("style");
-    // Expressions remain active, but tag-looking children render as text in these HTML elements.
-    let has_text_only_children = is_html_tag
-        && [
-            "iframe",
-            "noembed",
-            "noframes",
-            "plaintext",
-            "textarea",
-            "title",
-            "xmp",
-        ]
+    let element_is_raw = attributes
         .iter()
-        .any(|name| tag_name.eq_ignore_ascii_case(name));
+        .any(|a| attribute_key(a).as_deref() == Some("is:raw"));
+    let mode = body_mode(is_html_tag.then_some(tag_name.as_str()), element_is_raw);
+    let is_script = mode == BodyMode::Script;
+    let is_style = mode == BodyMode::Style;
 
     let children = node.children();
     let body_start = printer.position();
 
     let opening_end = u32::from(open_r_angle.text_trimmed_range().end());
-    let element_is_raw = attributes
-        .iter()
-        .any(|a| attribute_key(a).as_deref() == Some("is:raw"));
-    // Script and style win over `is:raw` when classifying the body.
-    let inline_raw_body = element_is_raw && !is_script && !is_style;
+    let inline_raw_body = mode == BodyMode::Raw;
 
     let closing_inner_start = node
         .closing_element()
@@ -267,7 +261,6 @@ fn render_html_element(printer: &mut Printer, node: HtmlElement) {
     if is_script || is_style {
         // Keep the tag for TSX analysis while reporting its body separately.
     } else if inline_raw_body {
-        // Unclosed raw-text content runs to the end of the node the parser built.
         let inner_start = opening_end;
         let inner_end = closing_inner_start.unwrap_or_else(|| u32::from(node.range().end()));
         if inner_end > inner_start {
@@ -278,25 +271,26 @@ fn render_html_element(printer: &mut Printer, node: HtmlElement) {
             printer.map_nil();
             printer.write("`}");
         }
-    } else if has_text_only_children {
+    } else if mode == BodyMode::TextOnly {
         let mut prev_end = opening_end;
-        for child in children.iter() {
-            let child_range = child.range();
-            let child_start = range_start(child_range);
-            emit_jsx_text_range(printer, prev_end, child_start);
-            if let AnyHtmlElement::AnyHtmlContent(AnyHtmlContent::AnyHtmlTextExpression(
-                expression,
-            )) = child
-            {
+        let mut walk = children.syntax().preorder();
+        while let Some(event) = walk.next() {
+            let WalkEvent::Enter(node) = event else {
+                continue;
+            };
+            if let Some(expression) = AnyHtmlTextExpression::cast(node) {
+                let range = expression.range();
+                emit_jsx_text_range(printer, prev_end, range_start(range));
                 render_text_expression(printer, expression);
-            } else {
-                emit_jsx_text_range(printer, child_start, u32::from(child_range.end()));
+                prev_end = u32::from(range.end());
+                walk.skip_subtree();
             }
-            prev_end = u32::from(child_range.end());
         }
-        if let Some(trailing_to) = closing_inner_start {
-            emit_jsx_text_range(printer, prev_end, trailing_to);
-        }
+        emit_jsx_text_range(
+            printer,
+            prev_end,
+            closing_inner_start.unwrap_or_else(|| u32::from(node.range().end())),
+        );
     } else {
         let mut prev_end: Option<u32> = None;
         for child in children.iter() {
@@ -338,7 +332,6 @@ fn render_html_element(printer: &mut Printer, node: HtmlElement) {
         }
     }
 
-    // Broken input is emitted as written; nothing is synthesized around missing tokens.
     if let Ok(closing) = node.closing_element() {
         if let Ok(l_angle) = closing.l_angle_token() {
             printer.map_to_offset(range_start(l_angle.text_trimmed_range()));
@@ -362,7 +355,6 @@ fn render_self_closing_element(printer: &mut Printer, node: HtmlSelfClosingEleme
     let Ok(l_angle) = node.l_angle_token() else {
         return;
     };
-    // A truncated tag (`<img /`) round-trips whole instead of being dropped.
     let Ok(r_angle) = node.r_angle_token() else {
         let range = node.syntax().text_trimmed_range();
         let text = slice_source(printer.source, range);
@@ -380,7 +372,6 @@ fn render_self_closing_element(printer: &mut Printer, node: HtmlSelfClosingEleme
         &attributes,
     );
 
-    // Measure before the slash to preserve whether the source included separating space.
     let r_angle_start = range_start(r_angle.text_trimmed_range());
     let pre_slash = node
         .slash_token()
@@ -589,10 +580,13 @@ mod tests {
                 parsed.diagnostics(),
                 result.code
             );
+            let expected = if matches!(element, "title" | "textarea") {
+                "{value} with {`<`}b{`>`}tags{`<`}/b{`>`}"
+            } else {
+                "{`{value} with <b>tags</b>`}"
+            };
             assert!(
-                result
-                    .code
-                    .contains("{value} with {`<`}b{`>`}tags{`<`}/b{`>`}"),
+                result.code.contains(expected),
                 "tag-looking content should be text for {element}:\n{}",
                 result.code
             );
@@ -604,6 +598,52 @@ mod tests {
             let result = convert_to_tsx(&input, ConvertOptions::default());
             assert!(result.code.contains("{value} with <b>tags</b>"));
             assert_mapped_runs_are_verbatim(&input, &result, "structured raw-space children");
+        }
+    }
+
+    #[test]
+    fn text_only_elements_preserve_expressions_inside_literal_tags() {
+        for tag in ["title", "textarea"] {
+            for body in [
+                "<b>{value}</b>",
+                "<b><i>{value}</i></b>",
+                "\n <b>\n {value} \n </b> \n",
+                "<Widget>{value}</Widget>",
+                "<b>{value}</b>{other}",
+                "<b>{ok && <span>{value}</span>}</b>",
+            ] {
+                let markup = format!("<{tag}>{body}</{tag}>");
+                for source in [markup.clone(), format!("{{{markup}}}")] {
+                    let result = crate::test_utils::convert(&source);
+                    assert!(result.code.contains("{value}"), "{}", result.code);
+                    assert!(!result.code.contains("<b>"), "{}", result.code);
+                    assert!(!result.code.contains("<Widget>"), "{}", result.code);
+                    if body.contains("other") {
+                        assert!(result.code.contains("{other}"), "{}", result.code);
+                    }
+                    if body.contains("span") {
+                        assert!(
+                            result.code.contains("<span>{value}</span>"),
+                            "{}",
+                            result.code
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn unclosed_text_only_elements_keep_literal_content() {
+        for tag in ["title", "textarea"] {
+            let source = format!("<{tag}>before <b>after</b>");
+            let result = convert_to_tsx(&source, ConvertOptions::default());
+            assert!(
+                result.code.contains("before {`<`}b{`>`}after{`<`}/b{`>`}"),
+                "{}",
+                result.code
+            );
+            assert_mapped_runs_are_verbatim(&source, &result, "unclosed text-only element");
         }
     }
 

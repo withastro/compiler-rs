@@ -3,13 +3,16 @@ use biome_js_syntax::{
     JsSyntaxKind, JsxAttribute, JsxAttributeList, JsxElement, JsxFragment, JsxSelfClosingElement,
     JsxString, JsxText,
 };
-use biome_rowan::{AstNode, AstNodeList, SyntaxNode, SyntaxToken, SyntaxTriviaPiece, TextSize};
+use biome_rowan::{
+    AstNode, AstNodeList, SyntaxNode, SyntaxToken, SyntaxTriviaPiece, TextSize, WalkEvent,
+};
 
 use crate::printer::Printer;
 use crate::types::{ExtractedScriptType, GeneratedRange, SourceRange};
 use crate::utils::{
-    comment_needs_leading_space, decode_html_entities, escape_javascript_string,
-    is_html_event_attribute, is_valid_tsx_attribute_name, strip_matching_quotes,
+    BodyMode, body_mode, comment_needs_leading_space, decode_html_entities,
+    escape_javascript_string, is_html_event_attribute, is_valid_tsx_attribute_name,
+    strip_matching_quotes,
 };
 
 type JsNode = SyntaxNode<JsLanguage>;
@@ -26,50 +29,73 @@ fn abs(base: u32, offset: TextSize) -> u32 {
 }
 
 fn emit_node(printer: &mut Printer, node: &JsNode, base: u32, in_children: bool) {
+    let mut stack = vec![(biome_rowan::SyntaxElement::Node(node.clone()), in_children)];
+    while let Some((element, in_children)) = stack.pop() {
+        let node = match element {
+            biome_rowan::SyntaxElement::Token(token) => {
+                emit_token(printer, &token, base, in_children);
+                continue;
+            }
+            biome_rowan::SyntaxElement::Node(node) => node,
+        };
+        if in_children
+            && printer.expressions_disabled
+            && node.kind() == JsSyntaxKind::JSX_EXPRESSION_CHILD
+        {
+            let range = node.text_range_with_trivia();
+            let start = abs(base, range.start());
+            let text = &printer.source[start as usize..abs(base, range.end()) as usize];
+            printer.write_jsx_text_with_mapping(text, start);
+            continue;
+        }
+        if emit_special_node(printer, &node, base) {
+            continue;
+        }
+        let child_context = in_children && node.kind() != JsSyntaxKind::JSX_EXPRESSION_CHILD;
+        let start = stack.len();
+        stack.extend(
+            node.children_with_tokens()
+                .map(|child| (child, child_context)),
+        );
+        stack[start..].reverse();
+    }
+}
+
+fn emit_special_node(printer: &mut Printer, node: &JsNode, base: u32) -> bool {
     match node.kind() {
         JsSyntaxKind::JSX_ELEMENT => {
             if let Some(element) = JsxElement::cast_ref(node) {
                 emit_jsx_element(printer, &element, base);
-                return;
+                return true;
             }
         }
         JsSyntaxKind::JSX_SELF_CLOSING_ELEMENT => {
             if let Some(element) = JsxSelfClosingElement::cast_ref(node) {
                 emit_self_closing_element(printer, &element, base);
-                return;
+                return true;
             }
         }
         JsSyntaxKind::JSX_FRAGMENT => {
             if let Some(fragment) = JsxFragment::cast_ref(node) {
                 emit_jsx_fragment(printer, &fragment, base);
-                return;
+                return true;
             }
         }
         JsSyntaxKind::ASTRO_IMPLICIT_FRAGMENT => {
             if let Some(fragment) = AstroImplicitFragment::cast_ref(node) {
                 emit_implicit_fragment(printer, &fragment, base);
-                return;
+                return true;
             }
         }
         JsSyntaxKind::JSX_TEXT => {
             if let Some(text) = JsxText::cast_ref(node) {
                 emit_jsx_text(printer, &text, base);
-                return;
+                return true;
             }
         }
         _ => {}
     }
-    let child_context = in_children && node.kind() != JsSyntaxKind::JSX_EXPRESSION_CHILD;
-    for child in node.children_with_tokens() {
-        match child {
-            biome_rowan::SyntaxElement::Node(child) => {
-                emit_node(printer, &child, base, child_context)
-            }
-            biome_rowan::SyntaxElement::Token(token) => {
-                emit_token(printer, &token, base, child_context)
-            }
-        }
-    }
+    false
 }
 
 fn emit_token(printer: &mut Printer, token: &JsToken, base: u32, in_children: bool) {
@@ -143,33 +169,16 @@ fn emit_implicit_fragment(printer: &mut Printer, fragment: &AstroImplicitFragmen
     printer.write("</Fragment>");
 }
 
-enum ChildrenMode {
-    Normal,
-    ExcludedScript,
-    ExcludedStyle,
-    RawTemplate,
-}
-
-fn children_mode(name: Option<&AnyJsxElementName>, attributes: &JsxAttributeList) -> ChildrenMode {
+fn children_mode(name: Option<&AnyJsxElementName>, attributes: &JsxAttributeList) -> BodyMode {
     // `<Script>` is a component reference, not the HTML element.
-    if let Some(AnyJsxElementName::JsxName(intrinsic)) = name
-        && let Ok(token) = intrinsic.value_token()
-    {
-        if token.text_trimmed().eq_ignore_ascii_case("script") {
-            return ChildrenMode::ExcludedScript;
-        }
-        if token.text_trimmed().eq_ignore_ascii_case("style") {
-            return ChildrenMode::ExcludedStyle;
-        }
-    }
+    let name = match name {
+        Some(AnyJsxElementName::JsxName(intrinsic)) => intrinsic.value_token().ok(),
+        _ => None,
+    };
     let is_raw = attributes
         .iter()
         .any(|attr| attribute_name_text(&attr).as_deref() == Some("is:raw"));
-    if is_raw {
-        ChildrenMode::RawTemplate
-    } else {
-        ChildrenMode::Normal
-    }
+    body_mode(name.as_ref().map(|token| token.text_trimmed()), is_raw)
 }
 
 fn emit_jsx_element(printer: &mut Printer, element: &JsxElement, base: u32) {
@@ -201,12 +210,42 @@ fn emit_jsx_element(printer: &mut Printer, element: &JsxElement, base: u32) {
 
     let body_start = printer.position();
     match mode {
-        ChildrenMode::Normal => {
+        BodyMode::Normal | BodyMode::NoExpressions => {
+            let disabled = printer.expressions_disabled;
+            printer.expressions_disabled |= mode == BodyMode::NoExpressions;
             for child in element.children() {
                 emit_node(printer, child.syntax(), base, true);
             }
+            printer.expressions_disabled = disabled;
         }
-        ChildrenMode::RawTemplate => {
+        BodyMode::TextOnly => {
+            for child in element.children() {
+                let range = child.syntax().text_range_with_trivia();
+                let mut cursor = abs(base, range.start());
+                let mut walk = child.syntax().preorder();
+                while let Some(event) = walk.next() {
+                    let WalkEvent::Enter(node) = event else {
+                        continue;
+                    };
+                    if node.kind() == JsSyntaxKind::JSX_EXPRESSION_CHILD {
+                        let range = node.text_range_with_trivia();
+                        let start = abs(base, range.start());
+                        printer.write_jsx_text_with_mapping(
+                            &printer.source[cursor as usize..start as usize],
+                            cursor,
+                        );
+                        emit_node(printer, &node, base, true);
+                        cursor = abs(base, range.end());
+                        walk.skip_subtree();
+                    }
+                }
+                printer.write_jsx_text_with_mapping(
+                    &printer.source[cursor as usize..abs(base, range.end()) as usize],
+                    cursor,
+                );
+            }
+        }
+        BodyMode::Raw => {
             if let Some((from, to)) = children_source_span(element) {
                 let raw = &printer.source[abs(base, from) as usize..abs(base, to) as usize];
                 if !raw.is_empty() {
@@ -218,20 +257,20 @@ fn emit_jsx_element(printer: &mut Printer, element: &JsxElement, base: u32) {
                 }
             }
         }
-        ChildrenMode::ExcludedScript | ChildrenMode::ExcludedStyle => {
+        BodyMode::Script | BodyMode::Style => {
             if let Some((from, to)) = children_source_span(element) {
                 let (from, to) = (abs(base, from), abs(base, to));
                 let content = printer.source[from as usize..to as usize].to_string();
                 let range = GeneratedRange::new(body_start, printer.position());
                 let source = SourceRange::new(from, to);
-                if matches!(mode, ChildrenMode::ExcludedScript) {
+                if mode == BodyMode::Script {
                     let script_type = classify_script(&opening.attributes());
                     printer.add_script_block(range, source, content, script_type);
                 } else {
-                    let lang = jsx_attribute_value(&opening.attributes(), "lang")
-                        .flatten()
-                        .filter(|lang| !lang.is_empty())
-                        .unwrap_or_else(|| "css".to_string());
+                    let lang = crate::render::style_lang_for_attr(jsx_attribute_value(
+                        &opening.attributes(),
+                        "lang",
+                    ));
                     printer.add_style_block(range, source, content, lang);
                 }
             }
@@ -289,7 +328,6 @@ fn emit_self_closing_element(printer: &mut Printer, element: &JsxSelfClosingElem
                 emit_token(printer, &r_angle, base, false);
             }
         }
-        // A void element parses without `/`, but TSX requires the slash.
         None => {
             if let Ok(r_angle) = element.r_angle_token() {
                 for piece in r_angle.leading_trivia().pieces() {
@@ -310,11 +348,8 @@ fn emit_self_closing_element(printer: &mut Printer, element: &JsxSelfClosingElem
 }
 
 fn emit_verbatim(printer: &mut Printer, node: &JsNode, base: u32) {
-    for child in node.children_with_tokens() {
-        match child {
-            biome_rowan::SyntaxElement::Node(child) => emit_verbatim(printer, &child, base),
-            biome_rowan::SyntaxElement::Token(token) => emit_token(printer, &token, base, false),
-        }
+    for token in node.descendants_tokens(biome_rowan::Direction::Next) {
+        emit_token(printer, &token, base, false);
     }
 }
 
@@ -326,14 +361,16 @@ fn attribute_name_text(attr: &AnyJsxAttribute) -> Option<String> {
 }
 
 fn emit_jsx_attributes(printer: &mut Printer, attributes: &JsxAttributeList, base: u32) {
-    let mut invalid: Vec<JsxAttribute> = Vec::new();
-
     for attr in attributes {
         match &attr {
             AnyJsxAttribute::JsxAttribute(attribute) => {
                 let name = attribute_name_text(&attr).unwrap_or_default();
                 if !name.is_empty() && !is_valid_tsx_attribute_name(&name) {
-                    invalid.push(attribute.clone());
+                    printer.map_nil();
+                    printer.write(" {...{");
+                    emit_invalid_jsx_attribute(printer, attribute, base);
+                    printer.map_nil();
+                    printer.write("}}");
                     continue;
                 }
                 emit_plain_jsx_attribute(printer, attribute, base);
@@ -362,17 +399,6 @@ fn emit_jsx_attributes(printer: &mut Printer, attributes: &JsxAttributeList, bas
             }
             _ => {}
         }
-    }
-
-    if !invalid.is_empty() {
-        printer.map_nil();
-        printer.write(" {...{");
-        let mut wrote_entry = false;
-        for attribute in &invalid {
-            wrote_entry |= emit_invalid_jsx_attribute(printer, attribute, base, wrote_entry);
-        }
-        printer.map_nil();
-        printer.write("}}");
     }
 }
 
@@ -415,7 +441,6 @@ fn emit_plain_jsx_attribute(printer: &mut Printer, attribute: &JsxAttribute, bas
         AnyJsxAttributeValue::AnyJsxTag(tag) => {
             emit_node(printer, tag.syntax(), base, false);
         }
-        // Astro's `attr=`t${x}`` needs braces to be a TSX attribute value.
         AnyJsxAttributeValue::JsTemplateExpression(template) => {
             printer.map_nil();
             printer.write("{");
@@ -466,28 +491,14 @@ fn emit_jsx_string(
     Some(extracted)
 }
 
-fn emit_invalid_jsx_attribute(
-    printer: &mut Printer,
-    attribute: &JsxAttribute,
-    base: u32,
-    needs_separator: bool,
-) -> bool {
+fn emit_invalid_jsx_attribute(printer: &mut Printer, attribute: &JsxAttribute, base: u32) {
     let Ok(name) = attribute.name() else {
-        return false;
+        return;
     };
     let name_text = name.syntax().text_trimmed().to_string();
     let name_start = abs(base, name.syntax().text_trimmed_range().start());
 
-    if needs_separator {
-        printer.map_nil();
-        printer.write(",");
-    }
-    printer.map_nil();
-    printer.write("\"");
-    printer.write_with_mapping(&name_text, name_start);
-    printer.map_nil();
-    printer.write("\"");
-    printer.map_nil();
+    printer.write_js_string_with_mapping(&name_text, name_start);
     printer.write(":");
 
     let value = attribute
@@ -499,10 +510,7 @@ fn emit_invalid_jsx_attribute(
                 let text = token.text_trimmed();
                 let inner = strip_matching_quotes(text).unwrap_or(text);
                 printer.map_nil();
-                printer.write(&format!(
-                    "\"{}\"",
-                    escape_javascript_string(&decode_html_entities(inner))
-                ));
+                printer.write(&escape_javascript_string(&decode_html_entities(inner)));
             } else {
                 printer.map_nil();
                 printer.write("true");
@@ -519,12 +527,17 @@ fn emit_invalid_jsx_attribute(
             printer.map_nil();
             printer.write(")");
         }
-        _ => {
+        Some(AnyJsxAttributeValue::JsTemplateExpression(template)) => {
+            emit_node(printer, template.syntax(), base, false);
+        }
+        Some(AnyJsxAttributeValue::AnyJsxTag(tag)) => {
+            emit_node(printer, tag.syntax(), base, false);
+        }
+        None => {
             printer.map_nil();
             printer.write("true");
         }
     }
-    true
 }
 
 fn classify_script(attributes: &JsxAttributeList) -> ExtractedScriptType {
@@ -540,8 +553,8 @@ fn classify_script(attributes: &JsxAttributeList) -> ExtractedScriptType {
     crate::render::script_type_for_attr(jsx_attribute_value(attributes, "type"))
 }
 
-/// `None`: absent. `Some(None)`: present but not statically knowable.
-/// `Some(Some(value))`: string value with any matching quotes stripped.
+/// `None`: absent. `Some(None)`: dynamic or malformed.
+/// `Some(Some(value))`: entity-decoded static value, empty for a boolean attribute.
 fn jsx_attribute_value(attributes: &JsxAttributeList, name: &str) -> Option<Option<String>> {
     for attr in attributes {
         let AnyJsxAttribute::JsxAttribute(attribute) = attr else {
@@ -550,7 +563,12 @@ fn jsx_attribute_value(attributes: &JsxAttributeList, name: &str) -> Option<Opti
         let Ok(attribute_name) = attribute.name() else {
             continue;
         };
-        if attribute_name.syntax().text_trimmed() != name {
+        if !attribute_name
+            .syntax()
+            .text_trimmed()
+            .to_string()
+            .eq_ignore_ascii_case(name)
+        {
             continue;
         }
         let Some(initializer) = attribute.initializer() else {
@@ -561,7 +579,7 @@ fn jsx_attribute_value(attributes: &JsxAttributeList, name: &str) -> Option<Opti
         {
             let text = token.text_trimmed().to_string();
             let inner = strip_matching_quotes(&text).unwrap_or(&text);
-            return Some(Some(inner.to_string()));
+            return Some(Some(decode_html_entities(inner).into_owned()));
         }
         return Some(None);
     }
@@ -570,7 +588,23 @@ fn jsx_attribute_value(attributes: &JsxAttributeList, name: &str) -> Option<Opti
 
 #[cfg(test)]
 mod tests {
+    use crate::test_utils::convert;
     use crate::{ConvertOptions, convert_to_tsx};
+
+    #[test]
+    fn raw_element_references_are_not_javascript() {
+        for markup in [
+            "<math>{R}</math>",
+            "<math><mi>{R}</mi></math>",
+            "<textarea><Widget /></textarea>",
+        ] {
+            for source in [markup.to_string(), format!("{{{markup}}}")] {
+                let result = convert(&source);
+                assert!(!result.code.contains("{R}"), "{}", result.code);
+                assert!(!result.code.contains("<Widget"), "{}", result.code);
+            }
+        }
+    }
 
     #[test]
     fn unparseable_expression_bodies_are_not_silent() {

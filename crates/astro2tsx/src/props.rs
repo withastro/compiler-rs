@@ -3,7 +3,7 @@ use biome_js_syntax::{
     JsIdentifierBinding, JsLanguage, JsSyntaxKind, JsSyntaxToken, TsInterfaceDeclaration,
     TsTypeAliasDeclaration, TsTypeParameters, unescape_js_string,
 };
-use biome_rowan::{AstNode, AstNodeList, AstSeparatedList, SyntaxNode};
+use biome_rowan::{AstNode, AstNodeList, AstSeparatedList, SyntaxNode, WalkEvent};
 
 type JsNode = SyntaxNode<JsLanguage>;
 
@@ -40,10 +40,15 @@ fn type_declaration_in(item: &JsNode) -> Option<JsNode> {
     if TYPE_DECLARATIONS.contains(&item.kind()) {
         return Some(item.clone());
     }
-    if item.kind() == JsSyntaxKind::JS_EXPORT {
+    if matches!(
+        item.kind(),
+        JsSyntaxKind::JS_EXPORT
+            | JsSyntaxKind::TS_DECLARE_STATEMENT
+            | JsSyntaxKind::TS_EXPORT_DECLARE_CLAUSE
+    ) {
         return item
             .children()
-            .find(|child| TYPE_DECLARATIONS.contains(&child.kind()));
+            .find_map(|child| type_declaration_in(&child));
     }
     None
 }
@@ -56,7 +61,9 @@ fn inspect_type_declaration(analysis: &mut PropsAnalysis, declaration: &JsNode) 
             };
             let Ok(id) = decl.id() else { return };
             (
-                id.syntax().text_trimmed().to_string(),
+                id.syntax()
+                    .first_token()
+                    .map(|token| unescape_js_string(token.token_text_trimmed()).to_string()),
                 decl.type_parameters(),
             )
         }
@@ -68,13 +75,15 @@ fn inspect_type_declaration(analysis: &mut PropsAnalysis, declaration: &JsNode) 
                 return;
             };
             (
-                id.syntax().text_trimmed().to_string(),
+                id.syntax()
+                    .first_token()
+                    .map(|token| unescape_js_string(token.token_text_trimmed()).to_string()),
                 decl.type_parameters(),
             )
         }
         _ => return,
     };
-    if name != "Props" {
+    if name.as_deref() != Some("Props") {
         return;
     }
     analysis.has_props = true;
@@ -95,14 +104,35 @@ fn fill_generics(analysis: &mut PropsAnalysis, parameters: &TsTypeParameters) {
     if names.is_empty() {
         return;
     }
-    analysis.generics_decl = parameters.syntax().text_trimmed().to_string();
+    let declarations: Vec<String> = parameters
+        .items()
+        .iter()
+        .filter_map(Result::ok)
+        .filter_map(|parameter| {
+            let name = parameter.name().ok()?;
+            let mut declaration = name.syntax().text_trimmed().to_string();
+            if let Some(constraint) = parameter.constraint() {
+                declaration.push(' ');
+                declaration.push_str(&constraint.syntax().text_trimmed().to_string());
+            }
+            if let Some(default) = parameter.default() {
+                declaration.push(' ');
+                declaration.push_str(&default.syntax().text_trimmed().to_string());
+            }
+            Some(declaration)
+        })
+        .collect();
+    analysis.generics_decl = format!("<{}>", declarations.join(", "));
     analysis.generics_args = format!("<{}>", names.join(", "));
 }
 
-/// Import identifier bindings exclude module specifiers and pre-`as` names.
 fn import_binds_props(import: &JsNode) -> bool {
     import.descendants().any(|node| {
-        node.kind() == JsSyntaxKind::JS_IDENTIFIER_BINDING && node.text_trimmed() == "Props"
+        JsIdentifierBinding::cast(node).is_some_and(|binding| {
+            binding
+                .name_token()
+                .is_ok_and(|token| unescape_js_string(token.token_text_trimmed()) == "Props")
+        })
     })
 }
 
@@ -118,6 +148,99 @@ fn module_items(root: &AnyJsRoot) -> Vec<JsNode> {
             decl.items().iter().map(|i| i.into_syntax()).collect()
         }
         _ => Vec::new(),
+    }
+}
+
+pub(crate) fn exports_name(root: &AnyJsRoot, name: &str) -> bool {
+    module_items(root).iter().any(|item| {
+        let Some(export) = JsExport::cast_ref(item) else {
+            return false;
+        };
+        let Ok(clause) = export.export_clause() else {
+            return false;
+        };
+        match clause {
+            AnyJsExportClause::AnyJsDeclarationClause(declaration) => {
+                declaration_exports_name(&declaration, name)
+            }
+            AnyJsExportClause::TsExportDeclareClause(clause) => clause
+                .declaration()
+                .is_ok_and(|declaration| declaration_exports_name(&declaration, name)),
+            AnyJsExportClause::JsExportNamedClause(clause) => clause
+                .specifiers()
+                .iter()
+                .filter_map(Result::ok)
+                .any(|specifier| match specifier {
+                    AnyJsExportNamedSpecifier::JsExportNamedShorthandSpecifier(specifier) => {
+                        specifier
+                            .name()
+                            .and_then(|name| name.value_token())
+                            .is_ok_and(|token| {
+                                unescape_js_string(token.token_text_trimmed()) == name
+                            })
+                    }
+                    AnyJsExportNamedSpecifier::JsExportNamedSpecifier(specifier) => specifier
+                        .exported_name()
+                        .and_then(|name| name.inner_string_text())
+                        .is_ok_and(|text| unescape_js_string(text) == name),
+                }),
+            AnyJsExportClause::JsExportNamedFromClause(clause) => clause
+                .specifiers()
+                .iter()
+                .filter_map(Result::ok)
+                .any(|specifier| {
+                    let exported = match specifier.export_as() {
+                        Some(alias) => alias.exported_name(),
+                        None => specifier.source_name(),
+                    };
+                    exported
+                        .and_then(|name| name.inner_string_text())
+                        .is_ok_and(|text| unescape_js_string(text) == name)
+                }),
+            AnyJsExportClause::JsExportFromClause(clause) => {
+                clause.export_as().is_some_and(|alias| {
+                    alias
+                        .exported_name()
+                        .and_then(|name| name.inner_string_text())
+                        .is_ok_and(|text| unescape_js_string(text) == name)
+                })
+            }
+            _ => false,
+        }
+    })
+}
+
+fn declaration_exports_name(declaration: &AnyJsDeclarationClause, name: &str) -> bool {
+    match declaration {
+        AnyJsDeclarationClause::JsVariableDeclarationClause(clause) => {
+            clause.declaration().is_ok_and(|declaration| {
+                declaration
+                    .declarators()
+                    .iter()
+                    .filter_map(Result::ok)
+                    .any(|declarator| {
+                        declarator
+                            .id()
+                            .is_ok_and(|binding| binding_has_name(binding.syntax(), name))
+                    })
+            })
+        }
+        AnyJsDeclarationClause::TsModuleDeclaration(declaration) => declaration
+            .name()
+            .ok()
+            .and_then(|name| name.syntax().first_token())
+            .is_some_and(|token| unescape_js_string(token.token_text_trimmed()) == name),
+        _ => declaration
+            .syntax()
+            .children()
+            .filter(|node| {
+                matches!(
+                    node.kind(),
+                    JsSyntaxKind::JS_IDENTIFIER_BINDING | JsSyntaxKind::TS_IDENTIFIER_BINDING
+                )
+            })
+            .filter_map(|binding| binding.first_token())
+            .any(|token| unescape_js_string(token.token_text_trimmed()) == name),
     }
 }
 
@@ -189,19 +312,82 @@ fn declaration_exports_get_static_paths(declaration: &AnyJsDeclarationClause) ->
 }
 
 fn binding_has_get_static_paths(binding: &JsNode) -> bool {
-    JsIdentifierBinding::cast_ref(binding).is_some_and(|binding| {
-        binding
-            .name_token()
-            .is_ok_and(identifier_token_is_get_static_paths)
-    }) || binding.descendants().any(|candidate| {
-        JsIdentifierBinding::cast_ref(&candidate).is_some_and(|binding| {
-            binding
-                .name_token()
-                .is_ok_and(identifier_token_is_get_static_paths)
-        })
-    })
+    binding_has_name(binding, "getStaticPaths")
+}
+
+fn binding_has_name(binding: &JsNode, name: &str) -> bool {
+    let mut walk = binding.preorder();
+    while let Some(event) = walk.next() {
+        let WalkEvent::Enter(node) = event else {
+            continue;
+        };
+        match node.kind() {
+            JsSyntaxKind::JS_IDENTIFIER_BINDING => {
+                if JsIdentifierBinding::cast(node).is_some_and(|binding| {
+                    binding
+                        .name_token()
+                        .is_ok_and(|token| unescape_js_string(token.token_text_trimmed()) == name)
+                }) {
+                    return true;
+                }
+            }
+            JsSyntaxKind::JS_ARRAY_BINDING_PATTERN
+            | JsSyntaxKind::JS_ARRAY_BINDING_PATTERN_ELEMENT_LIST
+            | JsSyntaxKind::JS_ARRAY_BINDING_PATTERN_REST_ELEMENT
+            | JsSyntaxKind::JS_ARRAY_BINDING_PATTERN_ELEMENT
+            | JsSyntaxKind::JS_OBJECT_BINDING_PATTERN
+            | JsSyntaxKind::JS_OBJECT_BINDING_PATTERN_PROPERTY_LIST
+            | JsSyntaxKind::JS_OBJECT_BINDING_PATTERN_PROPERTY
+            | JsSyntaxKind::JS_OBJECT_BINDING_PATTERN_SHORTHAND_PROPERTY
+            | JsSyntaxKind::JS_OBJECT_BINDING_PATTERN_REST => {}
+            _ => walk.skip_subtree(),
+        }
+    }
+    false
 }
 
 fn identifier_token_is_get_static_paths(token: JsSyntaxToken) -> bool {
     unescape_js_string(token.token_text_trimmed()).text() == "getStaticPaths"
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::test_utils::convert;
+
+    #[test]
+    fn props_names_and_export_bindings_are_scope_aware() {
+        for declaration in [
+            "declare interface Props { value: string }",
+            "export declare interface Props { value: string }",
+            "interface Pr\\u006fps { value: string }",
+            "import type { Other as Pr\\u006fps } from './types';",
+        ] {
+            let result = convert(&format!("---\n{declaration}\n---"));
+            assert!(result.code.contains("_props: Props"), "{}", result.code);
+        }
+        for binding in [
+            "{ paths = (() => { const getStaticPaths = () => []; return getStaticPaths; })() }",
+            "{ [(() => { const getStaticPaths = 'paths'; return getStaticPaths; })()]: paths }",
+        ] {
+            let result = convert(&format!("---\nexport const {binding} = {{}};\n---"));
+            assert!(
+                !result.code.contains("ReturnType<typeof getStaticPaths>"),
+                "{}",
+                result.code
+            );
+        }
+        for binding in [
+            "{ getStaticPaths }",
+            "{ paths: getStaticPaths }",
+            "[getStaticPaths = () => []]",
+            "{ nested: { getStaticPaths } }",
+        ] {
+            let result = convert(&format!("---\nexport const {binding} = data;\n---"));
+            assert!(
+                result.code.contains("ReturnType<typeof getStaticPaths>"),
+                "{}",
+                result.code
+            );
+        }
+    }
 }

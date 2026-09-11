@@ -31,4 +31,4 @@ input_file: crates/astro2tsx/tests/fixtures/expression_style_exclusion.astro
 {cond && <style></style>}
 
 </Fragment>
-export default function __AstroComponent_(_props: Record<string, any>): any {}
+export default function AstroComponent(_props: Record<string, any>): any {}

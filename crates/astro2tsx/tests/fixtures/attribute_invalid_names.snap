@@ -1,5 +1,6 @@
 ---
 source: crates/astro2tsx/tests/snapshots.rs
+assertion_line: 134
 info:
   has_parse_errors: false
   frontmatter_status: DoesntExist
@@ -11,7 +12,7 @@ info:
     end: 30
   body:
     start: 41
-    end: 103
+    end: 110
   scripts: []
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/attribute_invalid_names.astro
@@ -19,7 +20,7 @@ input_file: crates/astro2tsx/tests/fixtures/attribute_invalid_names.astro
 /* @jsxImportSource astro */
 
 <Fragment>
-<div name="ok" {...{"@click":(handler),":class":"x"}}></div>
+<div {...{"@click":(handler)}} {...{":class":"x"}} name="ok"></div>
 
 </Fragment>
-export default function __AstroComponent_(_props: Record<string, any>): any {}
+export default function AstroComponent(_props: Record<string, any>): any {}

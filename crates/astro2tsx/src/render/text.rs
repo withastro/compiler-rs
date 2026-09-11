@@ -44,7 +44,6 @@ fn member_name_text(node: &biome_html_syntax::HtmlMemberName) -> String {
     format!("{object}.{member}")
 }
 
-/// HTML comments never become nodes; the lexer stores them as token trivia.
 pub(super) fn comment_trivia_ranges(root: &HtmlRoot) -> Vec<TextRange> {
     let mut ranges = Vec::new();
     for token in root
@@ -101,7 +100,6 @@ pub(super) fn emit_source_gap(printer: &mut Printer, from: u32, to: u32) {
             .and_then(|t| t.strip_suffix("-->"))
         {
             Some(body) => emit_html_comment(printer, body, start as u32 + 4),
-            // An unterminated comment runs to the end of the file, as in HTML.
             None => {
                 let body = text.strip_prefix("<!--").unwrap_or(text);
                 let body_start = start as u32 + (text.len() - body.len()) as u32;

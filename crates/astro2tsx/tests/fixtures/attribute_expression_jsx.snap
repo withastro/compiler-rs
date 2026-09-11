@@ -22,4 +22,4 @@ input_file: crates/astro2tsx/tests/fixtures/attribute_expression_jsx.astro
 <div data-out={items.map(i => <b>{i}</b>)} empty={(void 0)}></div>
 
 </Fragment>
-export default function __AstroComponent_(_props: Record<string, any>): any {}
+export default function AstroComponent(_props: Record<string, any>): any {}

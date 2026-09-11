@@ -7,8 +7,6 @@ use crate::utils::{ScriptKind, classify_script_type, strip_matching_quotes};
 
 use super::attribute::attribute_key;
 
-/// Only a bare `<script>` is processed by Astro; any attribute (`is:inline`,
-/// `define:vars`, …) leaves the script inline, sharing one scope with its peers.
 pub(super) fn classify_script(attrs: &[AnyHtmlAttribute]) -> ExtractedScriptType {
     if attrs.is_empty() {
         return ExtractedScriptType::ProcessedModule;
@@ -42,15 +40,19 @@ pub(crate) fn script_type_for_attr(attr: Option<Option<String>>) -> ExtractedScr
 }
 
 pub(super) fn style_lang_label(attrs: &[AnyHtmlAttribute]) -> String {
-    match find_attr_value(attrs, "lang") {
+    style_lang_for_attr(find_attr_value(attrs, "lang"))
+}
+
+pub(crate) fn style_lang_for_attr(attr: Option<Option<String>>) -> String {
+    match attr {
         None => "css".to_string(),
         Some(None) => "unknown".to_string(),
         Some(Some(value)) => value.trim().to_ascii_lowercase(),
     }
 }
 
-/// `None`: absent. `Some(None)`: present but not statically knowable.
-/// `Some(Some(value))`: string value with any matching quotes stripped.
+/// `None`: absent. `Some(None)`: dynamic or malformed.
+/// `Some(Some(value))`: entity-decoded static value, empty for a boolean attribute.
 fn find_attr_value(attrs: &[AnyHtmlAttribute], name: &str) -> Option<Option<String>> {
     for attr in attrs {
         let AnyHtmlAttribute::HtmlAttribute(attr_node) = attr else {
@@ -66,7 +68,7 @@ fn find_attr_value(attrs: &[AnyHtmlAttribute], name: &str) -> Option<Option<Stri
             continue;
         }
         let Some(initializer) = attr_node.initializer() else {
-            return Some(None);
+            return Some(Some(String::new()));
         };
         let Ok(value) = initializer.value() else {
             return Some(None);
@@ -74,9 +76,12 @@ fn find_attr_value(attrs: &[AnyHtmlAttribute], name: &str) -> Option<Option<Stri
         if let AnyHtmlAttributeInitializer::HtmlString(s) = value
             && let Ok(value_token) = s.value_token()
         {
-            let raw = value_token.text_trimmed().to_string();
-            let inner = strip_matching_quotes(&raw).unwrap_or(&raw);
-            return Some(Some(inner.to_string()));
+            let raw = value_token.text_trimmed();
+            if raw.starts_with('`') {
+                return Some(None);
+            }
+            let inner = strip_matching_quotes(raw).unwrap_or(raw);
+            return Some(Some(crate::utils::decode_html_entities(inner).into_owned()));
         }
         return Some(None);
     }
@@ -103,7 +108,61 @@ pub(super) fn inner_range(node: &HtmlElement) -> Option<(u32, u32)> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{ConvertOptions, convert_to_tsx};
+    use crate::test_utils::convert;
+    use crate::{ConvertOptions, ExtractedScriptType, convert_to_tsx};
+
+    #[test]
+    fn metadata_is_independent_of_rendering_context() {
+        for (attribute, expected) in [
+            ("", "css"),
+            ("lang={lang}", "unknown"),
+            ("lang=`${lang}`", "unknown"),
+            ("lang", ""),
+            ("lang=\"\"", ""),
+            ("lang=\" SCSS \"", "scss"),
+            ("LANG='scss'", "scss"),
+            ("lang='s&#99;ss'", "scss"),
+        ] {
+            let markup = format!("<style {attribute}>x</style>");
+            for source in [markup.clone(), format!("{{{markup}}}")] {
+                let result = convert(&source);
+                assert_eq!(result.styles[0].lang.as_deref(), Some(expected), "{source}");
+            }
+        }
+        for (attribute, expected) in [
+            ("", ExtractedScriptType::ProcessedModule),
+            ("type", ExtractedScriptType::Inline),
+            ("type=\"\"", ExtractedScriptType::Inline),
+            ("type='text/javascript'", ExtractedScriptType::Inline),
+            (
+                "type='application/x-javascript'",
+                ExtractedScriptType::Inline,
+            ),
+            ("type=' text/ecmascript '", ExtractedScriptType::Inline),
+            ("TYPE='module'", ExtractedScriptType::Module),
+            ("type={mime}", ExtractedScriptType::Unknown),
+            ("type='application/json'", ExtractedScriptType::Json),
+        ] {
+            let markup = format!("<script {attribute}>run()</script>");
+            for source in [markup.clone(), format!("{{{markup}}}")] {
+                let result = convert(&source);
+                assert_eq!(result.scripts[0].script_type, Some(expected), "{source}");
+            }
+        }
+        for event in [
+            "onpointerdown",
+            "onbeforeinput",
+            "onfocusin",
+            "onanimationend",
+            "ontransitionend",
+        ] {
+            let markup = format!("<button {event}=\"handle(event)\" />");
+            for source in [markup.clone(), format!("{{{markup}}}")] {
+                let result = convert(&source);
+                assert_eq!(result.scripts[0].content, "handle(event)");
+            }
+        }
+    }
 
     #[test]
     fn unclosed_raw_text_element_still_accounts_for_its_content() {
@@ -283,7 +342,7 @@ mod tests {
         for (attribute, expected) in [
             ("", "css"),
             ("lang={lang}", "unknown"),
-            ("lang", "unknown"),
+            ("lang", ""),
             ("lang=\"\"", ""),
             ("lang=\" SCSS \"", "scss"),
             ("lang='LeSs'", "less"),

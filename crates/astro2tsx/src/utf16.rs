@@ -32,6 +32,7 @@ impl Utf16Index {
         Self { marks }
     }
 
+    /// Converts a byte offset to UTF-16 code units, rounding down to a character boundary.
     pub(crate) fn convert(&self, byte: u32) -> u32 {
         if self.marks.is_empty() {
             return byte;
@@ -42,7 +43,6 @@ impl Utf16Index {
         }
         let mark = &self.marks[index - 1];
         if byte < mark.byte + mark.len_utf8 {
-            // Inside a character: clamp to its start rather than splitting it.
             return mark.utf16;
         }
         mark.utf16 + mark.len_utf16 + (byte - mark.byte - mark.len_utf8)

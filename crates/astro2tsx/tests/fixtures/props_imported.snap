@@ -26,10 +26,10 @@ import type { Props } from './types';
 <div></div>
 
 </Fragment>
-export default function __AstroComponent_(_props: Props): any {}
+export default function AstroComponent(_props: Props): any {}
 /**
  * Astro global available in all contexts in .astro files
  *
  * [Astro documentation](https://docs.astro.build/reference/api-reference/#astro-global)
 */
-declare const Astro: Readonly<import('astro').AstroGlobal<Props, typeof __AstroComponent_>>;
+declare const Astro: Readonly<import('astro').AstroGlobal<Props, typeof AstroComponent>>;

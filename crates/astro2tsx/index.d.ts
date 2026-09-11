@@ -16,33 +16,39 @@ export declare const enum AstroFrontmatterStatus {
 /**
  * Convert an Astro source file to TSX for TypeScript editor tooling.
  *
- * The conversion is error-tolerant: malformed input produces a
- * best-effort TSX output rather than throwing, and `hasParseErrors` is
- * set to `true` when the parser surfaced one or more diagnostics.
+ * Recoverable parse errors produce best-effort TSX and set `hasParseErrors`.
+ * Diagnostics include ranges in the original source.
  */
 export declare function convertToTsx(source: string, options?: ConvertToTsxOptions | undefined | null): ConvertToTsxResult
 
 export interface ConvertToTsxOptions {
   /**
-   * Filename used to derive the default-exported component identifier
-   * (e.g. `MyPage.astro` produces `MyPage__AstroComponent_`). Optional.
+   * Filename used to name the component (e.g. `MyPage.astro` produces
+   * `MyPageAstroComponent`, also exported as `MyPage` for auto-imports
+   * unless frontmatter already exports that name).
    */
   filename?: string
   /**
-   * Appends unmapped `declare` statements resolving the `Fragment` and
-   * `Astro` globals the TSX references but never declares. Off by default:
-   * consumers that inject their own ambient types must not receive them.
+   * Appends fallback declarations for `Fragment` and `Astro`. Off by default.
+   * A specialized `Astro` declaration is emitted regardless of this option
+   * when frontmatter declares `Props` or exports `getStaticPaths`.
    */
   ambientTypes?: boolean
 }
 
 export interface ConvertToTsxResult {
   code: string
+  /**
+   * UTF-16 range of the clean-name re-export in `code`, including its trailing newline.
+   * Absent for dynamic routes, filenames without a matching clean component name,
+   * and names already exported by frontmatter.
+   */
+  generatedComponentExport?: Range
   /** TypeScript Content Mapper span mappings in UTF-16 code units. */
   mappings: [virtualStart: number, virtualLength: number, originalStart: number, originalLength: number, kind: 0 | 1 | 2, features?: number][]
   /** Range of the frontmatter section within `code`. */
   frontmatter: Range
-  /** Range of the `<Fragment>` body within `code`. */
+  /** Range of the template within `code`, excluding the `<Fragment>` wrappers. */
   body: Range
   frontmatterStatus: AstroFrontmatterStatus
   /** Range of the frontmatter in the original source, fences included. */
@@ -68,8 +74,8 @@ export interface ExtractedScript {
 }
 
 /**
- * A bare `<script>` is processed by Astro; anything else is inlined as
- * written. `Unknown` covers a `type` whose value cannot be known statically.
+ * A bare `<script>` is Astro-processed; attributes opt out of that processing.
+ * `Unknown` includes both dynamic and unrecognized `type` values.
  */
 export declare const enum ExtractedScriptType {
   ProcessedModule = 'processed-module',
@@ -86,7 +92,7 @@ export interface ExtractedStyle {
   position: Range
   content: string
   type: ExtractedStyleType
-  /** `css`, `scss`, `less`, … taken from the `lang` attribute. */
+  /** Normalized `lang` attribute: `css` when absent, `unknown` when dynamic. */
   lang: string
 }
 

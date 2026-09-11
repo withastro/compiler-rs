@@ -1,10 +1,11 @@
-//! Parses, rewrites, and emits Astro frontmatter.
-
 use biome_html_syntax::AnyAstroFrontmatterElement;
 use biome_js_parser::{JsParserOptions, parse};
-use biome_js_syntax::{AnyJsRoot, JsReturnStatement, JsSyntaxKind};
+use biome_js_syntax::{
+    AnyJsRoot, JsArrowFunctionExpression, JsReturnStatement, JsSyntaxKind,
+    TsTypeAssertionExpression,
+};
 use biome_languages::JsFileSource;
-use biome_rowan::{AstNode, WalkEvent};
+use biome_rowan::{AstNode, AstSeparatedList, TextRange, WalkEvent};
 
 use crate::printer::{Printer, range_start};
 use crate::props::{PropsAnalysis, analyze as analyze_props};
@@ -14,32 +15,32 @@ use crate::types::{
 
 pub(super) struct RenderedFrontmatter {
     pub(super) props_analysis: PropsAnalysis,
+    pub(super) has_component_export: bool,
     pub(super) body_text_start: u32,
     pub(super) needs_terminator: bool,
 }
 
-struct RewrittenFrontmatter {
-    text: String,
-    replaced: Vec<Replacement>,
+enum Piece {
+    Source(TextRange),
+    Insert(&'static str),
 }
 
-struct Replacement {
-    text_offset: u32,
-    text_len: u32,
-    source_len: u32,
+struct Rewrite {
+    range: TextRange,
+    pieces: Vec<Piece>,
 }
-
-const RETURN_LEN: usize = "return".len();
 
 pub(super) fn render(
     printer: &mut Printer,
     frontmatter: Option<&AnyAstroFrontmatterElement>,
+    component_alias: Option<&str>,
 ) -> RenderedFrontmatter {
     // Where frontmatter would be inserted, so editors can anchor an edit there.
     printer.frontmatter_range = GeneratedRange::new(printer.position(), printer.position());
 
     let content = frontmatter.and_then(frontmatter_content);
     let mut props_analysis = PropsAnalysis::default();
+    let mut has_component_export = false;
     let mut rewritten = None;
     if let Some((text, start)) = &content
         && !text.is_empty()
@@ -64,16 +65,22 @@ pub(super) fn render(
             }
         }
         props_analysis = analyze_props(&js_root);
-        rewritten = Some((rewrite_top_level_returns(text, &js_root), *start));
+        has_component_export =
+            component_alias.is_some_and(|name| crate::props::exports_name(&js_root, name));
+        rewritten = Some((js_root, *start));
     }
 
     if let Some(node) = frontmatter {
         emit_frontmatter(printer, node, rewritten.as_ref());
     }
+    if let Some((root, _)) = rewritten {
+        crate::syntax::drop_syntax_tree(root.into_syntax());
+    }
 
     printer.frontmatter_info = frontmatter_info(frontmatter, printer.source.len() as u32);
     RenderedFrontmatter {
         props_analysis,
+        has_component_export,
         body_text_start: body_text_start_offset(frontmatter),
         needs_terminator: match frontmatter {
             Some(AnyAstroFrontmatterElement::AstroFrontmatterElement(_)) => content
@@ -90,14 +97,14 @@ pub(super) fn emit_default_export(
     component: &str,
     analysis: &PropsAnalysis,
     ambient_types: bool,
-) {
+) -> GeneratedRange {
     let (props_param, props_global) = if analysis.has_props {
         if analysis.generics_args.is_empty() {
             ("Props".to_string(), "Props".to_string())
         } else {
             (
                 format!("Props{}", analysis.generics_args),
-                "Props".to_string(),
+                format!("Parameters<typeof {component}>[0]"),
             )
         }
     } else if analysis.has_get_static_paths {
@@ -116,9 +123,12 @@ pub(super) fn emit_default_export(
         ""
     };
 
-    printer.write(&format!(
-        "export default function {component}{generics}(_props: {props_param}): any {{}}\n"
-    ));
+    printer.map_nil();
+    printer.write("export default function ");
+    let component_start = printer.position();
+    printer.write(component);
+    let component_range = GeneratedRange::new(component_start, printer.position());
+    printer.write(&format!("{generics}(_props: {props_param}): any {{}}\n"));
 
     if analysis.has_get_static_paths {
         printer.write(
@@ -148,6 +158,7 @@ pub(super) fn emit_default_export(
         }
         printer.write(">>;\n");
     }
+    component_range
 }
 
 fn body_text_start_offset(frontmatter: Option<&AnyAstroFrontmatterElement>) -> u32 {
@@ -198,8 +209,6 @@ fn frontmatter_content(node: &AnyAstroFrontmatterElement) -> Option<(String, u32
     None
 }
 
-/// Offset just after the opening fence, where an empty frontmatter's newline
-/// lives. Editors insert imports there, so it must carry a mapping.
 fn frontmatter_anchor(frontmatter: &AnyAstroFrontmatterElement) -> Option<u32> {
     let AnyAstroFrontmatterElement::AstroFrontmatterElement(node) = frontmatter else {
         return None;
@@ -212,7 +221,7 @@ fn frontmatter_anchor(frontmatter: &AnyAstroFrontmatterElement) -> Option<u32> {
 fn emit_frontmatter(
     printer: &mut Printer,
     frontmatter: &AnyAstroFrontmatterElement,
-    rewritten: Option<&(RewrittenFrontmatter, u32)>,
+    rewritten: Option<&(AnyJsRoot, u32)>,
 ) {
     let frontmatter_start = printer.position();
 
@@ -220,12 +229,13 @@ fn emit_frontmatter(
         AnyAstroFrontmatterElement::AstroFrontmatterElement(_) => {
             printer.map_to_offset(0);
             let emitted_content = match rewritten {
-                Some((frontmatter_text, start)) => {
-                    emit_rewritten_frontmatter(printer, frontmatter_text, *start);
-                    !frontmatter_text.text.is_empty()
+                Some((root, start)) => {
+                    emit_tsx_frontmatter(printer, root, *start);
+                    true
                 }
                 None => false,
             };
+            // Empty frontmatter needs a mapped newline as an insertion point for editor imports.
             let anchor_newline = frontmatter_anchor(frontmatter)
                 .filter(|_| !emitted_content)
                 .and_then(|anchor| {
@@ -259,52 +269,92 @@ fn emit_frontmatter(
     printer.frontmatter_range = GeneratedRange::new(frontmatter_start, frontmatter_end);
 }
 
-/// Replaced spans stay nil-mapped; the cursors drift once a replacement outgrows its `return`.
-fn emit_rewritten_frontmatter(printer: &mut Printer, rewritten: &RewrittenFrontmatter, start: u32) {
-    let mut text_cursor = 0usize;
-    let mut source_cursor = 0usize;
-    for replacement in &rewritten.replaced {
-        let offset = replacement.text_offset as usize;
-        printer.write_with_mapping(
-            &rewritten.text[text_cursor..offset],
-            start + source_cursor as u32,
-        );
-        source_cursor += offset - text_cursor;
-        printer.map_nil();
-        printer.write(&rewritten.text[offset..offset + replacement.text_len as usize]);
-        text_cursor = offset + replacement.text_len as usize;
-        source_cursor += replacement.source_len as usize;
+fn emit_tsx_frontmatter(printer: &mut Printer, root: &AnyJsRoot, start: u32) {
+    let mut rewrites: Vec<Rewrite> = find_top_level_returns(root)
+        .into_iter()
+        .map(|(range, has_argument)| Rewrite {
+            range,
+            pieces: vec![Piece::Insert(if has_argument {
+                "throw "
+            } else {
+                "throw undefined"
+            })],
+        })
+        .collect();
+    for event in root.syntax().preorder() {
+        match event {
+            WalkEvent::Enter(node) => {
+                if let Some(arrow) = JsArrowFunctionExpression::cast_ref(&node)
+                    && let Some(parameters) = arrow.type_parameters()
+                    && parameters.items().len() == 1
+                    && parameters.items().trailing_separator().is_none()
+                    && let Ok(end) = parameters.r_angle_token()
+                {
+                    rewrites.push(Rewrite {
+                        range: TextRange::empty(end.text_trimmed_range().start()),
+                        pieces: vec![Piece::Insert(",")],
+                    });
+                }
+                if let Some(assertion) = TsTypeAssertionExpression::cast(node)
+                    && let (Ok(left), Ok(right)) =
+                        (assertion.l_angle_token(), assertion.r_angle_token())
+                {
+                    rewrites.push(Rewrite {
+                        range: TextRange::new(
+                            left.text_trimmed_range().start(),
+                            right.text_trimmed_range().end(),
+                        ),
+                        pieces: vec![Piece::Insert("(")],
+                    });
+                }
+            }
+            WalkEvent::Leave(node) => {
+                if let Some(assertion) = TsTypeAssertionExpression::cast(node)
+                    && let (Ok(left), Ok(right)) =
+                        (assertion.l_angle_token(), assertion.r_angle_token())
+                {
+                    rewrites.push(Rewrite {
+                        range: TextRange::empty(assertion.syntax().text_trimmed_range().end()),
+                        pieces: vec![
+                            Piece::Insert(" as "),
+                            Piece::Source(TextRange::new(
+                                left.text_trimmed_range().end(),
+                                right.text_trimmed_range().start(),
+                            )),
+                            Piece::Insert(")"),
+                        ],
+                    });
+                }
+            }
+        }
     }
-    printer.write_with_mapping(&rewritten.text[text_cursor..], start + source_cursor as u32);
+    rewrites.sort_by_key(|rewrite| rewrite.range.start());
+    let write_source = |printer: &mut Printer, range: TextRange| {
+        let from = start + u32::from(range.start());
+        let to = start + u32::from(range.end());
+        printer.write_with_mapping(&printer.source[from as usize..to as usize], from);
+    };
+    let mut cursor = root.syntax().text_range_with_trivia().start();
+    for rewrite in rewrites {
+        write_source(printer, TextRange::new(cursor, rewrite.range.start()));
+        for piece in rewrite.pieces {
+            match piece {
+                Piece::Source(range) => write_source(printer, range),
+                Piece::Insert(text) => {
+                    printer.map_nil();
+                    printer.write(text);
+                }
+            }
+        }
+        cursor = rewrite.range.end();
+    }
+    write_source(
+        printer,
+        TextRange::new(cursor, root.syntax().text_range_with_trivia().end()),
+    );
 }
 
-/// `root` must be the parse of `source`.
-fn rewrite_top_level_returns(source: &str, root: &AnyJsRoot) -> RewrittenFrontmatter {
-    let returns = find_top_level_returns(root);
-    let mut text = String::with_capacity(source.len());
-    let mut replaced = Vec::with_capacity(returns.len());
-    let mut cursor = 0usize;
-    for (offset, has_argument) in returns {
-        let offset = offset as usize;
-        text.push_str(&source[cursor..offset]);
-        let replacement = if has_argument {
-            "throw "
-        } else {
-            "throw undefined"
-        };
-        replaced.push(Replacement {
-            text_offset: text.len() as u32,
-            text_len: replacement.len() as u32,
-            source_len: RETURN_LEN as u32,
-        });
-        text.push_str(replacement);
-        cursor = offset + RETURN_LEN;
-    }
-    text.push_str(&source[cursor..]);
-    RewrittenFrontmatter { text, replaced }
-}
-
-fn find_top_level_returns(root: &AnyJsRoot) -> Vec<(u32, bool)> {
+fn find_top_level_returns(root: &AnyJsRoot) -> Vec<(TextRange, bool)> {
     let mut returns = Vec::new();
     let mut function_depth: u32 = 0;
 
@@ -318,10 +368,7 @@ fn find_top_level_returns(root: &AnyJsRoot) -> Vec<(u32, bool)> {
                     && let Some(stmt) = JsReturnStatement::cast(node)
                     && let Ok(token) = stmt.return_token()
                 {
-                    returns.push((
-                        u32::from(token.text_trimmed_range().start()),
-                        stmt.argument().is_some(),
-                    ));
+                    returns.push((token.text_trimmed_range(), stmt.argument().is_some()));
                 }
             }
             WalkEvent::Leave(node) => {
@@ -356,8 +403,43 @@ mod tests {
     use biome_js_parser::{JsParserOptions, parse};
     use biome_languages::JsFileSource;
 
-    use crate::test_utils::assert_mapped_runs_are_verbatim;
+    use crate::test_utils::{assert_mapped_runs_are_verbatim, convert};
     use crate::{ConvertOptions, convert_to_tsx};
+
+    #[test]
+    fn typescript_frontmatter_is_disambiguated_as_tsx() {
+        for code in [
+            "const id = <T>(x: T) => x;",
+            "const id = <T /* comment */>(x: T) => x;",
+            "const id = <T,>(x: T) => x;",
+            "const id = <T extends string>(x: T) => x;",
+            "const id = <T = string>(x: T) => x;",
+            "const value = <string>Astro.props.value;",
+            "const value = <number><unknown>Astro.props.value;",
+            "const value = (<{ x: number }>Astro.props.value).x;",
+            "const value = < /* before */ string /* after */ >Astro.props.value;",
+            "const value = <const>{ x: 1 };",
+            "if (Astro.props.x) return <string>Astro.props.value;",
+            "const id = <T>(x: T) => <T>x;",
+            "const value = <string>((<T>(x: T) => x)('x'));",
+        ] {
+            convert(&format!("---\n{code}\n---\n<p/>"));
+        }
+    }
+
+    #[test]
+    fn fences_after_markup_are_template_text() {
+        for prefix in ["<!-- Copyright -->", "<div/>", "<!DOCTYPE html>"] {
+            let source = format!("{prefix}\n---\nconst title = 'hello';\n---\n<h1>hello</h1>");
+            let result = convert(&source);
+            assert_eq!(
+                result.frontmatter.status,
+                crate::FrontmatterStatus::DoesntExist
+            );
+            assert_eq!(result.frontmatter_range.start, result.frontmatter_range.end);
+            assert!(result.code.contains("---\nconst title = 'hello';\n---"));
+        }
+    }
 
     #[test]
     fn frontmatter_range_is_recorded() {
@@ -596,10 +678,10 @@ mod tests {
     #[test]
     fn dynamic_routes_keep_their_component_name() {
         for (filename, expected) in [
-            ("src/pages/[slug].astro", "Slug__AstroComponent_"),
-            ("src/pages/my-comp.astro", "MyComp__AstroComponent_"),
-            ("src/pages/404.astro", "__AstroComponent_"),
-            ("src/pages/[...path].astro", "__AstroComponent_"),
+            ("src/pages/[slug].astro", "_Slug_AstroComponent"),
+            ("src/pages/my-comp.astro", "MyCompAstroComponent"),
+            ("src/pages/404.astro", "FourOhFourAstroComponent"),
+            ("src/pages/[...path].astro", "AstroComponent"),
         ] {
             let code = convert_to_tsx(
                 "<div/>",
@@ -683,28 +765,31 @@ mod tests {
     fn ambient_types_are_appended_only_on_request() {
         let source = "---\nconst title = Astro.props.title;\n---\n<h1>{title}</h1>";
 
-        let plain = convert_to_tsx(source, ConvertOptions::default()).code;
+        let plain_result = convert_to_tsx(source, ConvertOptions::default());
+        let plain = &plain_result.code;
         assert!(!plain.contains("declare const Fragment"), "{plain}");
         assert!(!plain.contains("declare const Astro"), "{plain}");
 
-        let ambient = convert_to_tsx(
+        let ambient_result = convert_to_tsx(
             source,
             ConvertOptions {
                 ambient_types: true,
                 ..Default::default()
             },
-        )
-        .code;
+        );
+        let ambient = &ambient_result.code;
         assert!(
             ambient.contains("declare const Fragment: any;\n"),
             "{ambient}"
         );
         assert!(
             ambient.contains(
-                "declare const Astro: Readonly<import('astro').AstroGlobal<Record<string, any>, typeof __AstroComponent_>>"
+                "declare const Astro: Readonly<import('astro').AstroGlobal<Record<string, any>, typeof AstroComponent>>"
             ),
             "{ambient}"
         );
+        assert!(ambient.starts_with(plain));
+        assert_eq!(ambient_result.mappings, plain_result.mappings);
     }
 
     #[test]
@@ -724,7 +809,7 @@ mod tests {
             "{ambient}"
         );
         assert!(
-            ambient.contains("AstroGlobal<Props, typeof __AstroComponent_>"),
+            ambient.contains("AstroGlobal<Props, typeof AstroComponent>"),
             "the Props-aware declaration must win:\n{ambient}"
         );
         assert_eq!(
@@ -744,9 +829,6 @@ mod tests {
             },
         )
         .code;
-        assert!(
-            code.contains("function Ünicorn__AstroComponent_("),
-            "{code}"
-        );
+        assert!(code.contains("function ÜnicornAstroComponent("), "{code}");
     }
 }

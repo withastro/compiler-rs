@@ -27,7 +27,7 @@ export async function getStaticPaths() { return []; }
 <div></div>
 
 </Fragment>
-export default function __AstroComponent_(_props: Props): any {}
+export default function AstroComponent(_props: Props): any {}
 type ASTRO__ArrayElement<ArrayType extends readonly unknown[]> = ArrayType extends readonly (infer ElementType)[] ? ElementType : never;
 type ASTRO__Flattened<T> = T extends Array<infer U> ? ASTRO__Flattened<U> : T;
 type ASTRO__InferredGetStaticPath = ASTRO__Flattened<ASTRO__ArrayElement<Awaited<ReturnType<typeof getStaticPaths>>>>;
@@ -38,4 +38,4 @@ type ASTRO__Get<T, K> = T extends undefined ? undefined : K extends keyof T ? T[
  *
  * [Astro documentation](https://docs.astro.build/reference/api-reference/#astro-global)
 */
-declare const Astro: Readonly<import('astro').AstroGlobal<Props, typeof __AstroComponent_, ASTRO__Get<ASTRO__InferredGetStaticPath, 'params'>>>;
+declare const Astro: Readonly<import('astro').AstroGlobal<Props, typeof AstroComponent, ASTRO__Get<ASTRO__InferredGetStaticPath, 'params'>>>;

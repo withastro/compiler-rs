@@ -4,7 +4,7 @@ use crate::types::{
     Diagnostic, ExtractedKind, ExtractedScriptType, ExtractedTag, FrontmatterInfo, GeneratedRange,
     Mapping, SourceRange,
 };
-use crate::utils::{comment_body_escape, template_text_escape};
+use crate::utils::{comment_body_escape, escape_javascript_string, template_text_escape};
 
 pub(crate) struct Printer<'a> {
     pub(crate) source: &'a str,
@@ -17,9 +17,9 @@ pub(crate) struct Printer<'a> {
     pub(crate) scripts: Vec<ExtractedTag>,
     pub(crate) styles: Vec<ExtractedTag>,
     pub(crate) diagnostics: Vec<Diagnostic>,
-    pub(crate) suppressed_html_diagnostics: Vec<SourceRange>,
     pub(crate) frontmatter_info: FrontmatterInfo,
     pub(crate) has_embedded_parse_errors: bool,
+    pub(crate) expressions_disabled: bool,
 }
 
 impl<'a> Printer<'a> {
@@ -34,9 +34,9 @@ impl<'a> Printer<'a> {
             scripts: Vec::new(),
             styles: Vec::new(),
             diagnostics: Vec::new(),
-            suppressed_html_diagnostics: Vec::new(),
             frontmatter_info: FrontmatterInfo::default(),
             has_embedded_parse_errors: false,
+            expressions_disabled: false,
         }
     }
 
@@ -58,8 +58,6 @@ impl<'a> Printer<'a> {
         self.push_mapping(Mapping::nil(generated));
     }
 
-    /// A mapping opens a run: generated and original advance in lockstep until
-    /// the next mapping. Pairs that merely continue the current run are dropped.
     fn push_mapping(&mut self, mapping: Mapping) {
         if let Some(last) = self.mappings.last_mut() {
             if last.generated == mapping.generated {
@@ -69,7 +67,7 @@ impl<'a> Printer<'a> {
             let continues = match (last.original, mapping.original) {
                 (None, None) => true,
                 (Some(last_original), Some(original)) => {
-                    // Shorthand attrs map one span twice, so original can regress; wrapping stays safe.
+                    // Source offsets can decrease: shorthand attributes map the same span twice.
                     original.wrapping_sub(last_original) == mapping.generated - last.generated
                 }
                 _ => false,
@@ -89,7 +87,6 @@ impl<'a> Printer<'a> {
         self.output.push_str(text);
     }
 
-    /// Characters that JSX reserves in text emit through mapped template expressions.
     pub(crate) fn write_jsx_text_with_mapping(&mut self, text: &str, original_start: u32) {
         let mut original = original_start;
         for ch in text.chars() {
@@ -108,7 +105,6 @@ impl<'a> Printer<'a> {
         }
     }
 
-    /// Template-body escaping; escapes differ from their source byte, so they stay nil-mapped.
     pub(crate) fn write_template_text_with_mapping(&mut self, text: &str, original_start: u32) {
         let mut original = original_start;
         let mut chars = text.chars().peekable();
@@ -151,6 +147,20 @@ impl<'a> Printer<'a> {
             }
             original += ch.len_utf8() as u32;
         }
+    }
+
+    pub(crate) fn write_js_string_with_mapping(&mut self, text: &str, start: u32) {
+        self.write_nil_mapped("\"");
+        let mut buffer = [0; 4];
+        for (offset, ch) in text.char_indices() {
+            if matches!(ch, '"' | '\\' | '\u{2028}' | '\u{2029}') || ch.is_ascii_control() {
+                let encoded = escape_javascript_string(ch.encode_utf8(&mut buffer));
+                self.write_nil_mapped(&encoded[1..encoded.len() - 1]);
+            } else {
+                self.write_with_mapping(ch.encode_utf8(&mut buffer), start + offset as u32);
+            }
+        }
+        self.write_nil_mapped("\"");
     }
 
     fn write_nil_mapped(&mut self, text: &str) {

@@ -36,8 +36,7 @@ impl GeneratedRange {
     }
 }
 
-/// Byte range inside the original `.astro` source. Distinct from
-/// [`GeneratedRange`] so the two coordinate spaces cannot be mixed up.
+/// Byte range inside the original `.astro` source.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct SourceRange {
     pub start: u32,
@@ -76,17 +75,16 @@ pub enum FrontmatterStatus {
     Closed,
 }
 
-/// `source` spans the opening fence through the end of the closing fence,
-/// so it doubles as the offset where body content starts.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct FrontmatterInfo {
     pub status: FrontmatterStatus,
+    /// Includes both fences; ends at EOF if the closing fence is missing.
     pub source: SourceRange,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ExtractedTag {
-    /// Range of `content` within the generated TSX, for every kind.
+    /// Generated content range for attributes; empty insertion anchor for extracted blocks.
     pub range: GeneratedRange,
     /// Range of `content` within the original source.
     pub source: SourceRange,
@@ -106,8 +104,8 @@ pub enum ExtractedKind {
     EventAttribute,
 }
 
-/// A bare `<script>` is processed by Astro; anything else is inlined as
-/// written. `Unknown` covers a `type` whose value cannot be known statically.
+/// A bare `<script>` is Astro-processed; attributes opt out of that processing.
+/// `Unknown` includes both dynamic and unrecognized `type` values.
 #[napi_derive::napi(string_enum = "kebab-case")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ExtractedScriptType {

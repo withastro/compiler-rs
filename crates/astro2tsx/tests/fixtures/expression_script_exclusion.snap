@@ -31,4 +31,4 @@ input_file: crates/astro2tsx/tests/fixtures/expression_script_exclusion.astro
 {cond && <script></script>}
 
 </Fragment>
-export default function __AstroComponent_(_props: Record<string, any>): any {}
+export default function AstroComponent(_props: Record<string, any>): any {}

@@ -51,4 +51,4 @@ input_file: crates/astro2tsx/tests/fixtures/script_type_labels.astro
 <script is:inline type="text/x-unknown"></script>
 
 </Fragment>
-export default function __AstroComponent_(_props: Record<string, any>): any {}
+export default function AstroComponent(_props: Record<string, any>): any {}

@@ -5,7 +5,7 @@ mod frontmatter;
 mod text;
 
 use element::render_element;
-pub(crate) use extracted::script_type_for_attr;
+pub(crate) use extracted::{script_type_for_attr, style_lang_for_attr};
 use text::{comment_trivia_ranges, emit_source_gap};
 
 use biome_html_syntax::HtmlRoot;
@@ -14,16 +14,21 @@ use biome_rowan::{AstNode, AstNodeList};
 use crate::ConvertOptions;
 use crate::printer::{Printer, range_start};
 use crate::types::GeneratedRange;
-use crate::utils::tsx_component_name;
+use crate::utils::tsx_component_names;
 
 const TSX_PREFIX: &str = "/* @jsxImportSource astro */\n\n";
 
-pub(crate) fn render_root(printer: &mut Printer, root: HtmlRoot, options: &ConvertOptions) {
+pub(crate) fn render_root(
+    printer: &mut Printer,
+    root: HtmlRoot,
+    options: &ConvertOptions,
+) -> (GeneratedRange, Option<GeneratedRange>) {
     printer.comment_ranges = comment_trivia_ranges(&root);
     printer.map_nil();
     printer.write(TSX_PREFIX);
+    let (component_name, alias) = tsx_component_names(options.filename.as_deref());
     let frontmatter_node = root.frontmatter();
-    let frontmatter = frontmatter::render(printer, frontmatter_node.as_ref());
+    let frontmatter = frontmatter::render(printer, frontmatter_node.as_ref(), alias.as_deref());
     let body = root.html();
     let body_text_start = frontmatter.body_text_start;
     // A childless body still needs its `<Fragment>` when comment trivia remains.
@@ -35,7 +40,7 @@ pub(crate) fn render_root(printer: &mut Printer, root: HtmlRoot, options: &Conve
     let body_start;
 
     if has_body_children {
-        // Unterminated frontmatter would swallow the body as `x < Fragment > ...`.
+        // Without a statement boundary, the following JSX can parse as a comparison.
         if frontmatter.needs_terminator {
             printer.map_nil();
             printer.write(";{};");
@@ -58,7 +63,6 @@ pub(crate) fn render_root(printer: &mut Printer, root: HtmlRoot, options: &Conve
             prev_end = u32::from(element_range.end());
         }
         emit_source_gap(printer, prev_end, printer.source.len() as u32);
-        // Anchored at EOF so trailing whitespace still has a mapping.
         printer.map_to_offset(printer.source.len() as u32);
         printer.write("\n");
 
@@ -75,11 +79,21 @@ pub(crate) fn render_root(printer: &mut Printer, root: HtmlRoot, options: &Conve
         printer.body_range = GeneratedRange::new(printer.position(), printer.position());
     }
 
-    let component_name = tsx_component_name(options.filename.as_deref());
-    frontmatter::emit_default_export(
+    let component_name_range = frontmatter::emit_default_export(
         printer,
         &component_name,
         &frontmatter.props_analysis,
         options.ambient_types,
     );
+    let generated_component_export =
+        alias
+            .filter(|_| !frontmatter.has_component_export)
+            .map(|alias| {
+                printer.map_nil();
+                printer.write("\n");
+                let start = printer.position();
+                printer.write(&format!("export {{ {component_name} as {alias} }};\n"));
+                GeneratedRange::new(start, printer.position())
+            });
+    (component_name_range, generated_component_export)
 }

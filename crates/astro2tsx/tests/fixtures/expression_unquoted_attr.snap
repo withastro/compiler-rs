@@ -22,4 +22,4 @@ input_file: crates/astro2tsx/tests/fixtures/expression_unquoted_attr.astro
 {cond && <div class="foo" maxlength="255" href="/about">x</div>}
 
 </Fragment>
-export default function __AstroComponent_(_props: Record<string, any>): any {}
+export default function AstroComponent(_props: Record<string, any>): any {}

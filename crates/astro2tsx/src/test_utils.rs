@@ -1,4 +1,29 @@
-use crate::ConvertResult;
+use biome_js_parser::{JsParserOptions, parse};
+use biome_languages::JsFileSource;
+
+use crate::{ConvertOptions, ConvertResult, convert_to_tsx};
+
+pub(crate) fn convert(source: &str) -> ConvertResult {
+    let result = convert_to_tsx(source, ConvertOptions::default());
+    assert!(
+        !result.has_parse_errors,
+        "{source}: {:?}",
+        result.diagnostics
+    );
+    let parsed = parse(
+        &result.code,
+        JsFileSource::tsx(),
+        JsParserOptions::default(),
+    );
+    assert!(
+        parsed.diagnostics().is_empty(),
+        "{}: {:?}",
+        result.code,
+        parsed.diagnostics()
+    );
+    assert_mapped_runs_are_verbatim(source, &result, source);
+    result
+}
 
 pub(crate) fn assert_mapped_runs_are_verbatim(source: &str, result: &ConvertResult, label: &str) {
     let code_len = result.code.len() as u32;
