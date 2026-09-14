@@ -98,9 +98,13 @@ pub struct ExtractedTag {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ExtractedKind {
+    /// Content extracted from a `<script>` element.
     Script,
+    /// Content extracted from a `<style>` element.
     Style,
+    /// CSS extracted from a `style` attribute.
     StyleAttribute,
+    /// JavaScript extracted from an HTML event-handler attribute.
     EventAttribute,
 }
 
@@ -109,11 +113,18 @@ pub enum ExtractedKind {
 #[napi_derive::napi(string_enum = "kebab-case")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ExtractedScriptType {
+    /// A bare `<script>` that Astro processes and bundles as a module.
     ProcessedModule,
+    /// A non-processed `<script type="module">`.
     Module,
+    /// A non-processed script containing JavaScript or TypeScript.
     Inline,
+    /// JavaScript extracted from an HTML event-handler attribute.
     EventAttribute,
+    /// A JSON or browser data block such as an import map.
     Json,
+    /// Script content preserved by the `is:raw` directive.
     Raw,
+    /// A dynamic or unrecognized `type` attribute.
     Unknown,
 }

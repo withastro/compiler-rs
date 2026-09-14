@@ -78,12 +78,19 @@ export interface ExtractedScript {
  * `Unknown` includes both dynamic and unrecognized `type` values.
  */
 export declare const enum ExtractedScriptType {
+  /** A bare `<script>` that Astro processes and bundles as a module. */
   ProcessedModule = 'processed-module',
+  /** A non-processed `<script type="module">`. */
   Module = 'module',
+  /** A non-processed script containing JavaScript or TypeScript. */
   Inline = 'inline',
+  /** JavaScript extracted from an HTML event-handler attribute. */
   EventAttribute = 'event-attribute',
+  /** A JSON or browser data block such as an import map. */
   Json = 'json',
+  /** Script content preserved by the `is:raw` directive. */
   Raw = 'raw',
+  /** A dynamic or unrecognized `type` attribute. */
   Unknown = 'unknown'
 }
 

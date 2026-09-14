@@ -1,11 +1,22 @@
+/// Sparse index for converting UTF-8 byte offsets into UTF-16 code-unit offsets.
+///
+/// Biome and the Rust API use byte offsets, while TypeScript's Content Mapper
+/// protocol and the JavaScript API use UTF-16 offsets. ASCII needs no marks
+/// because its offsets are identical in both encodings.
 pub(crate) struct Utf16Index {
+    /// Non-ASCII character boundaries, sorted by byte offset.
     marks: Vec<Mark>,
 }
 
+/// Encoding widths and absolute offsets for one non-ASCII character.
 struct Mark {
+    /// Character start in UTF-8 bytes.
     byte: u32,
+    /// Character start in UTF-16 code units.
     utf16: u32,
+    /// Character width in UTF-8 bytes.
     len_utf8: u32,
+    /// Character width in UTF-16 code units.
     len_utf16: u32,
 }
 

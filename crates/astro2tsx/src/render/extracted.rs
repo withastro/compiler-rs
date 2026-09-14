@@ -3,7 +3,7 @@ use biome_rowan::AstNode;
 
 use crate::printer::range_start;
 use crate::types::ExtractedScriptType;
-use crate::utils::{ScriptKind, classify_script_type, strip_matching_quotes};
+use crate::utils::{ScriptKind, strip_matching_quotes};
 
 use super::attribute::attribute_key;
 
@@ -25,8 +25,8 @@ pub(crate) fn script_type_for_attr(attr: Option<Option<String>>) -> ExtractedScr
     match attr {
         None => ExtractedScriptType::Inline,
         Some(None) => ExtractedScriptType::Unknown,
-        Some(Some(value)) => match classify_script_type(Some(&value)) {
-            ScriptKind::Script => {
+        Some(Some(value)) => match ScriptKind::classify(&value) {
+            ScriptKind::JavaScript => {
                 if value.trim().eq_ignore_ascii_case("module") {
                     ExtractedScriptType::Module
                 } else {

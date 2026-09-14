@@ -98,137 +98,143 @@ fn clean_component_name(basename: &str) -> String {
     name
 }
 
+const HTML_EVENT_ATTRIBUTES: &[&str] = &[
+    "onabort",
+    "onafterprint",
+    "onanimationcancel",
+    "onanimationend",
+    "onanimationiteration",
+    "onanimationstart",
+    "onauxclick",
+    "onbeforeinput",
+    "onbeforematch",
+    "onbeforeprint",
+    "onbeforetoggle",
+    "onbeforeunload",
+    "onblur",
+    "oncancel",
+    "oncanplay",
+    "oncanplaythrough",
+    "onchange",
+    "onclick",
+    "onclose",
+    "oncompositionend",
+    "oncompositionstart",
+    "oncompositionupdate",
+    "oncontextlost",
+    "oncontextmenu",
+    "oncontextrestored",
+    "oncopy",
+    "oncuechange",
+    "oncut",
+    "ondblclick",
+    "ondrag",
+    "ondragend",
+    "ondragenter",
+    "ondragleave",
+    "ondragover",
+    "ondragstart",
+    "ondrop",
+    "ondurationchange",
+    "onemptied",
+    "onended",
+    "onerror",
+    "onfocus",
+    "onfocusin",
+    "onfocusout",
+    "onformdata",
+    "ongamepadconnected",
+    "ongamepaddisconnected",
+    "ongotpointercapture",
+    "onhashchange",
+    "oninput",
+    "oninvalid",
+    "onkeydown",
+    "onkeypress",
+    "onkeyup",
+    "onlanguagechange",
+    "onload",
+    "onloadeddata",
+    "onloadedmetadata",
+    "onloadstart",
+    "onlostpointercapture",
+    "onmessage",
+    "onmessageerror",
+    "onmousedown",
+    "onmouseenter",
+    "onmouseleave",
+    "onmousemove",
+    "onmouseout",
+    "onmouseover",
+    "onmouseup",
+    "onoffline",
+    "ononline",
+    "onpagehide",
+    "onpagereveal",
+    "onpageshow",
+    "onpageswap",
+    "onpaste",
+    "onpause",
+    "onplay",
+    "onplaying",
+    "onpointercancel",
+    "onpointerdown",
+    "onpointerenter",
+    "onpointerleave",
+    "onpointermove",
+    "onpointerout",
+    "onpointerover",
+    "onpointerrawupdate",
+    "onpointerup",
+    "onpopstate",
+    "onprogress",
+    "onratechange",
+    "onrejectionhandled",
+    "onreset",
+    "onresize",
+    "onscroll",
+    "onscrollend",
+    "onsecuritypolicyviolation",
+    "onseeked",
+    "onseeking",
+    "onselect",
+    "onselectionchange",
+    "onselectstart",
+    "onslotchange",
+    "onstalled",
+    "onstorage",
+    "onsubmit",
+    "onsuspend",
+    "ontimeupdate",
+    "ontoggle",
+    "ontouchcancel",
+    "ontouchend",
+    "ontouchmove",
+    "ontouchstart",
+    "ontransitioncancel",
+    "ontransitionend",
+    "ontransitionrun",
+    "ontransitionstart",
+    "onunhandledrejection",
+    "onunload",
+    "onvolumechange",
+    "onwaiting",
+    "onwebkitanimationend",
+    "onwebkitanimationiteration",
+    "onwebkitanimationstart",
+    "onwebkittransitionend",
+    "onwheel",
+];
+
 pub(crate) fn is_html_event_attribute(name: &str) -> bool {
-    matches!(
-        name,
-        "ontouchcancel"
-            | "ontouchend"
-            | "ontouchmove"
-            | "ontouchstart"
-            | "onwebkitanimationend"
-            | "onwebkitanimationiteration"
-            | "onwebkitanimationstart"
-            | "onwebkittransitionend"
-            | "ongamepadconnected"
-            | "ongamepaddisconnected"
-            | "onpagereveal"
-            | "onpageswap"
-            | "onanimationcancel"
-            | "onanimationend"
-            | "onanimationiteration"
-            | "onanimationstart"
-            | "onbeforeinput"
-            | "onbeforetoggle"
-            | "oncompositionend"
-            | "oncompositionstart"
-            | "oncompositionupdate"
-            | "onfocusin"
-            | "onfocusout"
-            | "ongotpointercapture"
-            | "onlostpointercapture"
-            | "onpointercancel"
-            | "onpointerdown"
-            | "onpointerenter"
-            | "onpointerleave"
-            | "onpointermove"
-            | "onpointerout"
-            | "onpointerover"
-            | "onpointerrawupdate"
-            | "onpointerup"
-            | "onselectionchange"
-            | "onselectstart"
-            | "ontransitioncancel"
-            | "ontransitionend"
-            | "ontransitionrun"
-            | "ontransitionstart"
-            | "onabort"
-            | "onafterprint"
-            | "onauxclick"
-            | "onbeforematch"
-            | "onbeforeprint"
-            | "onbeforeunload"
-            | "onblur"
-            | "oncancel"
-            | "oncanplay"
-            | "oncanplaythrough"
-            | "onchange"
-            | "onclick"
-            | "onclose"
-            | "oncontextlost"
-            | "oncontextmenu"
-            | "oncontextrestored"
-            | "oncopy"
-            | "oncuechange"
-            | "oncut"
-            | "ondblclick"
-            | "ondrag"
-            | "ondragend"
-            | "ondragenter"
-            | "ondragleave"
-            | "ondragover"
-            | "ondragstart"
-            | "ondrop"
-            | "ondurationchange"
-            | "onemptied"
-            | "onended"
-            | "onerror"
-            | "onfocus"
-            | "onformdata"
-            | "onhashchange"
-            | "oninput"
-            | "oninvalid"
-            | "onkeydown"
-            | "onkeypress"
-            | "onkeyup"
-            | "onlanguagechange"
-            | "onload"
-            | "onloadeddata"
-            | "onloadedmetadata"
-            | "onloadstart"
-            | "onmessage"
-            | "onmessageerror"
-            | "onmousedown"
-            | "onmouseenter"
-            | "onmouseleave"
-            | "onmousemove"
-            | "onmouseout"
-            | "onmouseover"
-            | "onmouseup"
-            | "onoffline"
-            | "ononline"
-            | "onpagehide"
-            | "onpageshow"
-            | "onpaste"
-            | "onpause"
-            | "onplay"
-            | "onplaying"
-            | "onpopstate"
-            | "onprogress"
-            | "onratechange"
-            | "onrejectionhandled"
-            | "onreset"
-            | "onresize"
-            | "onscroll"
-            | "onscrollend"
-            | "onsecuritypolicyviolation"
-            | "onseeked"
-            | "onseeking"
-            | "onselect"
-            | "onslotchange"
-            | "onstalled"
-            | "onstorage"
-            | "onsubmit"
-            | "onsuspend"
-            | "ontimeupdate"
-            | "ontoggle"
-            | "onunhandledrejection"
-            | "onunload"
-            | "onvolumechange"
-            | "onwaiting"
-            | "onwheel"
-    )
+    HTML_EVENT_ATTRIBUTES.binary_search(&name).is_ok()
 }
 
+/// Whether an Astro attribute name can be emitted directly in TSX.
+///
+/// TSX accepts one or two colon-separated identifier parts. Each part must
+/// start like a JavaScript identifier and may additionally contain hyphens.
+/// Invalid names must instead be emitted as quoted object keys in a spread.
 pub(crate) fn is_valid_tsx_attribute_name(name: &str) -> bool {
     let mut parts = name.split(':');
     let valid_part = |part: &str| {
@@ -243,16 +249,24 @@ pub(crate) fn is_valid_tsx_attribute_name(name: &str) -> bool {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum BodyMode {
+    /// Render structured TSX children normally.
     Normal,
+    /// Extract a `<script>` body instead of emitting it into the TSX.
     Script,
+    /// Extract a `<style>` body instead of emitting it into the TSX.
     Style,
+    /// Render the complete body as template text.
     Raw,
+    /// Preserve Astro expressions while rendering tag-looking children as text.
     TextOnly,
+    /// Render structured children while treating braces as literal text.
     NoExpressions,
 }
 
 pub(crate) fn body_mode(name: Option<&str>, is_raw: bool) -> BodyMode {
     let name = name.unwrap_or_default().to_ascii_lowercase();
+    // Script and style extraction takes precedence over `is:raw`. For every
+    // other element, an explicit `is:raw` overrides the tag's default mode.
     match name.as_str() {
         "script" => BodyMode::Script,
         "style" => BodyMode::Style,
@@ -264,58 +278,70 @@ pub(crate) fn body_mode(name: Option<&str>, is_raw: bool) -> BodyMode {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+const JAVASCRIPT_SCRIPT_TYPES: &[&str] = &[
+    "",
+    "module",
+    "text/javascript",
+    "application/ecmascript",
+    "application/x-ecmascript",
+    "application/x-javascript",
+    "text/ecmascript",
+    "text/javascript1.0",
+    "text/javascript1.1",
+    "text/javascript1.2",
+    "text/javascript1.3",
+    "text/javascript1.4",
+    "text/javascript1.5",
+    "text/jscript",
+    "text/livescript",
+    "text/x-ecmascript",
+    "text/x-javascript",
+    "text/typescript",
+    "application/javascript",
+    "text/partytown",
+    "application/node",
+];
+
+const JSON_SCRIPT_TYPES: &[&str] = &[
+    "application/json",
+    "application/ld+json",
+    "importmap",
+    "speculationrules",
+];
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub(crate) enum ScriptKind {
-    Script,
+    /// JavaScript or TypeScript source, including a missing or empty `type`.
+    #[default]
+    JavaScript,
+    /// JSON data or another JSON-based browser data block.
     Json,
+    /// A static type value that is not recognized.
     Unknown,
 }
 
-pub(crate) fn classify_script_type(type_value: Option<&str>) -> ScriptKind {
-    match type_value {
-        None => ScriptKind::Script,
-        Some(value) => {
-            let normalized = value.trim().to_ascii_lowercase();
-            if matches!(
-                normalized.as_str(),
-                "" | "module"
-                    | "text/javascript"
-                    | "application/ecmascript"
-                    | "application/x-ecmascript"
-                    | "application/x-javascript"
-                    | "text/ecmascript"
-                    | "text/javascript1.0"
-                    | "text/javascript1.1"
-                    | "text/javascript1.2"
-                    | "text/javascript1.3"
-                    | "text/javascript1.4"
-                    | "text/javascript1.5"
-                    | "text/jscript"
-                    | "text/livescript"
-                    | "text/x-ecmascript"
-                    | "text/x-javascript"
-                    | "text/typescript"
-                    | "application/javascript"
-                    | "text/partytown"
-                    | "application/node"
-            ) {
-                ScriptKind::Script
-            } else if matches!(
-                normalized.as_str(),
-                "application/json" | "application/ld+json" | "importmap" | "speculationrules"
-            ) {
-                ScriptKind::Json
-            } else {
-                ScriptKind::Unknown
-            }
+impl ScriptKind {
+    pub(crate) fn classify(type_value: &str) -> Self {
+        let normalized = type_value.trim().to_ascii_lowercase();
+        if JAVASCRIPT_SCRIPT_TYPES.contains(&normalized.as_str()) {
+            Self::JavaScript
+        } else if JSON_SCRIPT_TYPES.contains(&normalized.as_str()) {
+            Self::Json
+        } else {
+            Self::Unknown
         }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::tsx_component_names;
+    use super::{HTML_EVENT_ATTRIBUTES, tsx_component_names};
     use crate::{ConvertOptions, convert_to_tsx};
+
+    #[test]
+    fn html_event_attributes_are_sorted() {
+        assert!(HTML_EVENT_ATTRIBUTES.is_sorted());
+    }
 
     #[test]
     fn component_names_match_editor_exports() {

@@ -51,6 +51,7 @@ pub(crate) fn render_root(
 
         let mut prev_end = body_text_start;
         // TSX has no doctype syntax, so the directive must not reach the output.
+        // Its surrounding source gaps remain mapped, including their line breaks.
         if let Some(directive) = root.directive() {
             let directive_range = directive.range();
             emit_source_gap(printer, prev_end, range_start(directive_range));
@@ -63,6 +64,8 @@ pub(crate) fn render_root(
             prev_end = u32::from(element_range.end());
         }
         emit_source_gap(printer, prev_end, printer.source.len() as u32);
+        // Keep the closing wrapper on its own line. A trailing source newline
+        // therefore produces an intentional blank line before `</Fragment>`.
         printer.map_to_offset(printer.source.len() as u32);
         printer.write("\n");
 
