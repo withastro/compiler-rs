@@ -1,3 +1,4 @@
 packages:
   - 'packages/*'
   - 'crates/astro_napi'
+  - 'crates/astro2tsx'

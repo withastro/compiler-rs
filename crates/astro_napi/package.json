@@ -33,13 +33,13 @@
     "postbuild-dev": "node patch-binding.js",
     "build-test": "pnpm run build-dev",
     "prepublishOnly": "napi prepublish -t npm",
-    "test": "node --import tsx --test ./test/*.test.ts",
+    "test": "node --test ./test/*.test.ts",
     "version": "napi version"
   },
   "devDependencies": {
-    "@emnapi/runtime": "^1.8.1",
-    "@napi-rs/cli": "^3",
-    "@napi-rs/wasm-runtime": "^1.1.1",
+    "@emnapi/runtime": "1.8.1",
+    "@napi-rs/cli": "3.5.1",
+    "@napi-rs/wasm-runtime": "1.1.1",
     "@types/node": "^22"
   },
   "engines": {

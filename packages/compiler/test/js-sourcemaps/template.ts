@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { testJSSourcemap } from '../utils.js';
+import { testJSSourcemap } from '../utils.ts';
 
 describe('js-sourcemaps/template', () => {
 	it('template expression basic', async () => {

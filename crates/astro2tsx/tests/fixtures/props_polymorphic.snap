@@ -1,0 +1,38 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+assertion_line: 134
+info:
+  has_parse_errors: false
+  frontmatter_status: Closed
+  frontmatter_source:
+    start: 0
+    end: 108
+  frontmatter:
+    start: 30
+    end: 133
+  body:
+    start: 148
+    end: 157
+  scripts: []
+  styles: []
+input_file: crates/astro2tsx/tests/fixtures/props_polymorphic.astro
+---
+/* @jsxImportSource astro */
+
+
+interface Props<Tag extends keyof JSX.IntrinsicElements> extends HTMLAttributes<Tag> {
+  as?: Tag;
+}
+
+;{};<Fragment>
+
+<div/>
+
+</Fragment>
+export default function AstroComponent<Tag extends keyof JSX.IntrinsicElements>(_props: Props<Tag>): any {}
+/**
+ * Astro global available in all contexts in .astro files
+ *
+ * [Astro documentation](https://docs.astro.build/reference/api-reference/#astro-global)
+*/
+declare const Astro: Readonly<import('astro').AstroGlobal<Parameters<typeof AstroComponent>[0], typeof AstroComponent>>;

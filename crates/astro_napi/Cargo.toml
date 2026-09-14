@@ -24,7 +24,7 @@ oxc_estree = { workspace = true, features = ["serialize"] }
 oxc_parser = { workspace = true, features = ["astro"] }
 oxc_span = { workspace = true }
 
-napi = { workspace = true }
+napi = { workspace = true, features = ["tokio_rt"] }
 napi-derive = { workspace = true }
 
 [target.'cfg(target_os = "macos")'.dependencies]

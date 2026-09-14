@@ -1,7 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { compileAstroSync, compileAstro } from '../index';
+import { compileAstroSync, compileAstro } from '../index.js';
 
 describe('compileAstroSync', () => {
 	it('compiles a simple Astro component', () => {

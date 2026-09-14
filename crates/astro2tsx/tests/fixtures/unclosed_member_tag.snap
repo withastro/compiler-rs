@@ -1,0 +1,29 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+info:
+  has_parse_errors: true
+  frontmatter_status: Closed
+  frontmatter_source:
+    start: 0
+    end: 62
+  frontmatter:
+    start: 30
+    end: 87
+  body:
+    start: 102
+    end: 117
+  scripts: []
+  styles: []
+input_file: crates/astro2tsx/tests/fixtures/unclosed_member_tag.astro
+---
+/* @jsxImportSource astro */
+
+
+const myMarkdown = await import("../content/post.md");
+
+;{};<Fragment>
+
+
+<myMarkdown.
+</Fragment>
+export default function AstroComponent(_props: Record<string, any>): any {}

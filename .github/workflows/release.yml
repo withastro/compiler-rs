@@ -21,6 +21,12 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Ensure WASM target is installed
+        run: rustup target add wasm32-wasip1-threads
+
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
@@ -56,6 +62,9 @@ jobs:
 
       - name: Build @astrojs/compiler-rs
         run: pnpm run build:compiler
+
+      - name: Build @astrojs/astro2tsx
+        run: pnpm --filter @astrojs/astro2tsx run build
 
       # Check if this is a version PR merge by looking at the commit message.
       # The changesets action creates PRs titled "Version Packages", so the

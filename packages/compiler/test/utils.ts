@@ -1,4 +1,4 @@
-import { convertToTSX, transform } from '@astrojs/compiler-rs';
+import { transform } from '@astrojs/compiler-rs';
 import { TraceMap, generatedPositionFor, originalPositionFor } from '@jridgewell/trace-mapping';
 import sass from 'sass';
 
@@ -36,29 +36,6 @@ export function getPositionFor(input: string, snippet: string) {
 	return null;
 }
 
-export function testTSXSourcemap(input: string, snippet: string) {
-	const snippetLoc = getPositionFor(input, snippet);
-	if (!snippetLoc) throw new Error(`Unable to find "${snippet}"`);
-
-	const { map } = convertToTSX(input, { sourcemap: 'both', filename: 'index.astro' });
-	const tracer = new TraceMap(map as any);
-
-	const generated = generatedPositionFor(tracer, {
-		source: 'index.astro',
-		line: snippetLoc.line,
-		column: snippetLoc.column,
-	});
-	if (!generated || generated.line === null) {
-		throw new Error(`"${snippet}" position incorrectly mapped in generated output.`);
-	}
-	const originalPosition = originalPositionFor(tracer, {
-		line: generated.line,
-		column: generated.column,
-	});
-
-	return originalPosition;
-}
-
 export async function testJSSourcemap(input: string, snippet: string) {
 	const snippetLoc = getPositionFor(input, snippet);
 	if (!snippetLoc) throw new Error(`Unable to find "${snippet}"`);
@@ -85,4 +62,3 @@ export async function testJSSourcemap(input: string, snippet: string) {
 
 	return originalPosition;
 }
-export const TSXPrefix = '/* @jsxImportSource astro */\n\n';

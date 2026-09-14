@@ -1,0 +1,38 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+info:
+  has_parse_errors: false
+  frontmatter_status: Closed
+  frontmatter_source:
+    start: 0
+    end: 74
+  frontmatter:
+    start: 30
+    end: 99
+  body:
+    start: 114
+    end: 133
+  scripts: []
+  styles: []
+input_file: crates/astro2tsx/tests/fixtures/props_interface.astro
+---
+/* @jsxImportSource astro */
+
+
+interface Props {
+	title: string;
+}
+const { title } = Astro.props;
+
+;{};<Fragment>
+
+<h1>{title}</h1>
+
+</Fragment>
+export default function AstroComponent(_props: Props): any {}
+/**
+ * Astro global available in all contexts in .astro files
+ *
+ * [Astro documentation](https://docs.astro.build/reference/api-reference/#astro-global)
+*/
+declare const Astro: Readonly<import('astro').AstroGlobal<Props, typeof AstroComponent>>;

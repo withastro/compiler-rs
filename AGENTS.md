@@ -138,7 +138,7 @@ pnpm run build:napi
 pnpm test
 ```
 
-`pnpm test` runs the `@astrojs/compiler-rs` suite (`node --import tsx --test 'packages/compiler/test/**/*.ts'`). The NAPI crate has its own binding tests, run with `pnpm test` from `crates/astro_napi`.
+`pnpm test` runs the `@astrojs/compiler-rs` suite (`node --test 'packages/compiler/test/**/*.ts'`). The NAPI crate has its own binding tests, run with `pnpm test` from `crates/astro_napi`.
 
 # Compiler Quick Reference
 

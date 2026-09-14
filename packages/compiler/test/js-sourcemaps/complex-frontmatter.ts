@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { testJSSourcemap } from '../utils.js';
+import { testJSSourcemap } from '../utils.ts';
 
 const input = `---
 // TODO: Due to this issue: https://github.com/withastro/astro/issues/1438, this route can't be in the same folder
