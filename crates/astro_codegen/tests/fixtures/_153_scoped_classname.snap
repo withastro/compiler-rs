@@ -1,0 +1,30 @@
+---
+source: crates/astro_codegen/tests/snapshots.rs
+input_file: crates/astro_codegen/tests/fixtures/_153_scoped_classname.astro
+---
+import { render as $$render, createComponent as $$createComponent, renderComponent as $$renderComponent, createMetadata as $$createMetadata } from "http://localhost:3000/";
+import { Component } from "./Component";
+import "<stdin>?astro&type=style&index=0&lang.css";
+import * as $$module1 from "./Component";
+export const $$metadata = $$createMetadata(import.meta.url, {
+	modules: [{
+		module: $$module1,
+		specifier: "./Component",
+		assert: {}
+	}],
+	hydratedComponents: [],
+	clientOnlyComponents: [],
+	hydrationDirectives: new Set([]),
+	hoisted: []
+});
+const $$Component = $$createComponent(($$result, $$props, $$slots) => {
+	const className = "dynamic";
+	return $$render`${$$renderComponent($$result, "Component", Component, { "className": "static astro-uidzui4u" }, { "default": () => $$render`Static` })}
+${$$renderComponent($$result, "Component", Component, { "className": (className ?? "") + " astro-uidzui4u" }, { "default": () => $$render`Expression` })}
+${$$renderComponent($$result, "Component", Component, { "className": (className ?? "") + " astro-uidzui4u" }, { "default": () => $$render`Shorthand` })}
+${$$renderComponent($$result, "custom-element", "custom-element", {
+		"className": "custom",
+		"class": "astro-uidzui4u"
+	}, { "default": () => $$render`Custom element` })}`;
+}, undefined, undefined);
+export default $$Component;
