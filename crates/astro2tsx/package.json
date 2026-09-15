@@ -25,13 +25,14 @@
     "version": "napi version"
   },
   "dependencies": {
-    "@emnapi/core": "1.9.2",
-    "@napi-rs/wasm-runtime": "1.1.1"
+    "@emnapi/core": "1.11.3",
+    "@napi-rs/wasm-runtime": "1.2.4"
   },
   "devDependencies": {
-    "@emnapi/runtime": "1.8.1",
+    "@emnapi/runtime": "1.11.3",
     "@napi-rs/cli": "3.5.1",
     "@types/node": "^22",
+    "emnapi": "1.11.3",
     "typescript": "~5.5.3"
   },
   "engines": {
