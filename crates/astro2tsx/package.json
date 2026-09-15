@@ -10,6 +10,14 @@
     "content-mapper"
   ],
   "license": "MIT",
+  "author": "Astro contributors",
+  "homepage": "https://astro.build",
+  "bugs": "https://github.com/withastro/compiler-rs/issues",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/withastro/compiler-rs.git",
+    "directory": "crates/astro2tsx"
+  },
   "type": "module",
   "main": "index.js",
   "files": [
