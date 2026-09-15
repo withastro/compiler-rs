@@ -11,6 +11,7 @@ crates/astro_napi/npm
 
 # Rust
 /target
+/fuzz/target
 Cargo.lock
 .idea/
 

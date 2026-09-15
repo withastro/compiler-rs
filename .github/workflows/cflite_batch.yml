@@ -1,0 +1,44 @@
+name: ClusterFuzzLite batch fuzzing
+
+# Long-running corpus-growing fuzzing. Unlike PR fuzzing, batch mode reports
+# ALL crashes (including known pre-existing ones), so expect red runs here
+# until the open upstream crashes (withastro/oxc#4,
+# parcel-bundler/lightningcss#1155) are fixed. This job is informational and
+# never gates PRs. Corpus is stored via the default filestore (GitHub Actions
+# artifacts); see cflite_pr.yml for the storage-repo upgrade path.
+
+on:
+  schedule:
+    # Nightly at 2am UTC, taking over the schedule from fuzz.yml.
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+permissions: read-all
+
+jobs:
+  BatchFuzzing:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ github.workflow }}-${{ matrix.sanitizer }}-${{ github.ref }}
+      cancel-in-progress: true
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitizer: [address]
+    steps:
+      - name: Build fuzzers (${{ matrix.sanitizer }})
+        id: build
+        uses: google/clusterfuzzlite/actions/build_fuzzers@v1
+        with:
+          language: rust
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          sanitizer: ${{ matrix.sanitizer }}
+
+      - name: Run fuzzers (${{ matrix.sanitizer }})
+        id: run
+        uses: google/clusterfuzzlite/actions/run_fuzzers@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          fuzz-seconds: 3600
+          mode: batch
+          sanitizer: ${{ matrix.sanitizer }}
