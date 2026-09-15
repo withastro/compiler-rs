@@ -9,8 +9,6 @@
     "language-server",
     "content-mapper"
   ],
-  "license": "MIT",
-  "author": "Astro contributors",
   "homepage": "https://astro.build",
   "bugs": "https://github.com/withastro/compiler-rs/issues",
   "repository": {
@@ -18,6 +16,8 @@
     "url": "git+https://github.com/withastro/compiler-rs.git",
     "directory": "crates/astro2tsx"
   },
+  "license": "MIT",
+  "author": "Astro contributors",
   "type": "module",
   "main": "index.js",
   "files": [
