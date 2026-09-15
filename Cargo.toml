@@ -34,7 +34,7 @@ oxc_transformer = { git = "https://github.com/withastro/oxc", rev = "8bb526fc0c2
 oxc_sourcemap = "6.0.1"
 
 biome_diagnostics = { git = "https://github.com/biomejs/biome", rev = "b88f1ea368c727ff8ebeddcaf9448f6ddc7c4878" }
-biome_html_parser = { git = "https://github.com/biomejs/biome", rev = "b88f1ea368c727ff8ebeddcaf9448f6ddc7c4878" }
+biome_html_parser = { git = "https://github.com/biomejs/biome", rev = "7ee3a6cf44d578547eb62aca412693f6cc4d4d0d" }
 biome_html_syntax = { git = "https://github.com/biomejs/biome", rev = "b88f1ea368c727ff8ebeddcaf9448f6ddc7c4878" }
 biome_js_parser = { git = "https://github.com/biomejs/biome", rev = "b88f1ea368c727ff8ebeddcaf9448f6ddc7c4878" }
 biome_parser = { git = "https://github.com/biomejs/biome", rev = "b88f1ea368c727ff8ebeddcaf9448f6ddc7c4878" }
