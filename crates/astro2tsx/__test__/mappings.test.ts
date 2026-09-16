@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import { convertToTsx } from '../index.js';
+import { AstroFrontmatterStatus, convertToTsx } from '../index.js';
 
 test('returns TypeScript Content Mapper span mappings', () => {
 	const source =
@@ -11,7 +11,10 @@ test('returns TypeScript Content Mapper span mappings', () => {
 	let previousEnd = 0;
 	for (const [i, mapping] of result.mappings.entries()) {
 		const [virtualStart, virtualLength, originalStart, originalLength, kind] = mapping;
-		assert.ok(virtualLength > 0, `span ${i} is empty`);
+		assert.ok(
+			virtualLength > 0 || (virtualLength === 0 && originalLength === 0 && kind === 0),
+			`span ${i} is an invalid empty mapping`,
+		);
 		if (i > 0) {
 			assert.ok(virtualStart >= previousEnd, `span ${i} overlaps its predecessor`);
 		}
@@ -56,6 +59,74 @@ test('returns TypeScript Content Mapper span mappings', () => {
 	assert.deepEqual(
 		result.mappings.find((mapping) => mapping[0] === exportName),
 		[exportName, 'AstroComponent'.length, 0, 0, 1, (1 << 3) | (1 << 6)],
+	);
+});
+
+test('maps the missing-frontmatter import slot as a completion-only insertion point', () => {
+	const source = '<Ima';
+	const result = convertToTsx(source);
+
+	assert.equal(result.frontmatterStatus, AstroFrontmatterStatus.DoesntExist);
+	assert.equal(result.frontmatter.start, result.frontmatter.end);
+	const insertion = result.mappings.find(
+		([, , originalStart, originalLength, kind, features]) =>
+			originalStart === 0 && originalLength === 0 && kind === 1 && features === 1 << 2,
+	);
+	assert.ok(insertion, 'missing completion insertion mapping');
+	const [generatedStart, generatedLength] = insertion;
+	assert.ok(generatedLength > 0);
+	assert.equal(generatedStart + generatedLength, result.frontmatter.start);
+	assert.equal(result.code.slice(generatedStart, generatedStart + generatedLength), '\n');
+
+	assert.deepEqual(
+		result.mappings.find(
+			([virtualStart, virtualLength, originalStart, originalLength, kind, features]) =>
+				virtualStart === result.frontmatter.start &&
+				virtualLength === 0 &&
+				originalStart === 0 &&
+				originalLength === 0 &&
+				kind === 0 &&
+				features === 0,
+		),
+		[result.frontmatter.start, 0, 0, 0, 0, 0],
+		'missing exact TypeScript insertion anchor',
+	);
+
+	const bodyMapping = result.mappings.find(
+		([virtualStart, virtualLength, originalStart, originalLength, kind]) =>
+			kind === 0 &&
+			virtualStart <= result.body.start &&
+			virtualStart + virtualLength >= result.body.start + source.length &&
+			originalStart === 0 &&
+			originalLength >= source.length,
+	);
+	assert.ok(bodyMapping, 'template body mapping changed or disappeared');
+	assert.equal(result.code.slice(result.body.start, result.body.start + source.length), source);
+});
+
+test('does not add a synthetic insertion mapping when frontmatter exists', () => {
+	const source = '---\n---\n\n<Ima';
+	const result = convertToTsx(source);
+
+	assert.equal(result.frontmatterStatus, AstroFrontmatterStatus.Closed);
+	assert.equal(
+		result.mappings.some(
+			([, virtualLength, originalStart, originalLength, kind, features]) =>
+				originalStart === 0 &&
+				originalLength === 0 &&
+				((kind === 1 && features === 1 << 2) ||
+					(kind === 0 && virtualLength === 0 && features === 0)),
+		),
+		false,
+	);
+	assert.ok(
+		result.mappings.some(
+			([virtualStart, virtualLength, , , kind]) =>
+				kind === 0 &&
+				virtualStart <= result.frontmatter.start &&
+				virtualStart + virtualLength > result.frontmatter.start,
+		),
+		'existing frontmatter insertion position is not source-mappable',
 	);
 });
 

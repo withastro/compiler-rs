@@ -16,7 +16,7 @@ use crate::printer::{Printer, range_start};
 use crate::types::GeneratedRange;
 use crate::utils::tsx_component_names;
 
-const TSX_PREFIX: &str = "/* @jsxImportSource astro */\n\n";
+const TSX_PREFIX: &str = "/* @jsxImportSource astro */\n";
 
 pub(crate) fn render_root(
     printer: &mut Printer,
@@ -24,10 +24,19 @@ pub(crate) fn render_root(
     options: &ConvertOptions,
 ) -> (GeneratedRange, Option<GeneratedRange>) {
     printer.comment_ranges = comment_trivia_ranges(&root);
+    let frontmatter_node = root.frontmatter();
     printer.map_nil();
     printer.write(TSX_PREFIX);
+    let insertion_start = printer.position();
+    printer.write("\n");
+    if frontmatter_node.is_none() {
+        // This generated-only newline is where TypeScript inserts imports. Keep it
+        // distinct from the synthetic Fragment so consumers can map edits, but not
+        // ordinary source or diagnostics, to the start of the Astro document.
+        printer.frontmatter_insertion_range =
+            Some(GeneratedRange::new(insertion_start, printer.position()));
+    }
     let (component_name, alias) = tsx_component_names(options.filename.as_deref());
-    let frontmatter_node = root.frontmatter();
     let frontmatter = frontmatter::render(printer, frontmatter_node.as_ref(), alias.as_deref());
     let body = root.html();
     let body_text_start = frontmatter.body_text_start;

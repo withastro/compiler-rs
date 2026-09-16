@@ -10,6 +10,7 @@ use crate::{
 
 const SPAN_MAP_KIND_VERBATIM: u32 = 0;
 const SPAN_MAP_KIND_ATOM: u32 = 1;
+const SPAN_MAP_FEATURE_COMPLETION: u32 = 1 << 2;
 const SPAN_MAP_FEATURE_DEFINITION: u32 = 1 << 3;
 const SPAN_MAP_FEATURE_REFERENCES: u32 = 1 << 6;
 
@@ -111,6 +112,33 @@ pub fn convert_to_tsx(source: String, options: Option<ConvertToTsxOptions>) -> C
     let source_len = source_index.convert(source.len() as u32);
 
     let mut mappings = Vec::new();
+    if let Some(GeneratedRange { start, end }) = result.frontmatter_insertion_range {
+        // This atom maps the generated import slot to a zero-length source insertion
+        // point. Completion is the only enabled editor feature: in particular, the
+        // synthetic newline must not participate in verification/diagnostics.
+        let generated = generated_index.convert(start);
+        mappings.push(vec![
+            generated,
+            generated_index.convert(end) - generated,
+            0,
+            0,
+            SPAN_MAP_KIND_ATOM,
+            SPAN_MAP_FEATURE_COMPLETION,
+        ]);
+        // Volar uses the uneven atom above to project completions into the
+        // generated import slot. TypeScript uses this exact boundary anchor
+        // when mapping the resulting zero-length import edit back to source.
+        // Explicit FeatureNone keeps the anchor available for edit mapping
+        // without exposing another completion projection.
+        mappings.push(vec![
+            generated_index.convert(end),
+            0,
+            0,
+            0,
+            SPAN_MAP_KIND_VERBATIM,
+            0,
+        ]);
+    }
     for (index, mapping) in result.mappings.iter().enumerate() {
         let Some(original) = mapping.original else {
             continue;

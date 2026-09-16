@@ -13,6 +13,8 @@ pub(crate) struct Printer<'a> {
     pub(crate) output: String,
     pub(crate) mappings: Vec<Mapping>,
     pub(crate) frontmatter_range: GeneratedRange,
+    /// Synthetic generated span where frontmatter can be inserted when none exists.
+    pub(crate) frontmatter_insertion_range: Option<GeneratedRange>,
     pub(crate) body_range: GeneratedRange,
     pub(crate) scripts: Vec<ExtractedTag>,
     pub(crate) styles: Vec<ExtractedTag>,
@@ -30,6 +32,7 @@ impl<'a> Printer<'a> {
             output: String::new(),
             mappings: Vec::new(),
             frontmatter_range: GeneratedRange::default(),
+            frontmatter_insertion_range: None,
             body_range: GeneratedRange::default(),
             scripts: Vec::new(),
             styles: Vec::new(),
