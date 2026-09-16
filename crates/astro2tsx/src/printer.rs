@@ -13,7 +13,7 @@ pub(crate) struct Printer<'a> {
     pub(crate) output: String,
     pub(crate) mappings: Vec<Mapping>,
     pub(crate) frontmatter_range: GeneratedRange,
-    /// Synthetic generated span where frontmatter can be inserted when none exists.
+    /// Generated completion slot used when the source has no frontmatter.
     pub(crate) frontmatter_insertion_range: Option<GeneratedRange>,
     pub(crate) body_range: GeneratedRange,
     pub(crate) scripts: Vec<ExtractedTag>,

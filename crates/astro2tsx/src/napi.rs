@@ -113,9 +113,9 @@ pub fn convert_to_tsx(source: String, options: Option<ConvertToTsxOptions>) -> C
 
     let mut mappings = Vec::new();
     if let Some(GeneratedRange { start, end }) = result.frontmatter_insertion_range {
-        // This atom maps the generated import slot to a zero-length source insertion
-        // point. Completion is the only enabled editor feature: in particular, the
-        // synthetic newline must not participate in verification/diagnostics.
+        // Let Volar project completions from the start of an Astro document into
+        // the generated frontmatter slot. The slot remains excluded from other
+        // editor features because it has no source text of its own.
         let generated = generated_index.convert(start);
         mappings.push(vec![
             generated,
@@ -124,19 +124,6 @@ pub fn convert_to_tsx(source: String, options: Option<ConvertToTsxOptions>) -> C
             0,
             SPAN_MAP_KIND_ATOM,
             SPAN_MAP_FEATURE_COMPLETION,
-        ]);
-        // Volar uses the uneven atom above to project completions into the
-        // generated import slot. TypeScript uses this exact boundary anchor
-        // when mapping the resulting zero-length import edit back to source.
-        // Explicit FeatureNone keeps the anchor available for edit mapping
-        // without exposing another completion projection.
-        mappings.push(vec![
-            generated_index.convert(end),
-            0,
-            0,
-            0,
-            SPAN_MAP_KIND_VERBATIM,
-            0,
         ]);
     }
     for (index, mapping) in result.mappings.iter().enumerate() {

@@ -30,9 +30,8 @@ pub(crate) fn render_root(
     let insertion_start = printer.position();
     printer.write("\n");
     if frontmatter_node.is_none() {
-        // This generated-only newline is where TypeScript inserts imports. Keep it
-        // distinct from the synthetic Fragment so consumers can map edits, but not
-        // ordinary source or diagnostics, to the start of the Astro document.
+        // Keep a generated-only slot before the synthetic Fragment so editor
+        // integrations can project frontmatter completions from source offset zero.
         printer.frontmatter_insertion_range =
             Some(GeneratedRange::new(insertion_start, printer.position()));
     }

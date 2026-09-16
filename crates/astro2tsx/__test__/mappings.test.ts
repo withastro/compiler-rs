@@ -11,10 +11,7 @@ test('returns TypeScript Content Mapper span mappings', () => {
 	let previousEnd = 0;
 	for (const [i, mapping] of result.mappings.entries()) {
 		const [virtualStart, virtualLength, originalStart, originalLength, kind] = mapping;
-		assert.ok(
-			virtualLength > 0 || (virtualLength === 0 && originalLength === 0 && kind === 0),
-			`span ${i} is an invalid empty mapping`,
-		);
+		assert.ok(virtualLength > 0, `span ${i} is empty`);
 		if (i > 0) {
 			assert.ok(virtualStart >= previousEnd, `span ${i} overlaps its predecessor`);
 		}
@@ -62,7 +59,7 @@ test('returns TypeScript Content Mapper span mappings', () => {
 	);
 });
 
-test('maps the missing-frontmatter import slot as a completion-only insertion point', () => {
+test('maps the missing-frontmatter slot for Volar completions', () => {
 	const source = '<Ima';
 	const result = convertToTsx(source);
 
@@ -78,20 +75,6 @@ test('maps the missing-frontmatter import slot as a completion-only insertion po
 	assert.equal(generatedStart + generatedLength, result.frontmatter.start);
 	assert.equal(result.code.slice(generatedStart, generatedStart + generatedLength), '\n');
 
-	assert.deepEqual(
-		result.mappings.find(
-			([virtualStart, virtualLength, originalStart, originalLength, kind, features]) =>
-				virtualStart === result.frontmatter.start &&
-				virtualLength === 0 &&
-				originalStart === 0 &&
-				originalLength === 0 &&
-				kind === 0 &&
-				features === 0,
-		),
-		[result.frontmatter.start, 0, 0, 0, 0, 0],
-		'missing exact TypeScript insertion anchor',
-	);
-
 	const bodyMapping = result.mappings.find(
 		([virtualStart, virtualLength, originalStart, originalLength, kind]) =>
 			kind === 0 &&
@@ -104,18 +87,15 @@ test('maps the missing-frontmatter import slot as a completion-only insertion po
 	assert.equal(result.code.slice(result.body.start, result.body.start + source.length), source);
 });
 
-test('does not add a synthetic insertion mapping when frontmatter exists', () => {
+test('does not add a Volar completion mapping when frontmatter exists', () => {
 	const source = '---\n---\n\n<Ima';
 	const result = convertToTsx(source);
 
 	assert.equal(result.frontmatterStatus, AstroFrontmatterStatus.Closed);
 	assert.equal(
 		result.mappings.some(
-			([, virtualLength, originalStart, originalLength, kind, features]) =>
-				originalStart === 0 &&
-				originalLength === 0 &&
-				((kind === 1 && features === 1 << 2) ||
-					(kind === 0 && virtualLength === 0 && features === 0)),
+			([, , originalStart, originalLength, kind, features]) =>
+				originalStart === 0 && originalLength === 0 && kind === 1 && features === 1 << 2,
 		),
 		false,
 	);
