@@ -3,8 +3,23 @@
   "extends": ["config:recommended"],
   "packageRules": [
     {
-      "matchPackageNames": ["oxc_*"],
-      "enabled": false
+      "description": "Group all dependencies from the biomejs/biome repo (cargo crates + @biomejs/* npm packages)",
+      "matchSourceUrls": ["https://github.com/biomejs/biome"],
+      "groupName": "biome",
+      "groupSlug": "biome"
+    },
+    {
+      "description": "Group all dependencies from the withastro/oxc fork",
+      "matchSourceUrls": ["https://github.com/withastro/oxc"],
+      "groupName": "oxc fork",
+      "groupSlug": "oxc-fork"
+    },
+    {
+      "description": "Group all remaining JS dependencies together",
+      "matchManagers": ["npm"],
+      "matchPackageNames": ["!@biomejs/*"],
+      "groupName": "js deps",
+      "groupSlug": "js-deps"
     }
   ]
 }
