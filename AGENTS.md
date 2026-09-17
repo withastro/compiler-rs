@@ -106,6 +106,9 @@ Edits to Rust source take effect in the JS API only after rebuilding the NAPI ad
 # Build the NAPI native addon (debug mode)
 pnpm run build:napi
 
+# Build the astro2tsx (debug mode)
+pnpm run build:astro2tsx
+
 # Build the TypeScript package
 pnpm run build:compiler
 
