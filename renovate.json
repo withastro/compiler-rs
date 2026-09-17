@@ -20,6 +20,13 @@
       "matchDepNames": ["!@biomejs/*"],
       "groupName": "js deps",
       "groupSlug": "js-deps"
+    },
+    {
+      "description": "Group all non-major GitHub Actions updates together",
+      "matchManagers": ["github-actions"],
+      "matchUpdateTypes": ["minor", "patch", "digest", "pin", "pinDigest"],
+      "groupName": "github actions",
+      "groupSlug": "github-actions"
     }
   ]
 }
