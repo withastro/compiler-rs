@@ -10,7 +10,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: needs repro
-        uses: actions-cool/issues-helper@9861779a695cf1898bd984c727f685f351cfc372 # v3.7.2
+        uses: actions-cool/issues-helper@1c9e803c80cc7fed000022d4c94f4b5bc2e90062 # v3.8.0
         with:
           actions: "close-issues"
           token: ${{ secrets.GITHUB_TOKEN }}
