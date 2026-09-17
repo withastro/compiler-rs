@@ -37,8 +37,8 @@ importers:
         specifier: 1.11.3
         version: 1.11.3
       '@napi-rs/cli':
-        specifier: 3.5.1
-        version: 3.5.1(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(@types/node@22.20.1)(node-addon-api@7.1.1)
+        specifier: 3.7.4
+        version: 3.7.4(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(@types/node@22.20.1)(node-addon-api@7.1.1)
       '@types/node':
         specifier: ^22
         version: 22.20.1
@@ -55,8 +55,8 @@ importers:
         specifier: 1.11.3
         version: 1.11.3
       '@napi-rs/cli':
-        specifier: 3.5.1
-        version: 3.5.1(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(@types/node@22.20.1)(node-addon-api@7.1.1)
+        specifier: 3.7.4
+        version: 3.7.4(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(@types/node@22.20.1)(node-addon-api@7.1.1)
       '@napi-rs/wasm-runtime':
         specifier: 1.2.4
         version: 1.2.4(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)
@@ -555,8 +555,8 @@ packages:
     resolution: {integrity: sha512-6QEf6yqFbETdwGITKq57aYoPfX/3K8XFNwsAlx0C1M7o8cb79sv1M3w+tWuWvIcSbNqrLF7OD7YpZMVVz335hQ==}
     engines: {node: '>=20.0.0'}
 
-  '@napi-rs/cli@3.5.1':
-    resolution: {integrity: sha512-XBfLQRDcB3qhu6bazdMJsecWW55kR85l5/k0af9BIBELXQSsCFU0fzug7PX8eQp6vVdm7W/U3z6uP5WmITB2Gw==}
+  '@napi-rs/cli@3.7.4':
+    resolution: {integrity: sha512-idELIUceJ9zPgx/shcMt1fSSsteFG68v56RIXi4qUm7OYuJOt7CoMj2KnHVmbOqXgUHWQU1lCULrtQdZDG4F5A==}
     engines: {node: '>= 16'}
     hasBin: true
     peerDependencies:
@@ -1443,8 +1443,8 @@ packages:
   jju@1.4.0:
     resolution: {integrity: sha512-8wb9Yw966OSxApiCt0K3yNJL8pnNeIv+OEq2YMidz4FKP6nonSRoOXc80iXY4JaN2FC11B9qsNmDsm+ZOfMROA==}
 
-  js-yaml@4.1.1:
-    resolution: {integrity: sha512-qQKT4zQxXl8lLwBtHMWwaTcGfFOZviOJet3Oy/xmGk2gZH677CJM9EvtfdSkgWcATZhj/55JZ0rmy3myCT5lsA==}
+  js-yaml@4.3.2:
+    resolution: {integrity: sha512-SFNOvSJ+Dgf/9An904Yx+CgSlIPCkIpao4qo51lpee25TIRejdH3rhR4EZMGoNx3/TP3O+wzWuiTFl4sqbltzA==}
     hasBin: true
 
   jsonc-parser@3.3.1:
@@ -2066,7 +2066,7 @@ snapshots:
       tinyglobby: 0.2.17
       yaml: 2.9.1
 
-  '@napi-rs/cli@3.5.1(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(@types/node@22.20.1)(node-addon-api@7.1.1)':
+  '@napi-rs/cli@3.7.4(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(@types/node@22.20.1)(node-addon-api@7.1.1)':
     dependencies:
       '@inquirer/prompts': 8.7.2(@types/node@22.20.1)
       '@napi-rs/cross-toolchain': 1.0.3(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)
@@ -2076,7 +2076,7 @@ snapshots:
       colorette: 2.0.20
       emnapi: 1.11.3(node-addon-api@7.1.1)
       es-toolkit: 1.52.0
-      js-yaml: 4.1.1
+      js-yaml: 4.3.2
       obug: 2.1.4
       semver: 7.8.5
       typanion: 3.14.0
@@ -2719,7 +2719,7 @@ snapshots:
 
   jju@1.4.0: {}
 
-  js-yaml@4.1.1:
+  js-yaml@4.3.2:
     dependencies:
       argparse: 2.0.1
 
