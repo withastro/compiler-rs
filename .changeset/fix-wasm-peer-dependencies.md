@@ -4,4 +4,4 @@
 "@astrojs/compiler-rs": patch
 ---
 
-Declare the emnapi runtime dependencies in the packages that ship WebAssembly bindings.
+Adds missing emnapi runtime dependencies to WASM bindings packages
