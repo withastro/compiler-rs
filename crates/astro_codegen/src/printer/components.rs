@@ -200,12 +200,6 @@ impl<'a> AstroCodegen<'a> {
         // that are not in the NeverScopedElements list.
         let scope_id = self.scope_id_for(name);
 
-        // Custom elements render as real DOM elements, so `define:vars` must inject
-        // the CSS custom properties as an inline `style` prop. PascalCase components
-        // are excluded: they control their own root element, so the style cannot be
-        // attached to them here.
-        let inject_define_vars = is_custom && !self.define_vars_values.is_empty();
-
         // Components always receive slot as a prop.
         // Only HTML elements have the slot attribute stripped when inside named slots.
         let prev_skip_slot = self.skip_slot_attribute;
@@ -222,7 +216,7 @@ impl<'a> AstroCodegen<'a> {
                 None
             },
             scope_id.as_ref(),
-            inject_define_vars,
+            is_custom,
         );
 
         self.skip_slot_attribute = prev_skip_slot;
@@ -337,7 +331,7 @@ impl<'a> AstroCodegen<'a> {
         server_defer: Option<&ServerDeferInfo>,
         skip_names: Option<&[&str]>,
         scope_id: Option<&ScopeId>,
-        inject_define_vars: bool,
+        is_custom: bool,
     ) {
         let mut first = true;
 
@@ -361,6 +355,8 @@ impl<'a> AstroCodegen<'a> {
                 }
             }
         }
+
+        let inject_define_vars = is_custom && !self.define_vars_values.is_empty();
 
         // Track whether the scope class was merged into an existing class attribute
         let mut scope_injected = false;
@@ -434,10 +430,12 @@ impl<'a> AstroCodegen<'a> {
                     self.print("\":");
 
                     // Merge scope class into class attribute value (matches Go compiler).
+                    // For component tags, also merge into className so React keeps the scope.
                     // Static:  class="foo" → "class":"foo astro-HASH"
                     // Dynamic: class={expr} → "class":(((expr) ?? "") + " astro-HASH")
                     // Boolean: class        → "class":"astro-HASH"
-                    if name == "class"
+                    if !scope_injected
+                        && (name == "class" || (!is_custom && name == "className"))
                         && let Some(sc) = &scope_class
                     {
                         match &attr.value {
