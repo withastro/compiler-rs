@@ -6,7 +6,7 @@ export interface AstroDiagnostic {
   position: Range
 }
 
-export declare const enum AstroFrontmatterStatus {
+export declare enum AstroFrontmatterStatus {
   DoesntExist = 'doesnt-exist',
   /** An opening fence with no closing one. */
   Open = 'open',
@@ -59,7 +59,7 @@ export interface ConvertToTsxResult {
   hasParseErrors: boolean
 }
 
-export declare const enum DiagnosticSeverity {
+export declare enum DiagnosticSeverity {
   Error = 1,
   Warning = 2,
   Information = 3,
@@ -77,7 +77,7 @@ export interface ExtractedScript {
  * A bare `<script>` is Astro-processed; attributes opt out of that processing.
  * `Unknown` includes both dynamic and unrecognized `type` values.
  */
-export declare const enum ExtractedScriptType {
+export declare enum ExtractedScriptType {
   /** A bare `<script>` that Astro processes and bundles as a module. */
   ProcessedModule = 'processed-module',
   /** A non-processed `<script type="module">`. */
@@ -103,7 +103,7 @@ export interface ExtractedStyle {
   lang: string
 }
 
-export declare const enum ExtractedStyleType {
+export declare enum ExtractedStyleType {
   Tag = 'tag',
   StyleAttribute = 'style-attribute'
 }
