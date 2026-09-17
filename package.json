@@ -13,8 +13,8 @@
   ],
   "scripts": {
     "build:all": "pnpm run build:napi && pnpm run build:astro2tsx && pnpm run build:compiler",
-    "build:compiler": "pnpm --filter @astrojs/compiler-rs run build",
     "build:astro2tsx": "pnpm --filter ./crates/astro2tsx run build-dev",
+    "build:compiler": "pnpm --filter @astrojs/compiler-rs run build",
     "build:napi": "pnpm --filter ./crates/astro_napi run build-dev",
     "format": "pnpm run format:code && pnpm run format:imports",
     "format:ci": "pnpm run format:code:ci && pnpm run format:imports:ci",
