@@ -53,6 +53,8 @@
   },
   "napi": {
     "binaryName": "astro2tsx",
-    "packageName": "@astrojs/astro2tsx"
+    "packageName": "@astrojs/astro2tsx",
+    "constEnum": false,
+    "runtimeStringEnum": true
   }
 }
