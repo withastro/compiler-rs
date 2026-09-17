@@ -29,13 +29,13 @@ importers:
       '@emnapi/core':
         specifier: 1.11.3
         version: 1.11.3
+      '@emnapi/runtime':
+        specifier: 1.11.3
+        version: 1.11.3
       '@napi-rs/wasm-runtime':
         specifier: 1.2.4
         version: 1.2.4(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)
     devDependencies:
-      '@emnapi/runtime':
-        specifier: 1.11.3
-        version: 1.11.3
       '@napi-rs/cli':
         specifier: 3.7.4
         version: 3.7.4(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(@types/node@22.20.1)(node-addon-api@7.1.1)
@@ -55,8 +55,8 @@ importers:
         specifier: 1.11.3
         version: 1.11.3
       '@napi-rs/cli':
-        specifier: 3.7.4
-        version: 3.7.4(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(@types/node@22.20.1)(node-addon-api@7.1.1)
+        specifier: 3.8.6
+        version: 3.8.6(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(@types/node@22.20.1)(emnapi@1.11.3(node-addon-api@7.1.1))
       '@napi-rs/wasm-runtime':
         specifier: 1.2.4
         version: 1.2.4(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)
@@ -563,6 +563,22 @@ packages:
       '@emnapi/runtime': ^1.7.1
     peerDependenciesMeta:
       '@emnapi/runtime':
+        optional: true
+
+  '@napi-rs/cli@3.8.6':
+    resolution: {integrity: sha512-FnJ9fghsV9Q4zh2aJGPSvQiUlJRC27B6KhzAXcIW2rlSD8keak3mhXw4tJYa3KJkP9whETfsPwqp/DJRnQg5ng==}
+    engines: {node: ^20.17.0 || ^22.13.0 || >= 23.5.0}
+    hasBin: true
+    peerDependencies:
+      '@emnapi/core': ^1.7.1 || ^2.0.0-alpha.4
+      '@emnapi/runtime': ^1.7.1 || ^2.0.0-alpha.4
+      emnapi: ^1.7.1 || ^2.0.0-alpha.4
+    peerDependenciesMeta:
+      '@emnapi/core':
+        optional: true
+      '@emnapi/runtime':
+        optional: true
+      emnapi:
         optional: true
 
   '@napi-rs/cross-toolchain@1.0.3':
@@ -1627,6 +1643,11 @@ packages:
     engines: {node: '>=14.17'}
     hasBin: true
 
+  typescript@6.0.3:
+    resolution: {integrity: sha512-y2TvuxSZPDyQakkFRPZHKFm+KKVqIisdg9/CZwm9ftvKXLP8NRWj38/ODjNbr43SsoXqNuAisEf1GdCxqWcdBw==}
+    engines: {node: '>=14.17'}
+    hasBin: true
+
   unconfig-core@7.5.0:
     resolution: {integrity: sha512-Su3FauozOGP44ZmKdHy2oE6LPjk51M/TRRjHv2HNCWiDvfvCoxC2lno6jevMA91MYAdCdwP05QnWdWpSbncX/w==}
 
@@ -2096,6 +2117,38 @@ snapshots:
       - '@napi-rs/cross-toolchain-x64-target-x86_64'
       - '@types/node'
       - node-addon-api
+      - supports-color
+
+  '@napi-rs/cli@3.8.6(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)(@types/node@22.20.1)(emnapi@1.11.3(node-addon-api@7.1.1))':
+    dependencies:
+      '@inquirer/prompts': 8.7.2(@types/node@22.20.1)
+      '@napi-rs/cross-toolchain': 1.0.3(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)
+      '@napi-rs/wasm-tools': 1.1.0
+      '@octokit/rest': 22.0.1
+      clipanion: 4.0.0-rc.4(typanion@3.14.0)
+      colorette: 2.0.20
+      es-toolkit: 1.52.0
+      js-yaml: 4.3.2
+      obug: 2.1.4
+      semver: 7.8.5
+      typanion: 3.14.0
+      typescript: 6.0.3
+    optionalDependencies:
+      '@emnapi/core': 1.11.3
+      '@emnapi/runtime': 1.11.3
+      emnapi: 1.11.3(node-addon-api@7.1.1)
+    transitivePeerDependencies:
+      - '@napi-rs/cross-toolchain-arm64-target-aarch64'
+      - '@napi-rs/cross-toolchain-arm64-target-armv7'
+      - '@napi-rs/cross-toolchain-arm64-target-ppc64le'
+      - '@napi-rs/cross-toolchain-arm64-target-s390x'
+      - '@napi-rs/cross-toolchain-arm64-target-x86_64'
+      - '@napi-rs/cross-toolchain-x64-target-aarch64'
+      - '@napi-rs/cross-toolchain-x64-target-armv7'
+      - '@napi-rs/cross-toolchain-x64-target-ppc64le'
+      - '@napi-rs/cross-toolchain-x64-target-s390x'
+      - '@napi-rs/cross-toolchain-x64-target-x86_64'
+      - '@types/node'
       - supports-color
 
   '@napi-rs/cross-toolchain@1.0.3(@emnapi/core@1.11.3)(@emnapi/runtime@1.11.3)':
@@ -2874,6 +2927,8 @@ snapshots:
   typescript@5.5.4: {}
 
   typescript@5.9.3: {}
+
+  typescript@6.0.3: {}
 
   unconfig-core@7.5.0:
     dependencies:
