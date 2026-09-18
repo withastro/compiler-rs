@@ -10,6 +10,7 @@ use crate::{
 
 const SPAN_MAP_KIND_VERBATIM: u32 = 0;
 const SPAN_MAP_KIND_ATOM: u32 = 1;
+const SPAN_MAP_FEATURE_COMPLETION: u32 = 1 << 2;
 const SPAN_MAP_FEATURE_DEFINITION: u32 = 1 << 3;
 const SPAN_MAP_FEATURE_REFERENCES: u32 = 1 << 6;
 
@@ -111,6 +112,20 @@ pub fn convert_to_tsx(source: String, options: Option<ConvertToTsxOptions>) -> C
     let source_len = source_index.convert(source.len() as u32);
 
     let mut mappings = Vec::new();
+    if let Some(GeneratedRange { start, end }) = result.frontmatter_insertion_range {
+        // Let Volar project completions from the start of an Astro document into
+        // the generated frontmatter slot. The slot remains excluded from other
+        // editor features because it has no source text of its own.
+        let generated = generated_index.convert(start);
+        mappings.push(vec![
+            generated,
+            generated_index.convert(end) - generated,
+            0,
+            0,
+            SPAN_MAP_KIND_ATOM,
+            SPAN_MAP_FEATURE_COMPLETION,
+        ]);
+    }
     for (index, mapping) in result.mappings.iter().enumerate() {
         let Some(original) = mapping.original else {
             continue;
