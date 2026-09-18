@@ -1,5 +1,13 @@
 # @astrojs/compiler-binding
 
+## 0.4.2
+
+### Patch Changes
+
+- 03242b3: Merge scoped styles into `className` for component tags
+  
+  `scopedStyleStrategy` values that emit a scope class ("class" and "where") now merge the scope class into a component's `className` prop, matching the legacy compiler's behavior for React components.
+
 ## 0.4.1
 
 ### Patch Changes
