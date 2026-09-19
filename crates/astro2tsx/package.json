@@ -38,10 +38,10 @@
   },
   "devDependencies": {
     "@emnapi/runtime": "1.11.3",
-    "@napi-rs/cli": "3.7.4",
+    "@napi-rs/cli": "3.10.4",
     "@types/node": "^22",
     "emnapi": "1.11.3",
-    "typescript": "~5.5.3"
+    "typescript": "~5.9.0"
   },
   "engines": {
     "node": "^20.19.0 || >=22.12.0"
