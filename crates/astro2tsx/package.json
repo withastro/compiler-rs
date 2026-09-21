@@ -1,6 +1,6 @@
 {
   "name": "@astrojs/astro2tsx",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Convert .astro files to TSX for TypeScript editor tooling",
   "keywords": [
     "astro",
