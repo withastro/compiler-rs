@@ -1,5 +1,20 @@
 # @astrojs/compiler-rs
 
+## 0.5.0
+
+### Minor Changes
+
+- 8d1ffa5: Adds the `inlineComponentAssets` transform option. When enabled, extracted styles are prepended to the component HTML, hoisted scripts are appended, and CSS import statements are omitted.
+
+### Patch Changes
+
+- 03242b3: Merge scoped styles into `className` for component tags
+  
+  `scopedStyleStrategy` values that emit a scope class ("class" and "where") now merge the scope class into a component's `className` prop, matching the legacy compiler's behavior for React components.
+- Updated dependencies [8d1ffa5]
+- Updated dependencies [03242b3]
+  - @astrojs/compiler-binding@0.5.0
+
 ## 0.4.1
 
 ### Patch Changes
