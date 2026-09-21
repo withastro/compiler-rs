@@ -1,0 +1,47 @@
+crates/astro2tsx/Cargo.toml
+  s_4254042d929106::t_da7822aff097a5 27
+crates/astro2tsx/src/expression.rs
+  s_4254042d929106::t_963e5409144643 11-12,502-505
+crates/astro2tsx/src/frontmatter.rs
+  s_4254042d929106::t_cfae07fe76e134 79
+crates/astro2tsx/src/lib.rs
+  s_89b0bdc720abae::t_d4f9323ae9f74d 79-80,83-97,100,112
+crates/astro2tsx/src/printer.rs
+  s_4254042d929106::t_72566aaa485f28 20,22,37,39
+crates/astro2tsx/src/props.rs
+  s_89b0bdc720abae::t_b5b6d40e358104 2-4,125,127-133,135-157,160-179,181-187,189-206
+crates/astro2tsx/src/render.rs
+  s_89b0bdc720abae::t_e6189cef192e62 4-5,22-24,49-65,352-354,477,495-498,759-775,780,784,799-867,891-906,935-998,1086,1092,1100-1111,1187-1190,1294-1298,1318
+crates/astro2tsx/src/sourcemap.rs
+  s_4254042d929106::t_dfddd0fe3ffb64 150-162
+crates/astro2tsx/src/utils.rs
+  s_4254042d929106::t_f126dd78d79049 1-2,30-54
+crates/astro2tsx/tests/regressions.rs
+  s_89b0bdc720abae::t_bc7f600f71c866 3,198,208-265,389-402,661-667,773-1007
+crates/astro2tsx/tests/source_map.rs
+  s_4254042d929106::t_9983a4ca25bf99 29-34,40,45-47,50,53,216-237
+---
+{
+  "schema_version": "authorship/3.0.0",
+  "git_ai_version": "1.6.10",
+  "base_commit_sha": "63c218ec98ba9795bcf904dd2df9e786b870d835",
+  "prompts": {},
+  "sessions": {
+    "s_4254042d929106": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f96221e42ffeQqqgh7To6OumVC",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Princesseuh <3019731+Princesseuh@users.noreply.github.com>"
+    },
+    "s_89b0bdc720abae": {
+      "agent_id": {
+        "tool": "opencode",
+        "id": "ses_f936e21b3ffeLcgjyiQ1s1jgm4",
+        "model": "gpt-5.6-sol"
+      },
+      "human_author": "Princesseuh <3019731+Princesseuh@users.noreply.github.com>"
+    }
+  }
+}
