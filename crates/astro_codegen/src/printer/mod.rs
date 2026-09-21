@@ -103,7 +103,9 @@ pub use result::{
 pub use style::{StyleBlock, extract_styles};
 
 // Bring escape helpers into scope for use inside this file.
-use escape::{escape_single_quote, escape_template_literal};
+use escape::{
+    escape_double_quotes, escape_single_quote, escape_style_end_tags, escape_template_literal,
+};
 
 // Bring element helpers into scope for use inside this file.
 use elements::is_head_element;
@@ -616,7 +618,9 @@ impl<'a> AstroCodegen<'a> {
 
         // 2b. Print CSS imports (one per extracted style) — after user imports so that
         // component stylesheets imported by user code precede this page's own styles.
-        self.print_css_imports();
+        if !self.options.inline_component_assets {
+            self.print_css_imports();
+        }
 
         // 3. Print namespace imports for modules (for metadata) - skip client:only components
         self.print_namespace_imports();
@@ -1118,12 +1122,20 @@ impl<'a> AstroCodegen<'a> {
         self.print(runtime::RENDER);
         self.print("`");
 
+        if self.options.inline_component_assets {
+            self.print_inline_component_styles();
+        }
+
         if self.needs_maybe_render_head_at_start(body) {
             self.print_parts(["${", runtime::MAYBE_RENDER_HEAD, "(", runtime::RESULT, ")}"]);
             self.render_head_inserted = true;
         }
 
         self.print_jsx_body_children(body);
+
+        if self.options.inline_component_assets {
+            self.print_inline_component_scripts();
+        }
 
         self.println("`;");
 
@@ -1142,6 +1154,33 @@ impl<'a> AstroCodegen<'a> {
             "undefined"
         };
         self.println(&format!("}}, {filename_part}, {propagation});"));
+    }
+
+    fn print_inline_component_styles(&mut self) {
+        for index in 0..self.extracted_css.len() {
+            let style = self.extracted_css[index].clone();
+            let style = escape_style_end_tags(&style);
+            self.print("<style>");
+            self.print(&escape_template_literal(&style));
+            self.print("</style>");
+        }
+    }
+
+    fn print_inline_component_scripts(&mut self) {
+        let filename = self
+            .options
+            .filename
+            .as_deref()
+            .unwrap_or("/src/pages/index.astro");
+        let filename = escape_double_quotes(filename).into_owned();
+
+        for index in 0..self.script_index {
+            self.print_parts(["${", runtime::RENDER_SCRIPT, "(", runtime::RESULT, ",\""]);
+            self.print(&filename);
+            self.print("?astro&type=script&index=");
+            self.print(&index.to_string());
+            self.print("&lang.ts\")}");
+        }
     }
 
     /// Print JSX children, skipping leading (and in compact mode, trailing)
@@ -1550,6 +1589,10 @@ impl<'a> AstroCodegen<'a> {
                 .unwrap_or_else(|| "/src/pages/index.astro".to_string());
             let index = self.script_index;
             self.script_index += 1;
+
+            if self.options.inline_component_assets {
+                return;
+            }
 
             self.print("${");
             self.print(runtime::RENDER_SCRIPT);

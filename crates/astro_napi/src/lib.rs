@@ -147,6 +147,14 @@ pub struct CompileOptions {
     /// @default true
     pub strip_slot_comments: Option<bool>,
 
+    /// Whether extracted styles and hoisted scripts are rendered with the component HTML.
+    ///
+    /// When enabled, extracted styles are prepended to the component template and hoisted
+    /// scripts are appended. CSS import statements are omitted.
+    ///
+    /// @default false
+    pub inline_component_assets: Option<bool>,
+
     /// Whether the caller has a `resolvePath` function.
     ///
     /// When `true`, the codegen will:
@@ -334,7 +342,7 @@ fn compile_astro_impl(source_text: &str, options: &CompileOptions) -> CompileRes
     }
 
     // Build codegen options
-    let resolve_path_provided = options.resolve_path_provided.unwrap_or(false);
+    let resolve_path_provided = options.resolve_path_provided.unwrap_or_default();
 
     let codegen_options = TransformOptions {
         filename: options.filename.clone(),
@@ -343,11 +351,12 @@ fn compile_astro_impl(source_text: &str, options: &CompileOptions) -> CompileRes
         sourcemap: napi_to_codegen_sourcemap(&options.sourcemap),
         astro_global_args: options.astro_global_args.clone(),
         compact: napi_to_codegen_compact(&options.compact),
-        result_scoped_slot: options.result_scoped_slot.unwrap_or(false),
+        result_scoped_slot: options.result_scoped_slot.unwrap_or_default(),
         scoped_style_strategy: napi_to_codegen_strategy(&options.scoped_style_strategy),
         transitions_animation_url: options.transitions_animation_url.clone(),
-        annotate_source_file: options.annotate_source_file.unwrap_or(false),
+        annotate_source_file: options.annotate_source_file.unwrap_or_default(),
         strip_slot_comments: options.strip_slot_comments.unwrap_or(true),
+        inline_component_assets: options.inline_component_assets.unwrap_or_default(),
         resolve_path: None,
         resolve_path_provided,
         preprocessed_styles: options.preprocessed_styles.clone(),
