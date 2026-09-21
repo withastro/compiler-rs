@@ -45,6 +45,70 @@ const href = '/about';
 }
 
 #[test]
+fn test_inline_component_assets() {
+    let source = r#"<style>div { color: red; }</style>
+<script>console.log('before')</script>
+<div>Content</div>
+<script>console.log('after')</script>"#;
+    let options = TransformOptions::new()
+        .with_internal_url("http://localhost:3000/")
+        .with_filename("Component.astro")
+        .with_inline_component_assets(true);
+    let result = compile_astro_with_options(source, options);
+
+    assert!(
+        !result.code.contains("?astro&type=style"),
+        "inline styles must not also be imported: {}",
+        result.code
+    );
+
+    let style = result
+        .code
+        .find("<style>div:where(.astro-")
+        .expect("scoped style should be rendered inline");
+    let body = result
+        .code
+        .find("<div class=\"astro-")
+        .expect("component body should be rendered");
+    let first_script = result
+        .code
+        .find("Component.astro?astro&type=script&index=0&lang.ts")
+        .expect("first script should be rendered");
+    let second_script = result
+        .code
+        .find("Component.astro?astro&type=script&index=1&lang.ts")
+        .expect("second script should be rendered");
+
+    assert!(style < body, "style should precede the component body");
+    assert!(
+        body < first_script,
+        "scripts should follow the component body"
+    );
+    assert!(
+        first_script < second_script,
+        "scripts should preserve their source order"
+    );
+}
+
+#[test]
+fn test_inline_component_assets_escape_style_end_tags() {
+    let source = "<style>.test { color: red; }</style><div></div>";
+    let mut options = TransformOptions::new()
+        .with_internal_url("http://localhost:3000/")
+        .with_inline_component_assets(true);
+    options.preprocessed_styles = Some(vec![Some(
+        r#".test::before { content: "</style >"; }"#.to_string(),
+    )]);
+    let result = compile_astro_with_options(source, options);
+
+    assert!(
+        result.code.contains(r#"content: "<\\/style >";"#),
+        "style end tags should be escaped: {}",
+        result.code
+    );
+}
+
+#[test]
 fn test_component_rendering() {
     let source = r"---
 import Component from 'test';

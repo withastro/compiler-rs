@@ -11,9 +11,10 @@
 //!
 //! Supported keys:
 //!
-//! | key       | values                  | default    |
-//! |-----------|-------------------------|------------|
-//! | `compact` | `html`, `jsx`, `false`  | `false`    |
+//! | key                     | values                 | default |
+//! |-------------------------|------------------------|---------|
+//! | `compact`               | `html`, `jsx`, `false` | `false` |
+//! | `inlineComponentAssets` | `true`, `false`        | `false` |
 
 use std::fs;
 
@@ -42,6 +43,9 @@ fn parse_fixture(raw: &str) -> (String, TransformOptions) {
                 "jsx" => CompactMode::Jsx,
                 _ => CompactMode::Disabled,
             };
+        }
+        if let Some(value) = config.strip_prefix("inlineComponentAssets=") {
+            options.inline_component_assets = value.trim() == "true";
         }
         // Advance past this line (including the newline)
         remaining = remaining[line.len()..].trim_start_matches('\n');

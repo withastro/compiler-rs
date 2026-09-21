@@ -32,6 +32,39 @@ pub fn escape_template_literal(s: &str) -> std::borrow::Cow<'_, str> {
     std::borrow::Cow::Owned(result)
 }
 
+/// Escape HTML style end tags in CSS embedded inside a `<style>` element.
+pub fn escape_style_end_tags(s: &str) -> std::borrow::Cow<'_, str> {
+    let bytes = s.as_bytes();
+    let mut output = None;
+    let mut copied = 0;
+    let mut cursor = 0;
+
+    while cursor + 8 <= bytes.len() {
+        if bytes[cursor..cursor + 7].eq_ignore_ascii_case(b"</style")
+            && matches!(
+                bytes[cursor + 7],
+                b'\t' | b'\n' | 0x0c | b'\r' | b' ' | b'/' | b'>'
+            )
+        {
+            let output = output.get_or_insert_with(|| String::with_capacity(s.len() + 1));
+            output.push_str(&s[copied..cursor]);
+            output.push_str("<\\/style");
+            cursor += 7;
+            copied = cursor;
+        } else {
+            cursor += 1;
+        }
+    }
+
+    match output {
+        Some(mut output) => {
+            output.push_str(&s[copied..]);
+            std::borrow::Cow::Owned(output)
+        }
+        None => std::borrow::Cow::Borrowed(s),
+    }
+}
+
 /// Escape a string for embedding inside a `"..."` JS string literal.
 ///
 /// Backslashes, then quotes, then newlines — in that order, so nothing is
@@ -364,6 +397,30 @@ mod tests {
             escape_template_literal("html`<div>${x}</div>`"),
             "html\\`<div>\\${x}</div>\\`"
         );
+    }
+
+    #[test]
+    fn style_end_tags_escape_html_delimiters_case_insensitively() {
+        for delimiter in ['\t', '\n', '\u{000c}', '\r', ' ', '/', '>'] {
+            let input = format!("before</StYlE{delimiter}after");
+            let expected = format!("before<\\/style{delimiter}after");
+            assert_eq!(escape_style_end_tags(&input), expected);
+        }
+    }
+
+    #[test]
+    fn style_end_tags_escape_multiple_matches_with_unicode() {
+        assert_eq!(
+            escape_style_end_tags("é</style >🌍</STYLE>"),
+            "é<\\/style >🌍<\\/style>"
+        );
+    }
+
+    #[test]
+    fn style_end_tags_leave_non_end_tags_unchanged() {
+        for input in ["", "</style", "</stylesheet>", "</stylex>", "<style>"] {
+            assert_eq!(escape_style_end_tags(input), input);
+        }
     }
 
     // ---- escape_double_quotes ----

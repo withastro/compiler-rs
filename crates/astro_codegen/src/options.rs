@@ -128,6 +128,12 @@ pub struct TransformOptions {
     /// in regular HTML elements which are always preserved.
     pub strip_slot_comments: bool,
 
+    /// Whether extracted styles and hoisted scripts are rendered with the component HTML.
+    ///
+    /// When enabled, extracted styles are prepended to the component template and hoisted
+    /// scripts are appended. CSS import statements are omitted.
+    pub inline_component_assets: bool,
+
     /// Custom path resolver function.
     ///
     /// When provided (`Some`), it is called for each import specifier to
@@ -176,6 +182,7 @@ impl Default for TransformOptions {
             transitions_animation_url: None,
             annotate_source_file: false,
             strip_slot_comments: true,
+            inline_component_assets: false,
             resolve_path: None,
             resolve_path_provided: false,
             preprocessed_styles: None,
@@ -197,6 +204,7 @@ impl std::fmt::Debug for TransformOptions {
             .field("transitions_animation_url", &self.transitions_animation_url)
             .field("annotate_source_file", &self.annotate_source_file)
             .field("strip_slot_comments", &self.strip_slot_comments)
+            .field("inline_component_assets", &self.inline_component_assets)
             .field(
                 "resolve_path",
                 &self.resolve_path.as_ref().map(|_| "Some(<fn>)"),
@@ -293,6 +301,13 @@ impl TransformOptions {
     #[must_use]
     pub fn with_strip_slot_comments(mut self, strip: bool) -> Self {
         self.strip_slot_comments = strip;
+        self
+    }
+
+    /// Set whether extracted styles and hoisted scripts render with the component HTML.
+    #[must_use]
+    pub fn with_inline_component_assets(mut self, enabled: bool) -> Self {
+        self.inline_component_assets = enabled;
         self
     }
 

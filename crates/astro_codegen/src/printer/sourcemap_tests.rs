@@ -205,6 +205,27 @@ import MyComponent from './MyComponent.astro';
 }
 
 #[test]
+fn test_sourcemap_with_inline_component_assets() {
+    let source =
+        "<style>h1 { color: red; }</style>\n<h1>Hello</h1>\n<script>console.log('hi')</script>";
+    let options = TransformOptions::new()
+        .with_internal_url("http://localhost:3000/")
+        .with_sourcemap(SourcemapOption::External)
+        .with_filename("test.astro")
+        .with_inline_component_assets(true);
+    let result = compile_astro_with_options(source, options);
+    let sm = oxc_sourcemap::SourceMap::from_json_string(&result.map)
+        .expect("should parse as valid sourcemap");
+
+    let parsed: serde_json::Value = serde_json::from_str(&result.map).unwrap();
+    assert_eq!(parsed["sourcesContent"][0], source);
+    assert!(
+        sm.get_tokens().any(|token| token.get_src_line() == 1),
+        "component body should map to its original source line"
+    );
+}
+
+#[test]
 fn test_sourcemap_points_to_original_lines() {
     let source = r"---
 const x = 1;

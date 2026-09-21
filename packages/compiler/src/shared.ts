@@ -45,6 +45,7 @@ export function mapOptions(
 		scopedStyleStrategy: options.scopedStyleStrategy,
 		transitionsAnimationURL: options.transitionsAnimationURL,
 		annotateSourceFile: options.annotateSourceFile,
+		inlineComponentAssets: options.inlineComponentAssets,
 		resolvePathProvided: typeof options.resolvePath === 'function' ? true : undefined,
 		preprocessedStyles,
 	};

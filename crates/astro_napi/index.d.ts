@@ -127,6 +127,15 @@ export interface CompileOptions {
    */
   stripSlotComments?: boolean
   /**
+   * Whether extracted styles and hoisted scripts are rendered with the component HTML.
+   *
+   * When enabled, extracted styles are prepended to the component template and hoisted
+   * scripts are appended. CSS import statements are omitted.
+   *
+   * @default false
+   */
+  inlineComponentAssets?: boolean
+  /**
    * Whether the caller has a `resolvePath` function.
    *
    * When `true`, the codegen will:

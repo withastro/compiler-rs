@@ -1,0 +1,31 @@
+---
+source: crates/astro_codegen/tests/snapshots.rs
+input_file: crates/astro_codegen/tests/fixtures/inline_component_assets.astro
+---
+import { render as $$render, createComponent as $$createComponent, maybeRenderHead as $$maybeRenderHead, renderScript as $$renderScript, createMetadata as $$createMetadata } from "http://localhost:3000/";
+export const $$metadata = $$createMetadata(import.meta.url, {
+	modules: [],
+	hydratedComponents: [],
+	clientOnlyComponents: [],
+	hydrationDirectives: new Set([]),
+	hoisted: [{
+		type: "inline",
+		value: `console.log("before");`
+	}, {
+		type: "inline",
+		value: `console.log("after");`
+	}]
+});
+const $$Component = $$createComponent(($$result, $$props, $$slots) => {
+	return $$render`<style>.message:where(.astro-fu4gcuhr) {
+  color: red;
+}
+</style><style>
+  .inline { color: blue; }
+</style>
+
+<script>console.log('inline')<\/script>
+${$$maybeRenderHead($$result)}<div class="message astro-fu4gcuhr">Content</div>
+${$$renderScript($$result, "/src/pages/index.astro?astro&type=script&index=0&lang.ts")}${$$renderScript($$result, "/src/pages/index.astro?astro&type=script&index=1&lang.ts")}`;
+}, undefined, undefined);
+export default $$Component;
