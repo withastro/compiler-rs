@@ -32,7 +32,7 @@
     "build-dev": "napi build --esm --platform",
     "postbuild-dev": "node patch-binding.js",
     "build-test": "pnpm run build-dev",
-    "prepublishOnly": "napi prepublish -t npm",
+    "prepublishOnly": "napi prepublish -t npm --skip-optional-publish",
     "test": "node --test ./test/*.test.ts",
     "version": "napi version"
   },
