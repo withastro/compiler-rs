@@ -677,6 +677,20 @@ mod tests {
         }
     }
 
+    #[test]
+    fn frontmatter_regex_containing_closing_angle_bracket() {
+        let source = "---\nconst escaped = 'x'.replace(/>/g, '&gt;');\n---\n<p>{escaped}</p>";
+        let result = convert(source);
+
+        assert_eq!(result.frontmatter.status, crate::FrontmatterStatus::Closed);
+        assert!(
+            result
+                .code
+                .contains("const escaped = 'x'.replace(/>/g, '&gt;');")
+        );
+        assert!(result.code.contains("<p>{escaped}</p>"));
+    }
+
     // Route-specific component names keep language-server auto-imports distinct.
     #[test]
     fn dynamic_routes_keep_their_component_name() {
