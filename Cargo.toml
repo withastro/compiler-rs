@@ -42,7 +42,6 @@ biome_js_syntax = { git = "https://github.com/biomejs/biome", rev = "02441c41852
 biome_languages = { git = "https://github.com/biomejs/biome", rev = "02441c41852e7f4f60b403bfa2fcc9dbefe06c9d" }
 biome_rowan = { git = "https://github.com/biomejs/biome", rev = "02441c41852e7f4f60b403bfa2fcc9dbefe06c9d" }
 biome_string_case = { git = "https://github.com/biomejs/biome", rev = "02441c41852e7f4f60b403bfa2fcc9dbefe06c9d" }
-
 biome_unicode_table = { git = "https://github.com/biomejs/biome", rev = "02441c41852e7f4f60b403bfa2fcc9dbefe06c9d" }
 
 # NAPI

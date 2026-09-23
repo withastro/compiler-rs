@@ -151,7 +151,7 @@ fn emit_jsx_fragment(printer: &mut Printer, fragment: &JsxFragment, base: u32) {
     if let Ok(opening) = fragment.opening_fragment() {
         emit_node(printer, opening.syntax(), base, true);
     }
-    for child in fragment.children() {
+    for child in fragment.elements() {
         emit_node(printer, child.syntax(), base, true);
     }
     if let Ok(closing) = fragment.closing_fragment() {
@@ -162,7 +162,7 @@ fn emit_jsx_fragment(printer: &mut Printer, fragment: &JsxFragment, base: u32) {
 fn emit_implicit_fragment(printer: &mut Printer, fragment: &AstroImplicitFragment, base: u32) {
     printer.map_nil();
     printer.write("<Fragment>");
-    for child in fragment.children() {
+    for child in fragment.elements() {
         emit_node(printer, child.syntax(), base, true);
     }
     printer.map_nil();
@@ -213,13 +213,13 @@ fn emit_jsx_element(printer: &mut Printer, element: &JsxElement, base: u32) {
         BodyMode::Normal | BodyMode::NoExpressions => {
             let disabled = printer.expressions_disabled;
             printer.expressions_disabled |= mode == BodyMode::NoExpressions;
-            for child in element.children() {
+            for child in element.elements() {
                 emit_node(printer, child.syntax(), base, true);
             }
             printer.expressions_disabled = disabled;
         }
         BodyMode::TextOnly => {
-            for child in element.children() {
+            for child in element.elements() {
                 let range = child.syntax().text_range_with_trivia();
                 let mut cursor = abs(base, range.start());
                 let mut walk = child.syntax().preorder();
