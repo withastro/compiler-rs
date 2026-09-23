@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert';
 import { test } from 'node:test';
-import { convertToTsx } from '../index.js';
+import { AstroFrontmatterStatus, convertToTsx } from '../index.js';
 
 test('returns TypeScript Content Mapper span mappings', () => {
 	const source =
@@ -56,6 +56,57 @@ test('returns TypeScript Content Mapper span mappings', () => {
 	assert.deepEqual(
 		result.mappings.find((mapping) => mapping[0] === exportName),
 		[exportName, 'AstroComponent'.length, 0, 0, 1, (1 << 3) | (1 << 6)],
+	);
+});
+
+test('maps the missing-frontmatter slot for Volar completions', () => {
+	const source = '<Ima';
+	const result = convertToTsx(source);
+
+	assert.equal(result.frontmatterStatus, AstroFrontmatterStatus.DoesntExist);
+	assert.equal(result.frontmatter.start, result.frontmatter.end);
+	const insertion = result.mappings.find(
+		([, , originalStart, originalLength, kind, features]) =>
+			originalStart === 0 && originalLength === 0 && kind === 1 && features === 1 << 2,
+	);
+	assert.ok(insertion, 'missing completion insertion mapping');
+	const [generatedStart, generatedLength] = insertion;
+	assert.ok(generatedLength > 0);
+	assert.equal(generatedStart + generatedLength, result.frontmatter.start);
+	assert.equal(result.code.slice(generatedStart, generatedStart + generatedLength), '\n');
+
+	const bodyMapping = result.mappings.find(
+		([virtualStart, virtualLength, originalStart, originalLength, kind]) =>
+			kind === 0 &&
+			virtualStart <= result.body.start &&
+			virtualStart + virtualLength >= result.body.start + source.length &&
+			originalStart === 0 &&
+			originalLength >= source.length,
+	);
+	assert.ok(bodyMapping, 'template body mapping changed or disappeared');
+	assert.equal(result.code.slice(result.body.start, result.body.start + source.length), source);
+});
+
+test('does not add a Volar completion mapping when frontmatter exists', () => {
+	const source = '---\n---\n\n<Ima';
+	const result = convertToTsx(source);
+
+	assert.equal(result.frontmatterStatus, AstroFrontmatterStatus.Closed);
+	assert.equal(
+		result.mappings.some(
+			([, , originalStart, originalLength, kind, features]) =>
+				originalStart === 0 && originalLength === 0 && kind === 1 && features === 1 << 2,
+		),
+		false,
+	);
+	assert.ok(
+		result.mappings.some(
+			([virtualStart, virtualLength, , , kind]) =>
+				kind === 0 &&
+				virtualStart <= result.frontmatter.start &&
+				virtualStart + virtualLength > result.frontmatter.start,
+		),
+		'existing frontmatter insertion position is not source-mappable',
 	);
 });
 
