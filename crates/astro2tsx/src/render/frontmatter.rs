@@ -18,6 +18,7 @@ pub(super) struct RenderedFrontmatter {
     pub(super) has_component_export: bool,
     pub(super) body_text_start: u32,
     pub(super) needs_terminator: bool,
+    pub(super) terminator_anchor: Option<u32>,
 }
 
 enum Piece {
@@ -79,6 +80,7 @@ pub(super) fn render(
         props_analysis,
         has_component_export,
         body_text_start: body_text_start_offset(frontmatter),
+        terminator_anchor: frontmatter_terminator_anchor(frontmatter),
         needs_terminator: match frontmatter {
             Some(AnyAstroFrontmatterElement::AstroFrontmatterElement(_)) => content
                 .as_ref()
@@ -156,6 +158,15 @@ pub(super) fn emit_default_export(
         printer.write(">>;\n");
     }
     component_range
+}
+
+fn frontmatter_terminator_anchor(frontmatter: Option<&AnyAstroFrontmatterElement>) -> Option<u32> {
+    let Some(AnyAstroFrontmatterElement::AstroFrontmatterElement(node)) = frontmatter else {
+        return None;
+    };
+    node.r_fence_token()
+        .ok()
+        .map(|token| range_start(token.text_trimmed_range()))
 }
 
 fn body_text_start_offset(frontmatter: Option<&AnyAstroFrontmatterElement>) -> u32 {

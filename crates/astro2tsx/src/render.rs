@@ -22,7 +22,7 @@ pub(crate) fn render_root(
     printer: &mut Printer,
     root: HtmlRoot,
     options: &ConvertOptions,
-) -> (GeneratedRange, Option<GeneratedRange>) {
+) -> (GeneratedRange, Option<GeneratedRange>, Option<u32>) {
     printer.comment_ranges = comment_trivia_ranges(&root);
     let frontmatter_node = root.frontmatter();
     printer.map_nil();
@@ -46,13 +46,17 @@ pub(crate) fn render_root(
             .iter()
             .any(|range| range_start(*range) >= body_text_start);
     let body_start;
+    let terminator_anchor;
 
     if has_body_children {
         // Without a statement boundary, the following JSX can parse as a comparison.
-        if frontmatter.needs_terminator {
+        terminator_anchor = if frontmatter.needs_terminator {
             printer.map_nil();
             printer.write(";{};");
-        }
+            frontmatter.terminator_anchor
+        } else {
+            None
+        };
         printer.map_nil();
         printer.write("<Fragment>\n");
         body_start = printer.position();
@@ -83,6 +87,7 @@ pub(crate) fn render_root(
         printer.map_nil();
         printer.write("</Fragment>\n");
     } else {
+        terminator_anchor = None;
         if frontmatter_node.is_some() {
             printer.map_nil();
             printer.write("\n");
@@ -106,5 +111,9 @@ pub(crate) fn render_root(
                 printer.write(&format!("export {{ {component_name} as {alias} }};\n"));
                 GeneratedRange::new(start, printer.position())
             });
-    (component_name_range, generated_component_export)
+    (
+        component_name_range,
+        generated_component_export,
+        terminator_anchor,
+    )
 }
