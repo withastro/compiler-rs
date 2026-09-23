@@ -679,14 +679,10 @@ mod tests {
 
     #[test]
     fn frontmatter_regex_containing_closing_angle_bracket() {
-        let source =
-            "---\nconst escaped = 'x'.replace(/>/g, '&gt;');\n---\n<p>{escaped}</p>";
+        let source = "---\nconst escaped = 'x'.replace(/>/g, '&gt;');\n---\n<p>{escaped}</p>";
         let result = convert(source);
 
-        assert_eq!(
-            result.frontmatter.status,
-            crate::FrontmatterStatus::Closed
-        );
+        assert_eq!(result.frontmatter.status, crate::FrontmatterStatus::Closed);
         assert!(
             result
                 .code
