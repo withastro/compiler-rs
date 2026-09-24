@@ -152,6 +152,20 @@ pub fn convert_to_tsx(source: String, options: Option<ConvertToTsxOptions>) -> C
         ]);
     }
 
+    if let Some(original) = result.frontmatter_terminator_anchor {
+        let generated = generated_index.convert(result.frontmatter_range.end);
+        let length = generated_index.convert(result.body.start) - generated;
+        if length > 0 {
+            mappings.push(vec![
+                generated,
+                length,
+                source_index.convert(original),
+                0,
+                SPAN_MAP_KIND_ATOM,
+            ]);
+        }
+    }
+
     let GeneratedRange { start, end } = result.component_name_range;
     // TypeScript does not resolve definitions or references through an unmapped virtual export.
     // See https://github.com/microsoft/TypeScript/pull/63936.
@@ -163,6 +177,7 @@ pub fn convert_to_tsx(source: String, options: Option<ConvertToTsxOptions>) -> C
         SPAN_MAP_KIND_ATOM,
         SPAN_MAP_FEATURE_DEFINITION | SPAN_MAP_FEATURE_REFERENCES,
     ]);
+    mappings.sort_by_key(|mapping| mapping[0]);
 
     ConvertToTsxResult {
         generated_component_export: result
