@@ -1,0 +1,39 @@
+name: ClusterFuzzLite continuous builds
+
+# Uploads a fuzzer build for every push to main. Code-change (PR) fuzzing
+# uses these builds to check whether a crash reproduces on main — crashes
+# that do are pre-existing and get suppressed instead of failing the PR.
+# This is what keeps the known-open upstream crashes (withastro/oxc#4,
+# parcel-bundler/lightningcss#1155) from re-failing every PR.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "crates/**"
+      - "fuzz/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".clusterfuzzlite/**"
+
+permissions: read-all
+
+jobs:
+  Build:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ github.workflow }}-${{ matrix.sanitizer }}-${{ github.ref }}
+      cancel-in-progress: true
+    strategy:
+      fail-fast: false
+      matrix:
+        sanitizer: [address]
+    steps:
+      - name: Build fuzzers (${{ matrix.sanitizer }})
+        id: build
+        uses: google/clusterfuzzlite/actions/build_fuzzers@v1
+        with:
+          language: rust
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          sanitizer: ${{ matrix.sanitizer }}
+          upload-build: true

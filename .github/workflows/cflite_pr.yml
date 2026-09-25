@@ -1,0 +1,53 @@
+name: ClusterFuzzLite PR fuzzing
+
+on:
+  pull_request:
+    paths:
+      - "crates/**"
+      - "fuzz/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".clusterfuzzlite/**"
+
+permissions: read-all
+
+jobs:
+  PR:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: ${{ github.workflow }}-${{ matrix.sanitizer }}-${{ github.ref }}
+      cancel-in-progress: true
+    strategy:
+      fail-fast: false
+      matrix:
+        # Rust supports the address sanitizer only.
+        sanitizer: [address]
+    steps:
+      - name: Build fuzzers (${{ matrix.sanitizer }})
+        id: build
+        uses: google/clusterfuzzlite/actions/build_fuzzers@v1
+        with:
+          language: rust
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          sanitizer: ${{ matrix.sanitizer }}
+
+      # code-change mode fuzzes the code touched by the PR. Paired with the
+      # continuous-builds task (cflite_build.yml), it reproduces each crash
+      # against the latest main build and suppresses pre-existing bugs — so
+      # the known-open upstream crashes (withastro/oxc#4,
+      # parcel-bundler/lightningcss#1155) don't re-fail every PR. Without a
+      # stored main build (e.g. before cflite_build.yml has run once), all
+      # crashes are reported.
+      - name: Run fuzzers (${{ matrix.sanitizer }})
+        id: run
+        uses: google/clusterfuzzlite/actions/run_fuzzers@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          fuzz-seconds: 300
+          mode: code-change
+          sanitizer: ${{ matrix.sanitizer }}
+          output-sarif: true
+          # To carry a persistent corpus (and enable "only affected fuzzers"
+          # filtering), point storage-repo at a dedicated corpus repository
+          # and provide a PAT with write access as a repo secret:
+          # storage-repo: https://${{ secrets.PERSONAL_ACCESS_TOKEN }}@github.com/OWNER/compiler-rs-fuzz-corpus.git
