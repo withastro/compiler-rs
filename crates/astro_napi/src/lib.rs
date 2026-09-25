@@ -135,8 +135,7 @@ pub struct CompileOptions {
     #[napi(js_name = "transitionsAnimationURL")]
     pub transitions_animation_url: Option<String>,
 
-    /// Whether to annotate generated code with the source file path.
-    /// **Stub**: not yet implemented.
+    /// Whether to add source file and location annotations to eligible rendered elements.
     ///
     /// @default false
     pub annotate_source_file: Option<bool>,

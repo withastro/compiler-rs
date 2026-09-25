@@ -5,7 +5,7 @@
 //! `client:visible`, `client:only`, etc.) and `set:html`/`set:text` on components.
 
 use super::AstroCodegen;
-use super::elements::ScopeId;
+use super::elements::{ScopeId, source_location};
 use super::escape::{
     decode_html_entities, escape_double_quotes, escape_double_quotes_keeping_escapes,
     escape_template_literal,
@@ -18,35 +18,6 @@ use crate::scanner::{
     jsx_attribute_value_is_empty,
 };
 use oxc_ast::ast::*;
-
-fn source_location(source_text: &str, byte_offset: u32) -> (u32, u32) {
-    let offset = (byte_offset as usize).min(source_text.len());
-    let bytes = source_text.as_bytes();
-    let mut line = 1u32;
-    let mut line_start = 0usize;
-    let mut index = 0usize;
-
-    while index < offset {
-        match bytes[index] {
-            b'\r' => {
-                line += 1;
-                if bytes.get(index + 1) == Some(&b'\n') && index + 1 < offset {
-                    index += 1;
-                }
-                line_start = index + 1;
-            }
-            b'\n' => {
-                line += 1;
-                line_start = index + 1;
-            }
-            _ => {}
-        }
-        index += 1;
-    }
-
-    let column = source_text[line_start..offset].encode_utf16().count() as u32;
-    (line, column)
-}
 
 pub(super) struct ComponentAttributeOptions<'a> {
     is_custom: bool,
@@ -234,10 +205,12 @@ impl<'a> AstroCodegen<'a> {
         // that are not in the NeverScopedElements list.
         let scope_id = self.scope_id_for(name);
 
+        // Custom elements become component props, so retain their opening-tag location
+        // for devtools even though compiler-go currently only supplies the file prop.
         let source_annotation = if is_custom && self.options.annotate_source_file {
             self.options.filename.as_ref().map(|filename| {
                 let (line, column) =
-                    source_location(self.source_text, el.opening_element.span.start);
+                    source_location(self.source_text, el.opening_element.span.start + 1);
                 (
                     escape_double_quotes(filename).into_owned(),
                     format!("{line}:{column}"),

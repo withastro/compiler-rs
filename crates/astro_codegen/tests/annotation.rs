@@ -4,14 +4,20 @@ use oxc_parser::Parser;
 use oxc_span::SourceType;
 
 fn compile(source: &str, annotate: bool) -> String {
+    compile_with_filename(source, annotate, Some("/src/pages/index.astro"))
+}
+
+fn compile_with_filename(source: &str, annotate: bool, filename: Option<&str>) -> String {
     let allocator = Allocator::default();
     let ret = Parser::new(&allocator, source, SourceType::astro()).parse_astro();
     assert!(ret.errors.is_empty(), "Parse errors: {:?}", ret.errors);
 
-    let options = TransformOptions::new()
+    let mut options = TransformOptions::new()
         .with_internal_url("http://localhost:3000/")
-        .with_filename("/src/pages/index.astro")
         .with_annotate_source_file(annotate);
+    if let Some(filename) = filename {
+        options = options.with_filename(filename);
+    }
 
     transform(&allocator, source, options, &ret.root).code
 }
@@ -21,7 +27,7 @@ fn annotates_html_elements_when_enabled() {
     let output = compile("<h1>Hello</h1>", true);
 
     assert!(output.contains(
-        "<h1 data-astro-source-file=\"/src/pages/index.astro\" data-astro-source-loc=\"1:0\">Hello</h1>"
+        "<h1 data-astro-source-file=\"/src/pages/index.astro\" data-astro-source-loc=\"1:5\">Hello</h1>"
     ));
 }
 
@@ -38,11 +44,36 @@ fn reports_multiline_and_utf16_source_locations() {
     let output = compile("😀<span>first</span>\n  <div>second</div>", true);
 
     assert!(output.contains(
-        "<span data-astro-source-file=\"/src/pages/index.astro\" data-astro-source-loc=\"1:2\">first</span>"
+        "<span data-astro-source-file=\"/src/pages/index.astro\" data-astro-source-loc=\"1:9\">first</span>"
     ));
     assert!(output.contains(
-        "<div data-astro-source-file=\"/src/pages/index.astro\" data-astro-source-loc=\"2:2\">second</div>"
+        "<div data-astro-source-file=\"/src/pages/index.astro\" data-astro-source-loc=\"2:8\">second</div>"
     ));
+}
+
+#[test]
+fn uses_first_child_location_and_tag_name_for_empty_elements() {
+    let output = compile(
+        "<div><span>x</span></div><p></p><aside><!-- c -->x</aside>",
+        true,
+    );
+
+    assert!(output.contains("data-astro-source-loc=\"1:7\"><span"));
+    assert!(output.contains("data-astro-source-loc=\"1:12\">x</span>"));
+    assert!(output.contains(
+        "<p data-astro-source-file=\"/src/pages/index.astro\" data-astro-source-loc=\"1:27\"></p>"
+    ));
+    assert!(output.contains("data-astro-source-loc=\"1:44\"><!-- c -->x</aside>"));
+}
+
+#[test]
+fn safely_escapes_filename_and_skips_annotations_without_a_filename() {
+    let escaped = compile_with_filename("<div>x</div>", true, Some("/src/a&\".astro"));
+    assert!(escaped.contains("data-astro-source-file=\"/src/a&amp;&quot;.astro\""));
+
+    let missing = compile_with_filename("<div>x</div>", true, None);
+    assert!(!missing.contains("data-astro-source-file"));
+    assert!(!missing.contains("data-astro-source-loc"));
 }
 
 #[test]
@@ -62,5 +93,5 @@ fn annotates_custom_elements() {
     let output = compile("<my-element>Hi</my-element>", true);
 
     assert!(output.contains("\"data-astro-source-file\": \"/src/pages/index.astro\""));
-    assert!(output.contains("\"data-astro-source-loc\": \"1:0\""));
+    assert!(output.contains("\"data-astro-source-loc\": \"1:2\""));
 }

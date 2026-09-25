@@ -16,6 +16,7 @@ use crate::scanner::{
     get_jsx_attribute_name, is_equal_jsx_attribute_name, jsx_attribute_value_is_empty,
 };
 use oxc_ast::ast::*;
+use oxc_span::GetSpan;
 
 /// Scope identifier for an element — either a CSS class or a data attribute,
 /// depending on the `scopedStyleStrategy`.
@@ -90,7 +91,8 @@ pub(super) fn is_head_element(name: &str) -> bool {
     )
 }
 
-fn source_location(source_text: &str, byte_offset: u32) -> (u32, u32) {
+/// Return Go-compatible source coordinates: 1-based lines and UTF-16 columns.
+pub(super) fn source_location(source_text: &str, byte_offset: u32) -> (u32, u32) {
     let offset = (byte_offset as usize).min(source_text.len());
     let bytes = source_text.as_bytes();
     let mut line = 1u32;
@@ -115,8 +117,24 @@ fn source_location(source_text: &str, byte_offset: u32) -> (u32, u32) {
         index += 1;
     }
 
-    let column = source_text[line_start..offset].encode_utf16().count() as u32;
+    let column = source_text[line_start..offset].encode_utf16().count() as u32 + 1;
     (line, column)
+}
+
+/// Go anchors an element annotation at its first child, falling back to the element name.
+/// Element and comment child locations start just inside their opening delimiters.
+pub(super) fn source_location_for_element(
+    source_text: &str,
+    element: &JSXElement<'_>,
+) -> (u32, u32) {
+    let byte_offset = match element.children.first() {
+        Some(JSXChild::Text(text)) => text.span.start,
+        Some(JSXChild::Element(child)) => child.span.start + 1,
+        Some(JSXChild::AstroComment(comment)) => comment.span.start + 4,
+        Some(child) => child.span().start,
+        None => element.opening_element.span.start + 1,
+    };
+    source_location(source_text, byte_offset)
 }
 
 impl<'a> AstroCodegen<'a> {
@@ -142,7 +160,7 @@ impl<'a> AstroCodegen<'a> {
         }
     }
 
-    fn print_source_annotation(&mut self, name: &str, span: oxc_span::Span) {
+    fn print_source_annotation(&mut self, name: &str, element: &JSXElement<'a>) {
         if !self.options.annotate_source_file
             || name == "html"
             || !css_scoping::should_scope_element(name)
@@ -154,7 +172,7 @@ impl<'a> AstroCodegen<'a> {
             return;
         };
         let filename = escape_html_attribute(&filename).into_owned();
-        let (line, column) = source_location(self.source_text, span.start);
+        let (line, column) = source_location_for_element(self.source_text, element);
         let location = format!("{line}:{column}");
         self.print_parts([
             " data-astro-source-file=\"",
@@ -219,7 +237,7 @@ impl<'a> AstroCodegen<'a> {
             scope_id.as_ref(),
             inject_define_vars,
         );
-        self.print_source_annotation(name, el.opening_element.span);
+        self.print_source_annotation(name, el);
 
         self.print(">");
 
