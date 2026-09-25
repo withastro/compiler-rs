@@ -121,7 +121,7 @@ pub(super) fn source_location(source_text: &str, byte_offset: u32) -> (u32, u32)
     (line, column)
 }
 
-/// Go anchors an element annotation at its first child, falling back to the element name.
+/// Use the first child's source position, or the opening tag's name position when there are no children.
 /// Element and comment child locations start just inside their opening delimiters.
 pub(super) fn source_location_for_element(
     source_text: &str,
