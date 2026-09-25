@@ -1,5 +1,11 @@
 # @astrojs/compiler-binding
 
+## 0.5.1
+
+### Patch Changes
+
+- b48eac6: Fixes missing `data-astro-source-file` and `data-astro-source-loc` attributes when source annotation is enabled.
+
 ## 0.5.0
 
 ### Minor Changes

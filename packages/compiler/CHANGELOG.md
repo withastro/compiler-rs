@@ -1,5 +1,15 @@
 # @astrojs/compiler-rs
 
+## 0.5.1
+
+### Patch Changes
+
+- b48eac6: Fixes missing `data-astro-source-file` and `data-astro-source-loc` attributes when source annotation is enabled.
+- afa7276: Fixes a `ReferenceError` when a slot's name is computed inside a loop, e.g. `{items.map((item, i) => <div slot={`item-${i}`}>{item}</div>)}`. Computed slot names now render into their matching named slot.
+- afa7276: Removes a stray `slot="…"` attribute the compiler left on elements passed to a component with a computed slot name.
+- Updated dependencies [b48eac6]
+  - @astrojs/compiler-binding@0.5.1
+
 ## 0.5.0
 
 ### Minor Changes
