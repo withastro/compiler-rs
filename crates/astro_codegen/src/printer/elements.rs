@@ -91,7 +91,7 @@ pub(super) fn is_head_element(name: &str) -> bool {
     )
 }
 
-/// Return Go-compatible source coordinates: 1-based lines and UTF-16 columns.
+/// Convert a byte offset to a 1-based line number and 1-based UTF-16 column.
 pub(super) fn source_location(source_text: &str, byte_offset: u32) -> (u32, u32) {
     let offset = (byte_offset as usize).min(source_text.len());
     let bytes = source_text.as_bytes();
