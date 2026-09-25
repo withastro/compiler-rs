@@ -15,6 +15,7 @@
 //! |-------------------------|------------------------|---------|
 //! | `compact`               | `html`, `jsx`, `false` | `false` |
 //! | `inlineComponentAssets` | `true`, `false`        | `false` |
+//! | `annotateSourceFile`    | `true`, `false`        | `false` |
 
 use std::fs;
 
@@ -46,6 +47,13 @@ fn parse_fixture(raw: &str) -> (String, TransformOptions) {
         }
         if let Some(value) = config.strip_prefix("inlineComponentAssets=") {
             options.inline_component_assets = value.trim() == "true";
+        }
+        if let Some(value) = config.strip_prefix("annotateSourceFile=") {
+            let enabled = value.trim() == "true";
+            options = options.with_annotate_source_file(enabled);
+            if enabled {
+                options = options.with_filename("/src/pages/annotation.astro");
+            }
         }
         // Advance past this line (including the newline)
         remaining = remaining[line.len()..].trim_start_matches('\n');

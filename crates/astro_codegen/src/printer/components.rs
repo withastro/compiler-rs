@@ -5,7 +5,7 @@
 //! `client:visible`, `client:only`, etc.) and `set:html`/`set:text` on components.
 
 use super::AstroCodegen;
-use super::elements::ScopeId;
+use super::elements::{ScopeId, source_location};
 use super::escape::{
     decode_html_entities, escape_double_quotes, escape_double_quotes_keeping_escapes,
     escape_template_literal,
@@ -18,6 +18,11 @@ use crate::scanner::{
     jsx_attribute_value_is_empty,
 };
 use oxc_ast::ast::*;
+
+pub(super) struct ComponentAttributeOptions<'a> {
+    is_custom: bool,
+    source_annotation: Option<(&'a str, &'a str)>,
+}
 
 /// A client hydration directive parsed from a component's attributes.
 pub(super) enum HydrationDirective {
@@ -200,6 +205,21 @@ impl<'a> AstroCodegen<'a> {
         // that are not in the NeverScopedElements list.
         let scope_id = self.scope_id_for(name);
 
+        // Custom elements are emitted as component props, so attach their source location
+        // to the props for tooling.
+        let source_annotation = if is_custom && self.options.annotate_source_file {
+            self.options.filename.as_ref().map(|filename| {
+                let (line, column) =
+                    source_location(self.source_text, el.opening_element.span.start + 1);
+                (
+                    escape_double_quotes(filename).into_owned(),
+                    format!("{line}:{column}"),
+                )
+            })
+        } else {
+            None
+        };
+
         // Components always receive slot as a prop.
         // Only HTML elements have the slot attribute stripped when inside named slots.
         let prev_skip_slot = self.skip_slot_attribute;
@@ -216,7 +236,12 @@ impl<'a> AstroCodegen<'a> {
                 None
             },
             scope_id.as_ref(),
-            is_custom,
+            ComponentAttributeOptions {
+                is_custom,
+                source_annotation: source_annotation
+                    .as_ref()
+                    .map(|(filename, location)| (filename.as_str(), location.as_str())),
+            },
         );
 
         self.skip_slot_attribute = prev_skip_slot;
@@ -331,8 +356,12 @@ impl<'a> AstroCodegen<'a> {
         server_defer: Option<&ServerDeferInfo>,
         skip_names: Option<&[&str]>,
         scope_id: Option<&ScopeId>,
-        is_custom: bool,
+        options: ComponentAttributeOptions<'_>,
     ) {
+        let ComponentAttributeOptions {
+            is_custom,
+            source_annotation,
+        } = options;
         let mut first = true;
 
         // Pre-scan for transition attributes
@@ -582,6 +611,20 @@ impl<'a> AstroCodegen<'a> {
             first = false;
             self.print("\"style\":($$definedVars)");
             self.define_vars_injected = true;
+        }
+
+        if let Some((filename, location)) = source_annotation {
+            if !first {
+                self.print(",");
+            }
+            first = false;
+            self.print_parts([
+                "\"data-astro-source-file\":\"",
+                filename,
+                "\",\"data-astro-source-loc\":\"",
+                location,
+                "\"",
+            ]);
         }
 
         // Add hydration attributes if present

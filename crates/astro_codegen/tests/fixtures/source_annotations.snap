@@ -1,0 +1,20 @@
+---
+source: crates/astro_codegen/tests/snapshots.rs
+input_file: crates/astro_codegen/tests/fixtures/source_annotations.astro
+---
+import { render as $$render, createComponent as $$createComponent, renderComponent as $$renderComponent, maybeRenderHead as $$maybeRenderHead, createMetadata as $$createMetadata } from "http://localhost:3000/";
+export const $$metadata = $$createMetadata("/src/pages/annotation.astro", {
+	modules: [],
+	hydratedComponents: [],
+	clientOnlyComponents: [],
+	hydrationDirectives: new Set([]),
+	hoisted: []
+});
+const $$Annotation = $$createComponent(($$result, $$props, $$slots) => {
+	return $$render`${$$maybeRenderHead($$result)}<div data-astro-source-file="/src/pages/annotation.astro" data-astro-source-loc="1:6">Hello <span data-astro-source-file="/src/pages/annotation.astro" data-astro-source-loc="1:18">${value}</span></div>
+${$$renderComponent($$result, "my-element", "my-element", {
+		"data-astro-source-file": "/src/pages/annotation.astro",
+		"data-astro-source-loc": "2:2"
+	})}`;
+}, "/src/pages/annotation.astro", undefined);
+export default $$Annotation;
