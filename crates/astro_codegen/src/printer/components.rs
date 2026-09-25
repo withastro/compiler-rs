@@ -48,6 +48,11 @@ fn source_location(source_text: &str, byte_offset: u32) -> (u32, u32) {
     (line, column)
 }
 
+pub(super) struct ComponentAttributeOptions<'a> {
+    is_custom: bool,
+    source_annotation: Option<(&'a str, &'a str)>,
+}
+
 /// A client hydration directive parsed from a component's attributes.
 pub(super) enum HydrationDirective {
     /// `client:only="framework"` — component is not rendered server-side.
@@ -258,10 +263,12 @@ impl<'a> AstroCodegen<'a> {
                 None
             },
             scope_id.as_ref(),
-            is_custom,
-            source_annotation
-                .as_ref()
-                .map(|(filename, location)| (filename.as_str(), location.as_str())),
+            ComponentAttributeOptions {
+                is_custom,
+                source_annotation: source_annotation
+                    .as_ref()
+                    .map(|(filename, location)| (filename.as_str(), location.as_str())),
+            },
         );
 
         self.skip_slot_attribute = prev_skip_slot;
@@ -376,9 +383,12 @@ impl<'a> AstroCodegen<'a> {
         server_defer: Option<&ServerDeferInfo>,
         skip_names: Option<&[&str]>,
         scope_id: Option<&ScopeId>,
-        is_custom: bool,
-        source_annotation: Option<(&str, &str)>,
+        options: ComponentAttributeOptions<'_>,
     ) {
+        let ComponentAttributeOptions {
+            is_custom,
+            source_annotation,
+        } = options;
         let mut first = true;
 
         // Pre-scan for transition attributes
