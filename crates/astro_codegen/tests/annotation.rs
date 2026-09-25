@@ -40,6 +40,23 @@ fn leaves_html_elements_unannotated_when_disabled() {
 }
 
 #[test]
+fn anchors_annotations_at_expression_fragment_and_whitespace_children() {
+    let expressions = compile("<div>{value}</div>", true);
+    assert!(expressions.contains("data-astro-source-loc=\"1:6\">${value}</div>"));
+
+    let fragment = compile("<div><>x</></div>", true);
+    assert!(fragment.contains("data-astro-source-loc=\"1:6\">${$$renderComponent"));
+
+    let leading_whitespace = compile("<p>  Hello</p>", true);
+    assert!(leading_whitespace.contains("<p data-astro-source-file=\"/src/pages/index.astro\" data-astro-source-loc=\"1:4\">  Hello</p>"));
+
+    let whitespace_only = compile("<p> \n  </p>", true);
+    assert!(whitespace_only.contains(
+        "<p data-astro-source-file=\"/src/pages/index.astro\" data-astro-source-loc=\"1:4\">"
+    ));
+}
+
+#[test]
 fn reports_multiline_and_utf16_source_locations() {
     let output = compile("😀<span>first</span>\n  <div>second</div>", true);
 
@@ -64,6 +81,16 @@ fn uses_first_child_location_and_tag_name_for_empty_elements() {
         "<p data-astro-source-file=\"/src/pages/index.astro\" data-astro-source-loc=\"1:27\"></p>"
     ));
     assert!(output.contains("data-astro-source-loc=\"1:44\"><!-- c -->x</aside>"));
+}
+
+#[test]
+fn handles_crlf_source_locations() {
+    let output = compile("<div>\r\n  text</div>\r\n<span />", true);
+
+    assert!(output.contains(
+        "<div data-astro-source-file=\"/src/pages/index.astro\" data-astro-source-loc=\"1:6\">"
+    ));
+    assert!(output.contains("<span data-astro-source-file=\"/src/pages/index.astro\" data-astro-source-loc=\"3:2\"></span>"));
 }
 
 #[test]

@@ -32,6 +32,16 @@ const name = "World";
 		assert.ok(result.code.includes('$$createComponent'));
 	});
 
+	it('passes annotateSourceFile through to code generation', () => {
+		const result = compileAstroSync('<h1>Hello</h1>', {
+			filename: 'Test.astro',
+			annotateSourceFile: true,
+		});
+		assert.deepStrictEqual(result.diagnostics, []);
+		assert.ok(result.code.includes('data-astro-source-file="Test.astro"'));
+		assert.ok(result.code.includes('data-astro-source-loc="1:5"'));
+	});
+
 	it('always includes metadata', () => {
 		const result = compileAstroSync('<h1>Hello</h1>');
 		assert.deepStrictEqual(result.diagnostics, []);
