@@ -205,8 +205,8 @@ impl<'a> AstroCodegen<'a> {
         // that are not in the NeverScopedElements list.
         let scope_id = self.scope_id_for(name);
 
-        // Custom elements become component props, so retain their opening-tag location
-        // for devtools even though compiler-go currently only supplies the file prop.
+        // Custom elements are emitted as component props, so attach their source location
+        // to the props for tooling.
         let source_annotation = if is_custom && self.options.annotate_source_file {
             self.options.filename.as_ref().map(|filename| {
                 let (line, column) =

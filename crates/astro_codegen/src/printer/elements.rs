@@ -37,8 +37,7 @@ impl ScopeId {
         }
     }
 
-    /// Return the name of the boolean scope attribute for the `attribute` strategy
-    /// (e.g. `data-astro-cid-{hash}`).
+    /// The attribute name for the `attribute` strategy (e.g. `"data-astro-cid-{hash}`) as a boolean attribute.
     pub(super) fn data_attr_name(&self) -> String {
         match self {
             ScopeId::DataAttribute(v) => format!("data-astro-cid-{v}"),
