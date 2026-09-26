@@ -7,7 +7,7 @@ on:
 jobs:
   congrats:
     if: ${{ github.repository_owner == 'withastro' }}
-    uses: withastro/automation/.github/workflows/congratsbot.yml@3d464225365a6800e60eb691471f90ba979b008b # main
+    uses: withastro/automation/.github/workflows/congratsbot.yml@2946ab18ea547e22a48eb7f338caed3b99bcf52f # main
     with:
       EMOJIS: '⚙️,🔩,🔧,🛠️,🧰,🗜️,🦺,<:lgtm:1121889033602215966>'
     secrets:
