@@ -1,0 +1,47 @@
+[package]
+name = "astro-compiler-fuzz"
+version = "0.0.1"
+edition = "2024"
+publish = false
+
+[package.metadata]
+cargo-fuzz = true
+
+[[bin]]
+name = "transform_no_panic"
+path = "fuzz_targets/transform_no_panic.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "css_scope_no_panic"
+path = "fuzz_targets/css_scope_no_panic.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "transform_valid_js_output"
+path = "fuzz_targets/transform_valid_js_output.rs"
+test = false
+doc = false
+bench = false
+
+[dependencies]
+libfuzzer-sys = "0.4"
+astro_codegen = { path = "../crates/astro_codegen" }
+# This is a separate workspace, so it cannot inherit oxc from the root Cargo.toml.
+# The `rev` MUST match the root Cargo.toml oxc pin exactly — a `branch`/`rev` mismatch
+# pulls two copies of oxc into the graph and the Allocator types stop unifying.
+oxc_allocator = { git = "https://github.com/withastro/oxc", rev = "287b923e9611c7d0a6b4bef51d1afbf233fdf785" }
+oxc_parser = { git = "https://github.com/withastro/oxc", rev = "287b923e9611c7d0a6b4bef51d1afbf233fdf785", features = [
+  "regular_expression",
+] }
+oxc_span = { git = "https://github.com/withastro/oxc", rev = "287b923e9611c7d0a6b4bef51d1afbf233fdf785" }
+
+# Prevent this from being included in the normal workspace build.
+[workspace]
+
+[profile.release]
+debug = true
