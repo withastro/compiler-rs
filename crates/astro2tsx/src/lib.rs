@@ -18,7 +18,9 @@ mod utf16;
 mod utils;
 
 use biome_html_parser::parse_html;
+use biome_html_syntax::HtmlRoot;
 use biome_languages::HtmlFileSource;
+use biome_rowan::AstNode;
 
 pub use crate::types::{
     Diagnostic, DiagnosticSeverity, ExtractedKind, ExtractedScriptType, ExtractedTag,
@@ -66,7 +68,41 @@ pub struct ConvertResult {
 
 pub fn convert_to_tsx(source: &str, options: ConvertOptions) -> ConvertResult {
     let parse = parse_html(source, (&HtmlFileSource::astro()).into());
-    let root = parse.tree();
+
+    // Biome should always return an HTML_ROOT, but malformed input has produced
+    // HTML_BOGUS roots in the past. Fall back gracefully instead of panicking.
+    let root = match HtmlRoot::cast(parse.syntax()) {
+        Some(root) => root,
+        None => {
+            let diagnostics: Vec<Diagnostic> = parse
+                .diagnostics()
+                .iter()
+                .map(|diagnostic| {
+                    let source = match biome_diagnostics::Diagnostic::location(diagnostic).span {
+                        Some(span) => {
+                            SourceRange::new(u32::from(span.start()), u32::from(span.end()))
+                        }
+                        None => SourceRange::new(0, source.len() as u32),
+                    };
+                    Diagnostic {
+                        message: diagnostic.message.to_string(),
+                        severity: DiagnosticSeverity::Error,
+                        source,
+                    }
+                })
+                .collect();
+            let (component_name, _) =
+                crate::utils::tsx_component_names(options.filename.as_deref());
+            return ConvertResult {
+                code: format!(
+                    "/* @jsxImportSource astro */\n\nexport default function {component_name}(_props: Record<string, any>): any {{}}\n"
+                ),
+                has_parse_errors: true,
+                diagnostics,
+                ..Default::default()
+            };
+        }
+    };
 
     let mut printer = printer::Printer::new(source);
     let (component_name_range, generated_component_export, frontmatter_terminator_anchor) =
@@ -385,7 +421,15 @@ mod tests {
 
     #[test]
     fn malformed_input_never_panics_in_the_parser() {
-        for input in ["<div></{<//", "<a></", "</", "<//", "<div></{", "{<//}"] {
+        for input in [
+            "<div></{<//",
+            "<a></",
+            "</",
+            "<//",
+            "<div></{",
+            "{<//}",
+            "<?php echo \"a\" ?>",
+        ] {
             let result = convert_to_tsx(input, ConvertOptions::default());
             assert!(result.code.starts_with(PREFIX), "no output for {input:?}");
         }

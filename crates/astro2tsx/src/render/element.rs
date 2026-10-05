@@ -1,6 +1,7 @@
 use biome_html_syntax::{
     AnyHtmlAttribute, AnyHtmlContent, AnyHtmlElement, AnyHtmlTagName, AnyHtmlTextExpression,
-    AstroFragment, HtmlElement, HtmlSelfClosingElement, HtmlSingleTextExpression,
+    AstroFragment, HtmlElement, HtmlProcessingInstruction, HtmlSelfClosingElement,
+    HtmlSingleTextExpression,
 };
 use biome_js_parser::{JsOffsetParse, JsParserOptions, parse_js_with_offset};
 use biome_languages::JsFileSource;
@@ -26,9 +27,10 @@ pub(super) fn render_element(printer: &mut Printer, element: AnyHtmlElement) {
         AnyHtmlElement::HtmlSelfClosingElement(node) => {
             render_self_closing_element(printer, node);
         }
-        AnyHtmlElement::HtmlCdataSection(_)
-        | AnyHtmlElement::HtmlProcessingInstruction(_)
-        | AnyHtmlElement::HtmlBogusElement(_) => {
+        AnyHtmlElement::HtmlProcessingInstruction(node) => {
+            render_processing_instruction(printer, node);
+        }
+        AnyHtmlElement::HtmlCdataSection(_) | AnyHtmlElement::HtmlBogusElement(_) => {
             // Incomplete TSX-compatible syntax stays verbatim so editor completion can consume it.
             let range = element.range();
             let text = slice_source(printer.source, range);
@@ -49,6 +51,31 @@ pub(super) fn render_element(printer: &mut Printer, element: AnyHtmlElement) {
             }
         }
     }
+}
+
+pub(super) fn render_processing_instruction(
+    printer: &mut Printer,
+    node: HtmlProcessingInstruction,
+) {
+    // TSX has no processing-instruction syntax; render the content as a JSX
+    // comment so the rest of the template remains valid and mappable.
+    let range = node.range();
+    let start = range_start(range);
+    let text = slice_source(printer.source, range);
+    let body = text
+        .strip_prefix("<?")
+        .and_then(|t| t.strip_suffix("?>"))
+        .unwrap_or(text);
+    let body_start = start + (text.len() - body.len()) as u32;
+
+    printer.map_nil();
+    printer.write("{/**");
+    if crate::utils::comment_needs_leading_space(body) {
+        printer.write(" ");
+    }
+    printer.write_comment_body_with_mapping(body, body_start);
+    printer.map_nil();
+    printer.write("*/}");
 }
 
 fn render_content(printer: &mut Printer, content: AnyHtmlContent) {
@@ -680,5 +707,26 @@ mod tests {
         let result = convert_to_tsx(source, ConvertOptions::default());
         assert!(result.code.contains("{`a\\`b \\${x}`}"), "{}", result.code);
         assert_mapped_runs_are_verbatim(source, &result, "raw escapes");
+    }
+
+    #[test]
+    fn processing_instruction_renders_as_jsx_comment() {
+        use biome_html_parser::parse_html;
+        use biome_languages::HtmlFileSource;
+
+        let source = r#"<?xml version="1.0" encoding="UTF-8"?>"#;
+        let parse = parse_html(source, (&HtmlFileSource::html()).into());
+        assert!(parse.diagnostics().is_empty(), "{:#?}", parse.diagnostics());
+
+        let pi = parse
+            .tree()
+            .processing_instruction()
+            .expect("plain HTML should parse the processing instruction");
+        let mut printer = crate::printer::Printer::new(source);
+        super::render_processing_instruction(&mut printer, pi);
+        assert_eq!(
+            printer.output,
+            "{/** xml version=\"1.0\" encoding=\"UTF-8\"*/}"
+        );
     }
 }

@@ -4,7 +4,7 @@ mod extracted;
 mod frontmatter;
 mod text;
 
-use element::render_element;
+use element::{render_element, render_processing_instruction};
 pub(crate) use extracted::{script_type_for_attr, style_lang_for_attr};
 use text::{comment_trivia_ranges, emit_source_gap};
 
@@ -39,8 +39,14 @@ pub(crate) fn render_root(
     let frontmatter = frontmatter::render(printer, frontmatter_node.as_ref(), alias.as_deref());
     let body = root.html();
     let body_text_start = frontmatter.body_text_start;
+    // Only a clean processing instruction gets a JSX-comment replacement; a
+    // partial one is left to ordinary source-gap emission.
+    let processing_instruction = root
+        .processing_instruction()
+        .filter(|pi| pi.end_token().is_ok());
     // A childless body still needs its `<Fragment>` when comment trivia remains.
     let has_body_children = body.iter().next().is_some()
+        || processing_instruction.is_some()
         || printer
             .comment_ranges
             .iter()
@@ -68,6 +74,14 @@ pub(crate) fn render_root(
             let directive_range = directive.range();
             emit_source_gap(printer, prev_end, range_start(directive_range));
             prev_end = prev_end.max(u32::from(directive_range.end()));
+        }
+        // Processing instructions are valid HTML/XML but have no JSX equivalent.
+        // Render the top-level one as a JSX comment so it does not break the TSX body.
+        if let Some(pi) = processing_instruction {
+            let pi_range = pi.range();
+            emit_source_gap(printer, prev_end, range_start(pi_range));
+            render_processing_instruction(printer, pi);
+            prev_end = prev_end.max(u32::from(pi_range.end()));
         }
         for element in body.iter() {
             let element_range = element.range();
