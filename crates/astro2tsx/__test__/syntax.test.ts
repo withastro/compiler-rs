@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { test } from 'node:test';
 import ts from 'typescript';
 import { convertToTsx } from '../index.js';
+import { typecheckAstro } from './typecheck.ts';
 
 test('every clean-parse fixture emits syntactically valid TSX', async () => {
 	const invalidUserCode = new Set(['props_generic_invalid']);
@@ -41,4 +42,17 @@ test('every clean-parse fixture emits syntactically valid TSX', async () => {
 		checked++;
 	}
 	assert.ok(checked > 50, `expected to check most fixtures, checked ${checked}`);
+});
+
+test('processing instructions print as comments that type-check', () => {
+	const svg = '<svg viewBox={box}><circle cx="5" cy="5" r="4" /></svg>';
+	for (const body of [
+		'<?xml?>',
+		`<?xml version="1.0" encoding="UTF-8"?>\n${svg}`,
+		`${svg}\n<?xml version="1.0" encoding="UTF-8"?>`,
+		'<svg><?xml?></svg>',
+		'<p>a <?foo bar?> b</p>',
+	]) {
+		assert.deepEqual(typecheckAstro('const box = "0 0 10 10";', body), [], body);
+	}
 });

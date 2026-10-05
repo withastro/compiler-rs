@@ -1,4 +1,6 @@
-use biome_html_syntax::{AnyHtmlComponentObjectName, AnyHtmlTagName, HtmlRoot};
+use biome_html_syntax::{
+    AnyHtmlComponentObjectName, AnyHtmlTagName, HtmlProcessingInstruction, HtmlRoot,
+};
 use biome_rowan::{AstNode, Direction, TextRange};
 
 use crate::printer::{Printer, range_start};
@@ -123,6 +125,20 @@ fn write_source_gap_text(printer: &mut Printer, from: u32, to: u32) {
     } else {
         printer.write_with_mapping(text, from);
     }
+}
+
+/// TSX has no `<?...?>` syntax, so a processing instruction prints as a comment.
+pub(super) fn emit_processing_instruction(printer: &mut Printer, node: &HtmlProcessingInstruction) {
+    let range = node.range();
+    let trimmed = node.syntax().text_trimmed_range();
+    let source = printer.source;
+    write_source_gap_text(printer, range_start(range), range_start(trimmed));
+    emit_html_comment(
+        printer,
+        &source[usize::from(trimmed.start())..usize::from(trimmed.end())],
+        range_start(trimmed),
+    );
+    write_source_gap_text(printer, u32::from(trimmed.end()), u32::from(range.end()));
 }
 
 fn emit_html_comment(printer: &mut Printer, body: &str, original_offset: u32) {
