@@ -7,4 +7,4 @@ on:
 jobs:
   reply_labelled:
     if: github.repository_owner == 'withastro'
-    uses: withastro/automation/.github/workflows/issue-labeled.yml@3d464225365a6800e60eb691471f90ba979b008b # main
+    uses: withastro/automation/.github/workflows/issue-labeled.yml@3aa9e43416c6704fc7a1b2ee17a57f2f345cd678 # main
