@@ -33,16 +33,16 @@ oxc_syntax = { git = "https://github.com/withastro/oxc", rev = "8bb526fc0c20beb4
 oxc_transformer = { git = "https://github.com/withastro/oxc", rev = "8bb526fc0c20beb4649b223d3ac39851505caa5a" }
 oxc_sourcemap = "6.0.1"
 
-biome_diagnostics = { git = "https://github.com/biomejs/biome", rev = "b7d903781c7968517675de39d3f086184d83faf7" }
-biome_html_parser = { git = "https://github.com/biomejs/biome", rev = "b7d903781c7968517675de39d3f086184d83faf7" }
-biome_html_syntax = { git = "https://github.com/biomejs/biome", rev = "b7d903781c7968517675de39d3f086184d83faf7" }
-biome_js_parser = { git = "https://github.com/biomejs/biome", rev = "b7d903781c7968517675de39d3f086184d83faf7" }
-biome_parser = { git = "https://github.com/biomejs/biome", rev = "b7d903781c7968517675de39d3f086184d83faf7" }
-biome_js_syntax = { git = "https://github.com/biomejs/biome", rev = "b7d903781c7968517675de39d3f086184d83faf7" }
-biome_languages = { git = "https://github.com/biomejs/biome", rev = "b7d903781c7968517675de39d3f086184d83faf7" }
-biome_rowan = { git = "https://github.com/biomejs/biome", rev = "b7d903781c7968517675de39d3f086184d83faf7" }
-biome_string_case = { git = "https://github.com/biomejs/biome", rev = "b7d903781c7968517675de39d3f086184d83faf7" }
-biome_unicode_table = { git = "https://github.com/biomejs/biome", rev = "b7d903781c7968517675de39d3f086184d83faf7" }
+biome_diagnostics = { git = "https://github.com/biomejs/biome", rev = "2405c7620169bd0719166af09a8d89cc76fb37fb" }
+biome_html_parser = { git = "https://github.com/biomejs/biome", rev = "2405c7620169bd0719166af09a8d89cc76fb37fb" }
+biome_html_syntax = { git = "https://github.com/biomejs/biome", rev = "2405c7620169bd0719166af09a8d89cc76fb37fb" }
+biome_js_parser = { git = "https://github.com/biomejs/biome", rev = "2405c7620169bd0719166af09a8d89cc76fb37fb" }
+biome_parser = { git = "https://github.com/biomejs/biome", rev = "2405c7620169bd0719166af09a8d89cc76fb37fb" }
+biome_js_syntax = { git = "https://github.com/biomejs/biome", rev = "2405c7620169bd0719166af09a8d89cc76fb37fb" }
+biome_languages = { git = "https://github.com/biomejs/biome", rev = "2405c7620169bd0719166af09a8d89cc76fb37fb" }
+biome_rowan = { git = "https://github.com/biomejs/biome", rev = "2405c7620169bd0719166af09a8d89cc76fb37fb" }
+biome_string_case = { git = "https://github.com/biomejs/biome", rev = "2405c7620169bd0719166af09a8d89cc76fb37fb" }
+biome_unicode_table = { git = "https://github.com/biomejs/biome", rev = "2405c7620169bd0719166af09a8d89cc76fb37fb" }
 
 # NAPI
 napi = { version = "=3.8.3" }
