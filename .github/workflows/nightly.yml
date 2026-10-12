@@ -28,10 +28,13 @@ jobs:
           BRANCH: feat/astro
         with:
           script: |
+            const repo = process.env.REPO || 'withastro/oxc';
+            const branch = process.env.BRANCH || 'feat/astro';
+
             // Fetch data about our OXC fork’s branch
-            const upstream = await fetch(
-              `https://api.github.com/repos/${process.env.REPO}/branches/${process.env.BRANCH}`
-            ).then((res) => res.json());
+            const upstream = await fetch(`https://api.github.com/repos/${repo}/branches/${branch}`).then(
+              (res) => res.json(),
+            );
             const newSHA = upstream.commit.sha;
 
             const { readFile, writeFile } = await import('node:fs/promises');
@@ -39,12 +42,19 @@ jobs:
             // Load Cargo.toml
             const manifest = await readFile('Cargo.toml', 'utf-8');
 
-            const oldSHA = manifest.match(/git\s*=\s*"https:\/\/github.com\/withastro\/oxc",\s*rev\s*=\s*"([^"]*)"/)?.[1];
+            const oldSHA = manifest.match(
+              new RegExp(
+                `git\\s*=\\s*"https:\\/\\/github.com\\/${repo.replace('/', '\\/')}",\\s*rev\\s*=\\s*"([^"]*)"`,
+              ),
+            )?.[1];
 
             // Replace rev value on lines with the git URL for our OXC fork, e.g.:
             // git = "https://github.com/withastro/oxc", rev = "e5e100abf1afb9a79ae22f97de32befe4b925d5d
             const updatedManifest = manifest.replaceAll(
-              /(git\s*=\s*"https:\/\/github.com\/withastro\/oxc",\s*rev\s*=\s*")[^"]*(")/g,
+              new RegExp(
+                `(git\\s*=\\s*"https:\\/\\/github.com\\/${repo.replace('/', '\\/')}",\\s*rev\\s*=\\s*")[^"]*(")`,
+                'g',
+              ),
               `$1${newSHA}$2`,
             );
 
