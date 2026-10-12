@@ -36,7 +36,8 @@ ${$$renderHead($$result)}</head>
 
 <body>
   <!-- your content here... -->
-  <script src="js/scripts.js"><\/script></body>
+  <script src="js/scripts.js"><\/script>
+  </body>
 </html>`;
 }, undefined, undefined);
 export default $$Component;
