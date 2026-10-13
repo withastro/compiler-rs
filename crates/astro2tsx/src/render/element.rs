@@ -564,28 +564,25 @@ mod tests {
 
     #[test]
     fn astro_text_that_is_not_tsx_text_is_escaped() {
-        for input in [
-            r#"<math><annotation>f\colon X \to \mathbb{R}^{2x}</annotation></math>"#,
-        ] {
-            let result = convert_to_tsx(input, ConvertOptions::default());
-            assert!(
-                !result.has_parse_errors,
-                "{input:?}: {:?}",
-                result.diagnostics
-            );
-            let parsed = parse(
-                &result.code,
-                JsFileSource::tsx(),
-                JsParserOptions::default(),
-            );
-            assert!(
-                parsed.diagnostics().is_empty(),
-                "generated invalid TSX for {input:?}:\n{:?}\n{}",
-                parsed.diagnostics(),
-                result.code
-            );
-            assert_mapped_runs_are_verbatim(input, &result, "Astro-only text");
-        }
+        let input = r#"<math><annotation>f\colon X \to \mathbb{R}^{2x}</annotation></math>"#;
+        let result = convert_to_tsx(input, ConvertOptions::default());
+        assert!(
+            !result.has_parse_errors,
+            "{input:?}: {:?}",
+            result.diagnostics
+        );
+        let parsed = parse(
+            &result.code,
+            JsFileSource::tsx(),
+            JsParserOptions::default(),
+        );
+        assert!(
+            parsed.diagnostics().is_empty(),
+            "generated invalid TSX for {input:?}:\n{:?}\n{}",
+            parsed.diagnostics(),
+            result.code
+        );
+        assert_mapped_runs_are_verbatim(input, &result, "Astro-only text");
 
         for element in [
             "iframe",
