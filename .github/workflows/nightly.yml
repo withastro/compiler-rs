@@ -1,0 +1,80 @@
+name: Nightly
+
+on:
+  schedule:
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+jobs:
+  deps:
+    name: Update dependencies
+    if: github.repository_owner == 'withastro'
+    runs-on: ubuntu-latest
+    permissions:
+      # Give the default GITHUB_TOKEN write permission to commit and push the
+      # added or changed files to the repository.
+      contents: write
+    steps:
+      - name: Check out code using Git
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          token: ${{ secrets.FREDKBOT_GITHUB_TOKEN }}
+
+      - name: Update oxc fork in Cargo.toml
+        id: update_oxc
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          REPO: withastro/oxc
+          BRANCH: feat/astro
+        with:
+          script: |
+            const repo = process.env.REPO || 'withastro/oxc';
+            const branch = process.env.BRANCH || 'feat/astro';
+
+            // Fetch data about our OXC fork’s branch
+            const upstream = await fetch(`https://api.github.com/repos/${repo}/branches/${branch}`).then(
+              (res) => res.json(),
+            );
+            const newSHA = upstream.commit.sha;
+
+            const { readFile, writeFile } = await import('node:fs/promises');
+
+            // Load Cargo.toml
+            const manifest = await readFile('Cargo.toml', 'utf-8');
+
+            const oldSHA = manifest.match(
+              new RegExp(
+                `git\\s*=\\s*"https:\\/\\/github.com\\/${repo.replace('/', '\\/')}",\\s*rev\\s*=\\s*"([^"]*)"`,
+              ),
+            )?.[1];
+
+            // Replace rev value on lines with the git URL for our OXC fork, e.g.:
+            // git = "https://github.com/withastro/oxc", rev = "e5e100abf1afb9a79ae22f97de32befe4b925d5d
+            const updatedManifest = manifest.replaceAll(
+              new RegExp(
+                `(git\\s*=\\s*"https:\\/\\/github.com\\/${repo.replace('/', '\\/')}",\\s*rev\\s*=\\s*")[^"]*(")`,
+                'g',
+              ),
+              `$1${newSHA}$2`,
+            );
+
+            // Save changes back to Cargo.toml
+            await writeFile('Cargo.toml', updatedManifest, 'utf-8');
+
+            // Return the SHA changes. Available as `outputs.result` in subsequent steps.
+            return { oldSHA, newSHA };
+
+      - name: Create Pull Request
+        id: createpr
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8.1.1
+        with:
+          branch: ci/update-oxc
+          token: ${{ secrets.FREDKBOT_GITHUB_TOKEN }}
+          author: Houston (Bot) <108291165+astrobot-houston@users.noreply.github.com>
+          add-paths: Cargo.toml
+          commit-message: "chore(deps): update oxc fork"
+          title: "chore(deps): update oxc fork"
+          body: |
+            This PR updates `Cargo.toml` to point to the latest commit on the [`feat/astro` branch of our oxc fork](https://github.com/withastro/oxc/tree/feat/astro).
+
+            - **SHA change:** [`${{ steps.update_oxc.outputs.result.oldSHA }}` → `${{ steps.update_oxc.outputs.result.newSHA }}`](https://github.com/oxc-project/oxc/compare/${{ steps.update_oxc.outputs.result.oldSHA }}...${{ steps.update_oxc.outputs.result.newSHA }})

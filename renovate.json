@@ -9,7 +9,8 @@
       "groupSlug": "biome"
     },
     {
-      "description": "Group all dependencies from the withastro/oxc fork",
+      "description": "Group all dependencies from the withastro/oxc fork — disabled because Renovate doesn’t understand forks",
+      "enabled": false,
       "matchDepNames": ["oxc_*", "!oxc_sourcemap"],
       "groupName": "oxc fork",
       "groupSlug": "oxc-fork"
