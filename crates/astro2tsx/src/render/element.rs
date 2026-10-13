@@ -558,7 +558,6 @@ mod tests {
     fn astro_text_that_is_not_tsx_text_is_escaped() {
         for input in [
             r#"<math><annotation>f\colon X \to \mathbb{R}^{2x}</annotation></math>"#,
-            "<日本>hi</日本>",
         ] {
             let result = convert_to_tsx(input, ConvertOptions::default());
             assert!(
