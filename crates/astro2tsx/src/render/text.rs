@@ -125,7 +125,7 @@ fn write_source_gap_text(printer: &mut Printer, from: u32, to: u32) {
     }
 }
 
-fn emit_html_comment(printer: &mut Printer, body: &str, original_offset: u32) {
+pub(super) fn emit_html_comment(printer: &mut Printer, body: &str, original_offset: u32) {
     printer.map_nil();
     printer.write("{/**");
     if comment_needs_leading_space(body) {

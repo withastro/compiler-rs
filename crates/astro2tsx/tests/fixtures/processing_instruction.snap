@@ -11,7 +11,7 @@ info:
     end: 30
   body:
     start: 41
-    end: 198
+    end: 206
   scripts: []
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/processing_instruction.astro
@@ -19,7 +19,7 @@ input_file: crates/astro2tsx/tests/fixtures/processing_instruction.astro
 /* @jsxImportSource astro */
 
 <Fragment>
-<?xml version="1.0" encoding="UTF-8"?>
+{/** <?xml version="1.0" encoding="UTF-8"?>*/}
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10" {...Astro.props}>
 	<circle cx="5" cy="5" r="4" />
 </svg>
