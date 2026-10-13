@@ -1,0 +1,34 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+info:
+  has_parse_errors: false
+  frontmatter_status: Closed
+  frontmatter_source:
+    start: 0
+    end: 24
+  frontmatter:
+    start: 30
+    end: 49
+  body:
+    start: 64
+    end: 259
+  scripts: []
+  styles: []
+input_file: crates/astro2tsx/tests/fixtures/processing_instruction_after_element.astro
+---
+/* @jsxImportSource astro */
+
+
+const size = 10;
+
+;{};<Fragment>
+
+<svg viewBox={`0 0 ${size} ${size}`}>
+	{/** <?xml version="1.0"?>*/}
+	<circle cx="5" cy="5" r="4" />
+</svg>
+<p>Text {/** <?xml?>*/} continues</p>
+{/** <?xml version="1.0" encoding="UTF-8"?>*/}
+
+</Fragment>
+export default function AstroComponent(_props: Record<string, any>): any {}

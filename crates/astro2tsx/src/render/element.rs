@@ -15,7 +15,8 @@ use crate::utils::{BodyMode, body_mode};
 use super::attribute::{attribute_key, emit_intra_tag_space, emit_open_tag};
 use super::extracted::{classify_script, inner_range, style_lang_label};
 use super::text::{
-    contains_non_ascii_tag_name, emit_jsx_text_range, emit_source_gap, slice_source, tag_name_text,
+    contains_non_ascii_tag_name, emit_jsx_text_range, emit_processing_instruction, emit_source_gap,
+    slice_source, tag_name_text,
 };
 
 pub(super) fn render_element(printer: &mut Printer, element: AnyHtmlElement) {
@@ -26,9 +27,10 @@ pub(super) fn render_element(printer: &mut Printer, element: AnyHtmlElement) {
         AnyHtmlElement::HtmlSelfClosingElement(node) => {
             render_self_closing_element(printer, node);
         }
-        AnyHtmlElement::HtmlCdataSection(_)
-        | AnyHtmlElement::HtmlProcessingInstruction(_)
-        | AnyHtmlElement::HtmlBogusElement(_) => {
+        AnyHtmlElement::HtmlProcessingInstruction(node) => {
+            emit_processing_instruction(printer, &node);
+        }
+        AnyHtmlElement::HtmlCdataSection(_) | AnyHtmlElement::HtmlBogusElement(_) => {
             // Incomplete TSX-compatible syntax stays verbatim so editor completion can consume it.
             let range = element.range();
             let text = slice_source(printer.source, range);

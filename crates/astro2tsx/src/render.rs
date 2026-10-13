@@ -6,7 +6,7 @@ mod text;
 
 use element::render_element;
 pub(crate) use extracted::{script_type_for_attr, style_lang_for_attr};
-use text::{comment_trivia_ranges, emit_source_gap};
+use text::{comment_trivia_ranges, emit_processing_instruction, emit_source_gap};
 
 use biome_html_syntax::HtmlRoot;
 use biome_rowan::{AstNode, AstNodeList};
@@ -62,6 +62,12 @@ pub(crate) fn render_root(
         body_start = printer.position();
 
         let mut prev_end = body_text_start;
+        if let Some(instruction) = root.processing_instruction() {
+            let range = instruction.range();
+            emit_source_gap(printer, prev_end, range_start(range));
+            emit_processing_instruction(printer, &instruction);
+            prev_end = prev_end.max(u32::from(range.end()));
+        }
         // TSX has no doctype syntax, so the directive must not reach the output.
         // Its surrounding source gaps remain mapped, including their line breaks.
         if let Some(directive) = root.directive() {
