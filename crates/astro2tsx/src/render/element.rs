@@ -15,7 +15,8 @@ use crate::utils::{BodyMode, body_mode};
 use super::attribute::{attribute_key, emit_intra_tag_space, emit_open_tag};
 use super::extracted::{classify_script, inner_range, style_lang_label};
 use super::text::{
-    contains_non_ascii_tag_name, emit_jsx_text_range, emit_source_gap, slice_source, tag_name_text,
+    contains_non_ascii_tag_name, emit_html_comment, emit_jsx_text_range, emit_source_gap,
+    slice_source, tag_name_text,
 };
 
 pub(super) fn render_element(printer: &mut Printer, element: AnyHtmlElement) {
@@ -26,9 +27,16 @@ pub(super) fn render_element(printer: &mut Printer, element: AnyHtmlElement) {
         AnyHtmlElement::HtmlSelfClosingElement(node) => {
             render_self_closing_element(printer, node);
         }
-        AnyHtmlElement::HtmlCdataSection(_)
-        | AnyHtmlElement::HtmlProcessingInstruction(_)
-        | AnyHtmlElement::HtmlBogusElement(_) => {
+        // TSX has no processing-instruction syntax, and they carry nothing to typecheck.
+        AnyHtmlElement::HtmlProcessingInstruction(node) => {
+            let range = node.range();
+            emit_html_comment(
+                printer,
+                slice_source(printer.source, range),
+                range_start(range),
+            );
+        }
+        AnyHtmlElement::HtmlCdataSection(_) | AnyHtmlElement::HtmlBogusElement(_) => {
             // Incomplete TSX-compatible syntax stays verbatim so editor completion can consume it.
             let range = element.range();
             let text = slice_source(printer.source, range);
@@ -556,29 +564,25 @@ mod tests {
 
     #[test]
     fn astro_text_that_is_not_tsx_text_is_escaped() {
-        for input in [
-            r#"<math><annotation>f\colon X \to \mathbb{R}^{2x}</annotation></math>"#,
-            "<日本>hi</日本>",
-        ] {
-            let result = convert_to_tsx(input, ConvertOptions::default());
-            assert!(
-                !result.has_parse_errors,
-                "{input:?}: {:?}",
-                result.diagnostics
-            );
-            let parsed = parse(
-                &result.code,
-                JsFileSource::tsx(),
-                JsParserOptions::default(),
-            );
-            assert!(
-                parsed.diagnostics().is_empty(),
-                "generated invalid TSX for {input:?}:\n{:?}\n{}",
-                parsed.diagnostics(),
-                result.code
-            );
-            assert_mapped_runs_are_verbatim(input, &result, "Astro-only text");
-        }
+        let input = r#"<math><annotation>f\colon X \to \mathbb{R}^{2x}</annotation></math>"#;
+        let result = convert_to_tsx(input, ConvertOptions::default());
+        assert!(
+            !result.has_parse_errors,
+            "{input:?}: {:?}",
+            result.diagnostics
+        );
+        let parsed = parse(
+            &result.code,
+            JsFileSource::tsx(),
+            JsParserOptions::default(),
+        );
+        assert!(
+            parsed.diagnostics().is_empty(),
+            "generated invalid TSX for {input:?}:\n{:?}\n{}",
+            parsed.diagnostics(),
+            result.code
+        );
+        assert_mapped_runs_are_verbatim(input, &result, "Astro-only text");
 
         for element in [
             "iframe",

@@ -62,6 +62,12 @@ pub(crate) fn render_root(
         body_start = printer.position();
 
         let mut prev_end = body_text_start;
+        if let Some(instruction) = root.processing_instruction() {
+            let instruction_range = instruction.range();
+            emit_source_gap(printer, prev_end, range_start(instruction_range));
+            render_element(printer, instruction.into());
+            prev_end = u32::from(instruction_range.end());
+        }
         // TSX has no doctype syntax, so the directive must not reach the output.
         // Its surrounding source gaps remain mapped, including their line breaks.
         if let Some(directive) = root.directive() {

@@ -30,7 +30,7 @@ oxc_sourcemap = { workspace = true }
 cow-utils = { workspace = true }
 lightningcss = { workspace = true }
 rustc-hash = { workspace = true }
-smallvec = "1"
+smallvec = "1.16.3"
 
 [dev-dependencies]
 divan = { workspace = true }
