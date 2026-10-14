@@ -1,5 +1,11 @@
 # @astrojs/compiler-binding
 
+## 0.5.2
+
+### Patch Changes
+
+- 089b077: Updates Astro’s `oxc` fork to the latest commit
+
 ## 0.5.1
 
 ### Patch Changes

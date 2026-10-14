@@ -1,5 +1,19 @@
 # @astrojs/astro2tsx
 
+## 0.1.3
+
+### Patch Changes
+
+- 266acf4: Fixes an issue where processing instructions weren't correctly parsed, resulting in an error. Now the following code is correctly transformed:
+  
+  ```html
+  <?xml version="1.0" encoding="UTF-8"?>
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10" {...Astro.props}>
+  	<circle cx="5" cy="5" r="4" />
+  </svg>
+  ```
+- 089b077: Updates Astro’s `oxc` fork to the latest commit
+
 ## 0.1.2
 
 ### Patch Changes
