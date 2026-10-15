@@ -1,0 +1,16 @@
+---
+source: crates/astro_codegen/tests/css_scoping_snapshots.rs
+assertion_line: 115
+expression: css
+---
+.a:where(.astro-ksblsal4) {
+  @apply w-[calc(100%+48px)];
+}
+
+.b:where(.astro-ksblsal4) {
+  @apply [transform:scale(var(--s,1))];
+}
+
+.c:where(.astro-ksblsal4) {
+  @apply w-[env(safe-area-inset-left,1px)];
+}

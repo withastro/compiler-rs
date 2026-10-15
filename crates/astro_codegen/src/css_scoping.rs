@@ -502,6 +502,161 @@ fn restore_printable_global_universal(css: &str) -> String {
     css.replace(&format!(":{GLOBAL_UNIVERSAL_MARKER_NAME}"), "*")
 }
 
+/// `@apply` takes a raw list of Tailwind class names, but lightningcss parses and
+/// re-serializes the prelude as CSS values. That drops `+` signs before positive
+/// numbers and adds spaces after commas inside `var()` / `env()`, breaking
+/// arbitrary-value classes. We keep the original prelude text and restore it
+/// after scoping/printing.
+///
+/// See withastro/compiler-rs#207.
+fn preserve_apply_preludes(css: &str) -> (String, Vec<String>) {
+    let mut out = String::with_capacity(css.len());
+    let mut preludes = Vec::new();
+    let bytes = css.as_bytes();
+    let mut i = 0;
+
+    while i < bytes.len() {
+        // Skip string literals so an `@apply` inside a string is not treated.
+        if bytes[i] == b'"' || bytes[i] == b'\'' {
+            let start = i;
+            let quote = bytes[i];
+            i += 1;
+            while i < bytes.len() {
+                if bytes[i] == b'\\' {
+                    i += 2;
+                    continue;
+                }
+                if bytes[i] == quote {
+                    i += 1;
+                    break;
+                }
+                i += 1;
+            }
+            out.push_str(&css[start..i]);
+            continue;
+        }
+
+        // Skip comments for the same reason.
+        if bytes[i] == b'/' && bytes.get(i + 1) == Some(&b'*') {
+            let start = i;
+            i += 2;
+            while i + 1 < bytes.len() && !(bytes[i] == b'*' && bytes[i + 1] == b'/') {
+                i += 1;
+            }
+            if i + 1 < bytes.len() {
+                i += 2;
+            }
+            out.push_str(&css[start..i]);
+            continue;
+        }
+
+        if bytes[i] == b'@'
+            && is_apply_keyword(&css[i..])
+            && let Some((consumed, prelude)) = scan_apply_prelude(&css[i..])
+        {
+            out.push_str("@apply ");
+            out.push_str(&format!("__ASTRO_APPLY_{}__", preludes.len()));
+            preludes.push(prelude);
+            i += consumed;
+            continue;
+        }
+
+        let ch = css[i..].chars().next().unwrap();
+        out.push(ch);
+        i += ch.len_utf8();
+    }
+
+    (out, preludes)
+}
+
+fn is_apply_keyword(rest: &str) -> bool {
+    let b = rest.as_bytes();
+    if b.len() < 6 || b[0] != b'@' {
+        return false;
+    }
+    let name = std::str::from_utf8(&b[1..6]).unwrap();
+    if !name.eq_ignore_ascii_case("apply") {
+        return false;
+    }
+    b.get(6).copied().is_none_or(|next| !is_ident_char(next))
+}
+
+fn is_ident_char(byte: u8) -> bool {
+    byte.is_ascii_alphanumeric() || byte == b'-' || byte == b'_'
+}
+
+fn is_css_whitespace(byte: u8) -> bool {
+    matches!(byte, b' ' | b'\t' | b'\n' | b'\r' | b'\x0C')
+}
+
+/// Scan an `@apply` rule that starts at the beginning of `src`, returning the
+/// number of bytes consumed and the raw prelude text.
+fn scan_apply_prelude(src: &str) -> Option<(usize, String)> {
+    let b = src.as_bytes();
+    debug_assert!(b.len() >= 6);
+
+    let mut i = 6;
+    while i < b.len() && is_css_whitespace(b[i]) {
+        i += 1;
+    }
+    if i >= b.len() {
+        return None;
+    }
+
+    let prelude_start = i;
+    let mut paren_depth: usize = 0;
+    let mut bracket_depth: usize = 0;
+
+    while i < b.len() {
+        if b[i] == b'"' || b[i] == b'\'' {
+            let quote = b[i];
+            i += 1;
+            while i < b.len() {
+                if b[i] == b'\\' {
+                    i += 2;
+                    continue;
+                }
+                if b[i] == quote {
+                    i += 1;
+                    break;
+                }
+                i += 1;
+            }
+            continue;
+        }
+
+        match b[i] {
+            b'(' => paren_depth += 1,
+            b')' => {
+                paren_depth = paren_depth.saturating_sub(1);
+            }
+            b'[' => bracket_depth += 1,
+            b']' => {
+                bracket_depth = bracket_depth.saturating_sub(1);
+            }
+            b'{' if paren_depth == 0 && bracket_depth == 0 => return None,
+            b';' if paren_depth == 0 && bracket_depth == 0 => {
+                let prelude = src[prelude_start..i].to_string();
+                return Some((i + 1, prelude));
+            }
+            _ => {}
+        }
+
+        i += 1;
+    }
+
+    None
+}
+
+fn restore_apply_preludes(mut css: String, preludes: &[String]) -> String {
+    for (i, prelude) in preludes.iter().enumerate() {
+        let placeholder = format!("@apply __ASTRO_APPLY_{}__;", i);
+        let replacement = format!("@apply {};", prelude);
+        css = css.replacen(&placeholder, &replacement, 1);
+    }
+    css
+}
+
 /// Scope CSS selectors.
 ///
 /// Parses the CSS, identifies style rules, transforms their selectors to include
@@ -509,11 +664,15 @@ fn restore_printable_global_universal(css: &str) -> String {
 ///
 /// If parsing fails, returns the original CSS unchanged.
 pub fn scope_css(css: &str, scope: &str, strategy: ScopedStyleStrategy) -> String {
+    // `@apply` preludes are opaque class lists, not CSS values. Preserve them
+    // before lightningcss can normalize them, then restore after printing.
+    let (css, preludes) = preserve_apply_preludes(css);
+
     let options = parser_options();
 
-    let mut stylesheet = match StyleSheet::parse(css, options) {
+    let mut stylesheet = match StyleSheet::parse(&css, options) {
         Ok(stylesheet) => stylesheet,
-        Err(_) => return css.to_string(),
+        Err(_) => return restore_apply_preludes(css.clone(), &preludes),
     };
 
     let mut global_visitor = GlobalSelectorVisitor;
@@ -534,7 +693,8 @@ pub fn scope_css(css: &str, scope: &str, strategy: ScopedStyleStrategy) -> Strin
             dependencies: None,
         });
 
-    restore_printable_global_universal(&result.code)
+    let css = restore_printable_global_universal(&result.code);
+    restore_apply_preludes(css, &preludes)
 }
 
 struct ScopeVisitor<'a> {

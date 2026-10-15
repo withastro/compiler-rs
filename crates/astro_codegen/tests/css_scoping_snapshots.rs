@@ -102,3 +102,15 @@ fn global_selector_list_attribute_strategy() {
     );
     assert_css_snapshot!("global_selector_list_attribute_strategy", css);
 }
+
+/// `@apply` preludes are opaque Tailwind class lists, not CSS values, and must
+/// not be rewritten during scoped style serialization.
+/// Regression: withastro/compiler-rs#207
+#[test]
+fn scoped_apply_preserves_arbitrary_values() {
+    let css = scoped_css(
+        "<div class=\"a b c\"></div>\n<style>\n  .a { @apply w-[calc(100%+48px)]; }\n  .b { @apply [transform:scale(var(--s,1))]; }\n  .c { @apply w-[env(safe-area-inset-left,1px)]; }\n</style>",
+        ScopedStyleStrategy::Where,
+    );
+    assert_css_snapshot!("scoped_apply_preserves_arbitrary_values", css);
+}
