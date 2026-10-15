@@ -1,7 +1,8 @@
 // Printer unit tests
 
 use crate::{
-    StyleBlock, TransformOptions, extract_styles, printer::tests::compile_astro_with_options,
+    ScopedStyleStrategy, StyleBlock, TransformOptions, extract_styles,
+    printer::tests::compile_astro_with_options,
 };
 use oxc_allocator::Allocator;
 use oxc_parser::Parser;
@@ -1712,6 +1713,56 @@ const props = { class: "foo", id: "bar" };
     assert!(
         output.contains("$$spreadAttributes"),
         "Should use $$spreadAttributes for spread: {output}"
+    );
+}
+
+#[test]
+fn test_spread_attribute_no_scope_class_with_attribute_strategy() {
+    let source = r#"---
+const attrs = { src: "/photo.png", alt: "A photo" };
+---
+<img {...attrs} />
+<style>img { display: block; }</style>"#;
+    let output = compile_astro_with_options(
+        source,
+        TransformOptions::new()
+            .with_internal_url("http://localhost:3000/")
+            .with_scoped_style_strategy(ScopedStyleStrategy::Attribute),
+    )
+    .code;
+
+    assert!(
+        output.contains("$$spreadAttributes(attrs)"),
+        "spread should be emitted without a class merge: {output}"
+    );
+    assert!(
+        !output.contains(",undefined,{\"class\":\"astro-"),
+        "spread should not receive a legacy scope class: {output}"
+    );
+    assert!(
+        output.contains("data-astro-cid-"),
+        "element should still receive the data-astro-cid attribute: {output}"
+    );
+}
+
+#[test]
+fn test_spread_attribute_still_merges_scope_class_for_class_strategy() {
+    let source = r#"---
+const attrs = { src: "/photo.png", alt: "A photo" };
+---
+<img {...attrs} />
+<style>img { display: block; }</style>"#;
+    let output = compile_astro_with_options(
+        source,
+        TransformOptions::new()
+            .with_internal_url("http://localhost:3000/")
+            .with_scoped_style_strategy(ScopedStyleStrategy::Class),
+    )
+    .code;
+
+    assert!(
+        output.contains("$$spreadAttributes(attrs, undefined, { \"class\": \"astro-"),
+        "class strategy should still merge the scope class into the spread: {output}"
     );
 }
 
