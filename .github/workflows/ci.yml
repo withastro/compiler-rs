@@ -243,7 +243,7 @@ jobs:
           TARGET_CC: clang
 
       - name: Upload artifact
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: matrix.settings.target != 'wasm32-wasip1-threads'
         with:
           name: bindings-${{ matrix.settings.target }}
@@ -251,7 +251,7 @@ jobs:
           if-no-files-found: error
 
       - name: Upload artifact
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: matrix.settings.target == 'wasm32-wasip1-threads'
         with:
           name: bindings-${{ matrix.settings.target }}
@@ -295,7 +295,7 @@ jobs:
         run: pnpm install
 
       - name: Download artifacts
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: bindings-${{ matrix.settings.target }}
           path: crates/astro_napi
@@ -356,7 +356,7 @@ jobs:
       - name: Install dependencies
         run: pnpm install --force
       - name: Download artifacts
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: bindings-${{ matrix.target }}
           path: crates/astro_napi
@@ -394,7 +394,7 @@ jobs:
         run: pnpm install
 
       - name: Download artifacts
-        uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131 # v7
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: bindings-wasm32-wasip1-threads
           path: crates/astro_napi
