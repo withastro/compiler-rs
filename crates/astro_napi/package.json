@@ -38,8 +38,8 @@
   },
   "devDependencies": {
     "@emnapi/runtime": "1.11.3",
-    "@napi-rs/cli": "3.7.4",
-    "@napi-rs/wasm-runtime": "1.2.4",
+    "@napi-rs/cli": "3.10.8",
+    "@napi-rs/wasm-runtime": "1.2.5",
     "@types/node": "^22",
     "emnapi": "1.11.3"
   },
