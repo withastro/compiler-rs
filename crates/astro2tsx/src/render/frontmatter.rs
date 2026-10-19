@@ -103,7 +103,7 @@ pub(super) fn emit_default_export(
         } else {
             (
                 format!("Props{}", analysis.generics_args),
-                format!("Parameters<typeof {component}>[0]"),
+                format!("Props{}", analysis.generics_any_args),
             )
         }
     } else if analysis.has_get_static_paths {
