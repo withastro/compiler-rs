@@ -45,7 +45,7 @@ biome_string_case = { git = "https://github.com/biomejs/biome", rev = "4eadd575d
 biome_unicode_table = { git = "https://github.com/biomejs/biome", rev = "4eadd575d6890a785998279193ceeff9d3098850" }
 
 # NAPI
-napi = { version = "=3.8.3" }
+napi = { version = "=3.15.0" }
 napi-build = "=2.3.1"
 napi-derive = "=3.5.2"
 napi-derive-backend = "=5.0.2"
