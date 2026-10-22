@@ -642,18 +642,15 @@ impl<'a> AstroCodegen<'a> {
                     {
                         self.print_parts(["${", runtime::SPREAD_ATTRIBUTES, "("]);
                         self.print_expression(&spread.argument);
-                        // Always pass the class through $$spreadAttributes for runtime
-                        // merging, regardless of scoped style strategy. The runtime's
-                        // spreadAttributes only handles { class: ... } — it doesn't
-                        // process arbitrary data attributes.
-                        // For attribute strategy, the data-astro-cid-* attribute is
-                        // added directly on the element by the fallback below.
-                        let sc = sid.class_value();
-                        self.print_parts([",undefined,{\"class\":\"", &sc, "\"})}"]);
-                        // Note: do NOT set scope_injected here for attribute strategy,
-                        // so the data-astro-cid-* attribute is still added directly
-                        // on the element by the fallback at the end of this function.
-                        if !sid.is_attribute_strategy() {
+                        // For the `attribute` strategy, the scope is applied as a
+                        // `data-astro-cid-*` boolean attribute by the fallback below,
+                        // so no class should be merged here. Only `class`/`where` need
+                        // to inject the scope class into the spread result.
+                        if sid.is_attribute_strategy() {
+                            self.print(")}");
+                        } else {
+                            let sc = sid.class_value();
+                            self.print_parts([",undefined,{\"class\":\"", &sc, "\"})}"]);
                             scope_injected = true;
                         }
                         continue;
