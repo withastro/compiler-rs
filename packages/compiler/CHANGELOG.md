@@ -1,5 +1,13 @@
 # @astrojs/compiler-rs
 
+## 0.5.3
+
+### Patch Changes
+
+- 5627e84: Prevent legacy `astro-<hash>` classes from being injected into spread attributes when `scopedStyleStrategy` is set to `attribute`.
+- Updated dependencies [5627e84]
+  - @astrojs/compiler-binding@0.5.3
+
 ## 0.5.2
 
 ### Patch Changes
