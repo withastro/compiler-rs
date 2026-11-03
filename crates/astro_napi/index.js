@@ -527,7 +527,9 @@ function requireNative() {
   }
 }
 
-nativeBinding = requireNative()
+if (!process.env.NAPI_RS_FORCE_WASI) {
+  nativeBinding = requireNative()
+}
 
 if (!nativeBinding || process.env.NAPI_RS_FORCE_WASI) {
   let wasiBinding = null
