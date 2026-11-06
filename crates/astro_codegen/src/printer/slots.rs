@@ -511,7 +511,11 @@ impl<'a> AstroCodegen<'a> {
         self.print("{\"default\": ");
         self.print_slot_fn_open(AwaitDetector::found_in_children(children));
 
-        // DO NOT set skip_slot_attribute — we want to preserve slot="..." for custom elements
+        // Custom elements use the browser's slot assignment, so their children
+        // must keep `slot="..."` even when the custom element is nested inside
+        // an Astro component's named slot (which would otherwise skip it).
+        let prev = self.skip_slot_attribute;
+        self.skip_slot_attribute = false;
         let rendered: Vec<&JSXChild<'a>> = children
             .iter()
             .filter(|child| {
@@ -519,6 +523,7 @@ impl<'a> AstroCodegen<'a> {
             })
             .collect();
         self.print_slot_children(&rendered);
+        self.skip_slot_attribute = prev;
 
         self.print("`,}");
     }
