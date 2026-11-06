@@ -511,13 +511,9 @@ impl<'a> AstroCodegen<'a> {
         self.print("{\"default\": ");
         self.print_slot_fn_open(AwaitDetector::found_in_children(children));
 
-        // DO NOT set skip_slot_attribute — we want to preserve slot="..." for custom elements
-        let rendered: Vec<&JSXChild<'a>> = children
-            .iter()
-            .filter(|child| {
-                !(self.options.strip_slot_comments && matches!(child, JSXChild::AstroComment(_)))
-            })
-            .collect();
+        // Custom elements render through the browser's slot mechanism, so keep all
+        // children — including HTML comments — and keep slot="..." attributes.
+        let rendered: Vec<&JSXChild<'a>> = children.iter().collect();
         self.print_slot_children(&rendered);
 
         self.print("`,}");
