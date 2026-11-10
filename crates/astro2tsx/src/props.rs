@@ -12,6 +12,7 @@ pub(crate) struct PropsAnalysis {
     pub has_props: bool,
     pub generics_decl: String,
     pub generics_args: String,
+    pub generics_any_args: String,
     pub has_get_static_paths: bool,
 }
 
@@ -124,6 +125,10 @@ fn fill_generics(analysis: &mut PropsAnalysis, parameters: &TsTypeParameters) {
         .collect();
     analysis.generics_decl = format!("<{}>", declarations.join(", "));
     analysis.generics_args = format!("<{}>", names.join(", "));
+    analysis.generics_any_args = format!(
+        "<{}>",
+        names.iter().map(|_| "any").collect::<Vec<_>>().join(", ")
+    );
 }
 
 fn import_binds_props(import: &JsNode) -> bool {

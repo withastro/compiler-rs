@@ -151,7 +151,7 @@ mod tests {
             assert!(
                 result
                     .code
-                    .contains(&format!("Parameters<typeof {component}>[0]"))
+                    .contains(&format!("AstroGlobal<Props<any>, typeof {component}"))
             );
             if let Some(alias) = alias {
                 let range = result.generated_component_export.unwrap();
