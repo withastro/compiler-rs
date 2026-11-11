@@ -539,8 +539,8 @@ if (
 
 // NAPI_RS_FORCE_WASI is a tri-state flag:
 //   unset / any other value → native binding preferred, WASI is only a fallback
-//   'true'                   → force WASI fallback even if native loaded
-//   'error'                  → force WASI and throw if no WASI binding is found
+//   'true'                   → skip the native addon and force the WASI fallback
+//   'error'                  → skip the native addon and throw if no WASI binding is found
 // Treating any non-empty string as truthy (the historical behavior) meant
 // NAPI_RS_FORCE_WASI=false, NAPI_RS_FORCE_WASI=0, etc. inadvertently triggered
 // the WASI path, causing ENOENT for packages shipped without a .wasi.cjs file.
