@@ -56,11 +56,10 @@ pub struct AstroDiagnostic {
 #[napi(object)]
 #[derive(Default)]
 pub struct ConvertToTsxOptions {
-    /// Filename used to name the default component export (e.g. `MyPage.astro`
+    /// Filename used to derive the clean component name (e.g. `MyPage.astro`
     /// produces `export default function MyPage(...)`). A suffixed internal name
-    /// and a synthetic alias are used only when the frontmatter declares or
-    /// imports `MyPage` as a value binding, which would otherwise conflict
-    /// with the default export.
+    /// and a synthetic alias are used when the frontmatter already uses `MyPage`
+    /// or when the renderer emits a conflicting `Astro`/`Fragment` declaration.
     pub filename: Option<String>,
     /// Appends fallback declarations for `Fragment` and `Astro`. Off by default.
     /// A specialized `Astro` declaration is emitted regardless of this option
@@ -72,9 +71,10 @@ pub struct ConvertToTsxOptions {
 pub struct ConvertToTsxResult {
     pub code: String,
     /// UTF-16 range of the clean-name alias export in `code`, including its
-    /// trailing newline. Present only when the frontmatter declares or imports
-    /// the clean component name as a value binding; absent otherwise, because
-    /// the default export itself carries the clean name.
+    /// trailing newline. Present when the default export cannot use the clean
+    /// name directly — because the frontmatter uses that name or the renderer
+    /// emits a conflicting `Astro`/`Fragment` declaration; absent otherwise,
+    /// including when the clean name is already exported from the frontmatter.
     pub generated_component_export: Option<Range>,
     /// TypeScript Content Mapper span mappings in UTF-16 code units.
     #[napi(
