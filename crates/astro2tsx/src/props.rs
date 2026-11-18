@@ -401,11 +401,18 @@ fn import_binds_value_name(import: &JsNode, name: &str) -> bool {
                     return true;
                 }
             }
+            JsSyntaxKind::JS_IMPORT_DEFAULT_CLAUSE | JsSyntaxKind::JS_IMPORT_NAMESPACE_CLAUSE => {
+                if first_token_is_type_keyword(&node) {
+                    walk.skip_subtree();
+                }
+            }
             JsSyntaxKind::JS_DEFAULT_IMPORT_SPECIFIER
-            | JsSyntaxKind::JS_NAMESPACE_IMPORT_SPECIFIER
-                if specifier_binds_name(&node, name) =>
-            {
-                return true;
+            | JsSyntaxKind::JS_NAMESPACE_IMPORT_SPECIFIER => {
+                if first_token_is_type_keyword(&node) {
+                    walk.skip_subtree();
+                } else if specifier_binds_name(&node, name) {
+                    return true;
+                }
             }
             _ => {}
         }
