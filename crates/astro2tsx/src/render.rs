@@ -101,22 +101,28 @@ pub(crate) fn render_root(
         printer.body_range = GeneratedRange::new(printer.position(), printer.position());
     }
 
+    let public_name = alias.as_deref().unwrap_or(&component_name);
+    let default_component_name =
+        if frontmatter.has_component_export || frontmatter.has_public_name_collision {
+            &component_name
+        } else {
+            public_name
+        };
     let component_name_range = frontmatter::emit_default_export(
         printer,
-        &component_name,
+        default_component_name,
         &frontmatter.props_analysis,
         options.ambient_types,
     );
-    let generated_component_export =
-        alias
-            .filter(|_| !frontmatter.has_component_export)
-            .map(|alias| {
-                printer.map_nil();
-                printer.write("\n");
-                let start = printer.position();
-                printer.write(&format!("export {{ {component_name} as {alias} }};\n"));
-                GeneratedRange::new(start, printer.position())
-            });
+    let generated_component_export = alias
+        .filter(|_| frontmatter.has_public_name_collision && !frontmatter.has_component_export)
+        .map(|alias| {
+            printer.map_nil();
+            printer.write("\n");
+            let start = printer.position();
+            printer.write(&format!("export {{ {component_name} as {alias} }};\n"));
+            GeneratedRange::new(start, printer.position())
+        });
     (
         component_name_range,
         generated_component_export,

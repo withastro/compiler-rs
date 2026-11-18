@@ -381,11 +381,7 @@ mod tests {
                 ..Default::default()
             },
         );
-        assert!(result.code.contains("function MyPageAstroComponent("));
-        assert!(
-            result
-                .code
-                .contains("export { MyPageAstroComponent as MyPage };")
-        );
+        assert!(result.code.contains("export default function MyPage("));
+        assert!(!result.code.contains("export {"));
     }
 }

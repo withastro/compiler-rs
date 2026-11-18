@@ -126,13 +126,15 @@ mod tests {
 
     #[test]
     fn generated_export_ranges_point_to_component_exports() {
+        // No frontmatter declaration of the public component name, so the default
+        // export uses the clean name and no synthetic alias is emitted.
         let source = "---\nconst marker = 'MyPageAstroComponent 𝒳';\ninterface Props<T> { value: T }\n---\n<p>{marker}</p>";
-        for (filename, component, alias) in [
-            ("MyPage.astro", "MyPageAstroComponent", Some("MyPage")),
-            ("[slug].astro", "_Slug_AstroComponent", None),
-            ("404.astro", "FourOhFourAstroComponent", None),
-            ("[...path].astro", "AstroComponent", None),
-            ("Ünicorn.astro", "ÜnicornAstroComponent", None),
+        for (filename, component) in [
+            ("MyPage.astro", "MyPage"),
+            ("[slug].astro", "_Slug_AstroComponent"),
+            ("404.astro", "FourOhFourAstroComponent"),
+            ("[...path].astro", "AstroComponent"),
+            ("Ünicorn.astro", "ÜnicornAstroComponent"),
         ] {
             let result = convert_to_tsx(
                 source,
@@ -153,19 +155,8 @@ mod tests {
                     .code
                     .contains(&format!("Parameters<typeof {component}>[0]"))
             );
-            if let Some(alias) = alias {
-                let range = result.generated_component_export.unwrap();
-                assert_eq!(
-                    &result.code[range.start as usize..range.end as usize],
-                    format!("export {{ {component} as {alias} }};\n"),
-                );
-                assert_eq!(range.end as usize, result.code.len());
-                assert!(range.start >= result.body.end);
-                assert!(range.start >= result.frontmatter_range.end);
-            } else {
-                assert!(result.generated_component_export.is_none());
-                assert!(!result.code.contains("export {"));
-            }
+            assert!(result.generated_component_export.is_none());
+            assert!(!result.code.contains("export {"));
             assert_mapped_runs_are_verbatim(source, &result, filename);
         }
     }
@@ -211,6 +202,8 @@ mod tests {
 
     #[test]
     fn named_component_exports_do_not_replace_explicit_exports() {
+        // When the frontmatter exports the public component name as a value,
+        // keep the internal default-function name and do not add an alias.
         for declaration in [
             "export const MyPage = 1;",
             "export function MyPage() {}",
@@ -219,8 +212,6 @@ mod tests {
             "export namespace MyPage { export const value = 1; }",
             "export declare const MyPage: number;",
             "export declare function MyPage(): void;",
-            "export interface MyPage { value: string }",
-            "export type MyPage = string;",
             "export const { nested: [MyPage] } = data;",
             "const MyPage = 1; export { MyPage };",
             "const value = 1; export { value as MyPage };",
@@ -256,14 +247,59 @@ mod tests {
             assert!(result.code.contains(declaration), "{}", result.code);
             assert_mapped_runs_are_verbatim(&source, &result, declaration);
         }
+
+        // Type-only declarations and non-conflicting re-exports do not prevent
+        // the default export from carrying the public component name.
         for declaration in [
-            "const MyPage = 1;",
+            "export interface MyPage { value: string }",
+            "export type MyPage = string;",
+            "export { MyPage as other } from './other';",
+            "export * from './other';",
             "export const value = () => { const MyPage = 1; return MyPage; };",
             "export const { value = (() => { const MyPage = 1; return MyPage; })() } = data;",
             "export const { MyPage: value } = data;",
+            "interface MyPage {}",
+            "type MyPage = string;",
+            "import type { MyPage } from './other';",
+            "namespace MyPage { export interface X {} }",
+        ] {
+            let source = format!("---\n{declaration}\n---");
+            let result = convert_to_tsx(
+                &source,
+                ConvertOptions {
+                    filename: Some("MyPage.astro".to_string()),
+                    ..Default::default()
+                },
+            );
+            assert!(
+                !result.has_parse_errors,
+                "{source}: {:?}",
+                result.diagnostics
+            );
+            assert!(
+                result.generated_component_export.is_none(),
+                "{}",
+                result.code
+            );
+            assert!(result.code.contains("export default function MyPage("));
+            assert!(result.code.contains(declaration), "{}", result.code);
+            assert_mapped_runs_are_verbatim(&source, &result, declaration);
+        }
+
+        // When the frontmatter declares or imports the public component name as
+        // a value without exporting it, fall back to the internal name and emit
+        // the synthetic alias so auto-imports still see the clean name.
+        for declaration in [
+            "const MyPage = 1;",
             "const MyPage = 1; export { MyPage as other };",
-            "export { MyPage as other } from './other';",
-            "export * from './other';",
+            "function MyPage() {}",
+            "class MyPage {}",
+            "enum MyPage { Value }",
+            "declare const MyPage: number;",
+            "import { MyPage } from './other';",
+            "import * as MyPage from './other';",
+            "import MyPage from './other';",
+            "namespace MyPage { export const x = 1; }",
         ] {
             let source = format!("---\n{declaration}\n---");
             let result = convert_to_tsx(
@@ -283,6 +319,17 @@ mod tests {
                 "{}",
                 result.code
             );
+            assert!(
+                result
+                    .code
+                    .contains("export default function MyPageAstroComponent(")
+            );
+            assert!(
+                result
+                    .code
+                    .contains("export { MyPageAstroComponent as MyPage };")
+            );
+            assert!(result.code.contains(declaration), "{}", result.code);
             assert_mapped_runs_are_verbatim(&source, &result, declaration);
         }
     }

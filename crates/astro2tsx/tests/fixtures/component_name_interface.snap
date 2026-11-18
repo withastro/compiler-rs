@@ -1,0 +1,29 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+info:
+  has_parse_errors: false
+  frontmatter_status: Closed
+  frontmatter_source:
+    start: 0
+    end: 25
+  frontmatter:
+    start: 30
+    end: 50
+  body:
+    start: 65
+    end: 79
+  scripts: []
+  styles: []
+input_file: crates/astro2tsx/tests/fixtures/component_name_interface.astro
+---
+/* @jsxImportSource astro */
+
+
+interface Card {}
+
+;{};<Fragment>
+
+<article />
+
+</Fragment>
+export default function Card(_props: Record<string, any>): any {}

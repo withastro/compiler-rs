@@ -23,9 +23,11 @@ export declare function convertToTsx(source: string, options?: ConvertToTsxOptio
 
 export interface ConvertToTsxOptions {
   /**
-   * Filename used to name the component (e.g. `MyPage.astro` produces
-   * `MyPageAstroComponent`, also exported as `MyPage` for auto-imports
-   * unless frontmatter already exports that name).
+   * Filename used to name the default component export (e.g. `MyPage.astro`
+   * produces `export default function MyPage(...)`). A suffixed internal name
+   * and a synthetic alias are used only when the frontmatter declares or
+   * imports `MyPage` as a value binding, which would otherwise conflict
+   * with the default export.
    */
   filename?: string
   /**
@@ -39,9 +41,10 @@ export interface ConvertToTsxOptions {
 export interface ConvertToTsxResult {
   code: string
   /**
-   * UTF-16 range of the clean-name re-export in `code`, including its trailing newline.
-   * Absent for dynamic routes, filenames without a matching clean component name,
-   * and names already exported by frontmatter.
+   * UTF-16 range of the clean-name alias export in `code`, including its
+   * trailing newline. Present only when the frontmatter declares or imports
+   * the clean component name as a value binding; absent otherwise, because
+   * the default export itself carries the clean name.
    */
   generatedComponentExport?: Range
   /** TypeScript Content Mapper span mappings in UTF-16 code units. */
