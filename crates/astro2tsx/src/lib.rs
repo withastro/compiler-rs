@@ -248,21 +248,9 @@ mod tests {
             assert_mapped_runs_are_verbatim(&source, &result, declaration);
         }
 
-        // Type-only declarations and non-conflicting re-exports do not prevent
-        // the default export from carrying the public component name.
-        for declaration in [
-            "export interface MyPage { value: string }",
-            "export type MyPage = string;",
-            "export { MyPage as other } from './other';",
-            "export * from './other';",
-            "export const value = () => { const MyPage = 1; return MyPage; };",
-            "export const { value = (() => { const MyPage = 1; return MyPage; })() } = data;",
-            "export const { MyPage: value } = data;",
-            "interface MyPage {}",
-            "type MyPage = string;",
-            "import type { MyPage } from './other';",
-            "namespace MyPage { export interface X {} }",
-        ] {
+        // When the frontmatter does not mention the public component name at
+        // all, the default export can safely use it directly.
+        for declaration in ["export * from './other';"] {
             let source = format!("---\n{declaration}\n---");
             let result = convert_to_tsx(
                 &source,
@@ -286,9 +274,9 @@ mod tests {
             assert_mapped_runs_are_verbatim(&source, &result, declaration);
         }
 
-        // When the frontmatter declares or imports the public component name as
-        // a value without exporting it, fall back to the internal name and emit
-        // the synthetic alias so auto-imports still see the clean name.
+        // When the frontmatter uses the public component name anywhere (as a
+        // type, value, import, or namespace), fall back to the internal name and
+        // emit a synthetic alias so auto-imports still see the clean name.
         for declaration in [
             "const MyPage = 1;",
             "const MyPage = 1; export { MyPage as other };",
@@ -300,6 +288,16 @@ mod tests {
             "import * as MyPage from './other';",
             "import MyPage from './other';",
             "namespace MyPage { export const x = 1; }",
+            "export interface MyPage { value: string }",
+            "export type MyPage = string;",
+            "export { MyPage as other } from './other';",
+            "export const value = () => { const MyPage = 1; return MyPage; };",
+            "export const { value = (() => { const MyPage = 1; return MyPage; })() } = data;",
+            "export const { MyPage: value } = data;",
+            "interface MyPage {}",
+            "type MyPage = string;",
+            "import type { MyPage } from './other';",
+            "namespace MyPage { export interface X {} }",
         ] {
             let source = format!("---\n{declaration}\n---");
             let result = convert_to_tsx(

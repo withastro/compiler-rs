@@ -43,8 +43,7 @@ pub(super) fn render(
     let content = frontmatter.and_then(frontmatter_content);
     let mut props_analysis = PropsAnalysis::default();
     let mut has_component_export = false;
-    let mut has_public_name_collision =
-        component_alias.is_some_and(crate::utils::is_reserved_global_name);
+    let mut has_public_name_collision = false;
     let mut rewritten = None;
     if let Some((text, start)) = &content
         && !text.is_empty()
@@ -71,10 +70,8 @@ pub(super) fn render(
         props_analysis = analyze_props(&js_root);
         has_component_export =
             component_alias.is_some_and(|name| crate::props::exports_value_name(&js_root, name));
-        has_public_name_collision = component_alias.is_some_and(|name| {
-            crate::props::binds_value_name(&js_root, name)
-                || crate::utils::is_reserved_global_name(name)
-        });
+        has_public_name_collision =
+            component_alias.is_some_and(|name| crate::props::name_used_in_module(&js_root, name));
         rewritten = Some((js_root, *start));
     }
 

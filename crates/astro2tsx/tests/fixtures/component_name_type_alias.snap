@@ -26,4 +26,6 @@ type Card = {};
 <article />
 
 </Fragment>
-export default function Card(_props: Record<string, any>): any {}
+export default function CardAstroComponent(_props: Record<string, any>): any {}
+
+export { CardAstroComponent as Card };

@@ -102,12 +102,17 @@ pub(crate) fn render_root(
     }
 
     let public_name = alias.as_deref().unwrap_or(&component_name);
-    let default_component_name =
-        if frontmatter.has_component_export || frontmatter.has_public_name_collision {
-            &component_name
-        } else {
-            public_name
-        };
+    let has_public_name_collision = frontmatter.has_public_name_collision
+        || (public_name == "Astro"
+            && (frontmatter.props_analysis.has_props
+                || frontmatter.props_analysis.has_get_static_paths
+                || options.ambient_types))
+        || (public_name == "Fragment" && (has_body_children || options.ambient_types));
+    let default_component_name = if frontmatter.has_component_export || has_public_name_collision {
+        &component_name
+    } else {
+        public_name
+    };
     let component_name_range = frontmatter::emit_default_export(
         printer,
         default_component_name,
@@ -115,7 +120,7 @@ pub(crate) fn render_root(
         options.ambient_types,
     );
     let generated_component_export = alias
-        .filter(|_| frontmatter.has_public_name_collision && !frontmatter.has_component_export)
+        .filter(|_| has_public_name_collision && !frontmatter.has_component_export)
         .map(|alias| {
             printer.map_nil();
             printer.write("\n");

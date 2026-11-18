@@ -1,8 +1,7 @@
 use biome_js_syntax::{
     AnyJsDeclarationClause, AnyJsExportClause, AnyJsExportNamedSpecifier, AnyJsRoot, JsExport,
-    JsIdentifierBinding, JsImport, JsLanguage, JsSyntaxKind, JsSyntaxToken, JsVariableDeclaration,
-    JsVariableDeclarationClause, TsInterfaceDeclaration, TsTypeAliasDeclaration, TsTypeParameters,
-    unescape_js_string,
+    JsIdentifierBinding, JsLanguage, JsSyntaxKind, JsSyntaxToken, TsInterfaceDeclaration,
+    TsTypeAliasDeclaration, TsTypeParameters, unescape_js_string,
 };
 use biome_rowan::{AstNode, AstNodeList, AstSeparatedList, SyntaxNode, WalkEvent};
 
@@ -164,28 +163,47 @@ pub(crate) fn exports_value_name(root: &AnyJsRoot, name: &str) -> bool {
     })
 }
 
-pub(crate) fn binds_value_name(root: &AnyJsRoot, name: &str) -> bool {
-    module_items(root)
-        .iter()
-        .any(|item| item_binds_value_name(item, name))
+/// Returns whether any identifier token in the frontmatter matches `name`.
+/// This detects both user declarations and references to globals (e.g. `Date`)
+/// so the renderer can avoid shadowing them with the default-export function.
+pub(crate) fn name_used_in_module(root: &AnyJsRoot, name: &str) -> bool {
+    root.syntax()
+        .descendants_with_tokens(biome_rowan::Direction::Next)
+        .filter_map(|element| match element {
+            biome_rowan::NodeOrToken::Token(token) => Some(token),
+            _ => None,
+        })
+        .any(|token| {
+            token.kind() == JsSyntaxKind::IDENT
+                && unescape_js_string(token.token_text_trimmed()) == name
+        })
 }
 
-fn item_binds_value_name(item: &JsNode, name: &str) -> bool {
-    if let Some(import) = JsImport::cast_ref(item) {
-        return import_binds_value_name(import.syntax(), name);
+fn namespace_is_instantiated(namespace: &JsNode) -> bool {
+    let walk = namespace.preorder();
+    for event in walk {
+        let WalkEvent::Enter(node) = event else {
+            continue;
+        };
+        if node_is_value_declaration(&node) {
+            return true;
+        }
     }
-    if let Some(export) = JsExport::cast_ref(item) {
-        return export
-            .export_clause()
-            .is_ok_and(|clause| export_clause_exports_value_name(&clause, name));
-    }
-    if item.kind() == JsSyntaxKind::TS_DECLARE_STATEMENT {
-        return item
+    false
+}
+
+fn node_is_value_declaration(node: &JsNode) -> bool {
+    match node.kind() {
+        JsSyntaxKind::JS_VARIABLE_DECLARATION
+        | JsSyntaxKind::JS_FUNCTION_DECLARATION
+        | JsSyntaxKind::JS_CLASS_DECLARATION
+        | JsSyntaxKind::TS_ENUM_DECLARATION
+        | JsSyntaxKind::TS_DECLARE_FUNCTION_DECLARATION => true,
+        JsSyntaxKind::TS_DECLARE_STATEMENT => node
             .children()
-            .next()
-            .is_some_and(|child| declaration_binds_value_name(&child, name));
+            .any(|child| node_is_value_declaration(&child)),
+        _ => false,
     }
-    declaration_binds_value_name(item, name)
 }
 
 fn export_clause_exports_value_name(clause: &AnyJsExportClause, name: &str) -> bool {
@@ -274,7 +292,12 @@ fn declaration_exports_value_name(declaration: &AnyJsDeclarationClause, name: &s
             })
         }
         AnyJsDeclarationClause::TsModuleDeclaration(declaration) => {
-            module_declares_value_name(declaration.syntax(), name)
+            declaration
+                .name()
+                .ok()
+                .and_then(|name| name.syntax().first_token())
+                .is_some_and(|token| unescape_js_string(token.token_text_trimmed()) == name)
+                && namespace_is_instantiated(declaration.syntax())
         }
         _ => declaration
             .syntax()
@@ -290,147 +313,9 @@ fn declaration_exports_value_name(declaration: &AnyJsDeclarationClause, name: &s
     }
 }
 
-fn declaration_binds_value_name(node: &JsNode, name: &str) -> bool {
-    match node.kind() {
-        JsSyntaxKind::JS_VARIABLE_STATEMENT => node
-            .children()
-            .any(|child| declaration_binds_value_name(&child, name)),
-        JsSyntaxKind::JS_VARIABLE_DECLARATION => {
-            JsVariableDeclaration::cast_ref(node).is_some_and(|declaration| {
-                declaration
-                    .declarators()
-                    .iter()
-                    .filter_map(Result::ok)
-                    .any(|declarator| {
-                        declarator
-                            .id()
-                            .is_ok_and(|binding| binding_has_name(binding.syntax(), name))
-                    })
-            })
-        }
-        JsSyntaxKind::JS_VARIABLE_DECLARATION_CLAUSE => JsVariableDeclarationClause::cast_ref(node)
-            .is_some_and(|clause| {
-                clause.declaration().is_ok_and(|declaration| {
-                    declaration
-                        .declarators()
-                        .iter()
-                        .filter_map(Result::ok)
-                        .any(|declarator| {
-                            declarator
-                                .id()
-                                .is_ok_and(|binding| binding_has_name(binding.syntax(), name))
-                        })
-                })
-            }),
-        JsSyntaxKind::JS_FUNCTION_DECLARATION
-        | JsSyntaxKind::JS_CLASS_DECLARATION
-        | JsSyntaxKind::TS_ENUM_DECLARATION
-        | JsSyntaxKind::TS_DECLARE_FUNCTION_DECLARATION => node
-            .children()
-            .find(|child| {
-                matches!(
-                    child.kind(),
-                    JsSyntaxKind::JS_IDENTIFIER_BINDING | JsSyntaxKind::TS_IDENTIFIER_BINDING
-                )
-            })
-            .and_then(|binding| binding.first_token())
-            .is_some_and(|token| unescape_js_string(token.token_text_trimmed()) == name),
-        JsSyntaxKind::TS_DECLARE_STATEMENT => node
-            .children()
-            .any(|child| declaration_binds_value_name(&child, name)),
-        JsSyntaxKind::TS_MODULE_DECLARATION => module_declares_value_name(node, name),
-        _ => false,
-    }
-}
-
-fn module_declares_value_name(module: &JsNode, name: &str) -> bool {
-    if !module_is_instantiated(module) {
-        return false;
-    }
-    module
-        .children()
-        .find(|child| child.kind() == JsSyntaxKind::TS_IDENTIFIER_BINDING)
-        .and_then(|binding| binding.first_token())
-        .is_some_and(|token| unescape_js_string(token.token_text_trimmed()) == name)
-}
-
-fn module_is_instantiated(module: &JsNode) -> bool {
-    let walk = module.preorder();
-    for event in walk {
-        let WalkEvent::Enter(node) = event else {
-            continue;
-        };
-        if node_is_value_declaration(&node) {
-            return true;
-        }
-    }
-    false
-}
-
-fn node_is_value_declaration(node: &JsNode) -> bool {
-    match node.kind() {
-        JsSyntaxKind::JS_VARIABLE_DECLARATION
-        | JsSyntaxKind::JS_FUNCTION_DECLARATION
-        | JsSyntaxKind::JS_CLASS_DECLARATION
-        | JsSyntaxKind::TS_ENUM_DECLARATION
-        | JsSyntaxKind::TS_DECLARE_FUNCTION_DECLARATION => true,
-        JsSyntaxKind::TS_DECLARE_STATEMENT => node
-            .children()
-            .any(|child| node_is_value_declaration(&child)),
-        _ => false,
-    }
-}
-
-fn import_binds_value_name(import: &JsNode, name: &str) -> bool {
-    let mut walk = import.preorder();
-    while let Some(event) = walk.next() {
-        let WalkEvent::Enter(node) = event else {
-            continue;
-        };
-        match node.kind() {
-            JsSyntaxKind::JS_IMPORT_NAMED_CLAUSE => {
-                if first_token_is_type_keyword(&node) {
-                    walk.skip_subtree();
-                }
-            }
-            JsSyntaxKind::JS_SHORTHAND_NAMED_IMPORT_SPECIFIER
-            | JsSyntaxKind::JS_NAMED_IMPORT_SPECIFIER => {
-                if first_token_is_type_keyword(&node) {
-                    walk.skip_subtree();
-                } else if specifier_binds_name(&node, name) {
-                    return true;
-                }
-            }
-            JsSyntaxKind::JS_IMPORT_DEFAULT_CLAUSE | JsSyntaxKind::JS_IMPORT_NAMESPACE_CLAUSE => {
-                if first_token_is_type_keyword(&node) {
-                    walk.skip_subtree();
-                }
-            }
-            JsSyntaxKind::JS_DEFAULT_IMPORT_SPECIFIER
-            | JsSyntaxKind::JS_NAMESPACE_IMPORT_SPECIFIER => {
-                if first_token_is_type_keyword(&node) {
-                    walk.skip_subtree();
-                } else if specifier_binds_name(&node, name) {
-                    return true;
-                }
-            }
-            _ => {}
-        }
-    }
-    false
-}
-
 fn first_token_is_type_keyword(node: &JsNode) -> bool {
     node.first_token()
         .is_some_and(|token| token.token_text_trimmed() == "type")
-}
-
-fn specifier_binds_name(specifier: &JsNode, name: &str) -> bool {
-    specifier
-        .descendants()
-        .find(|node| node.kind() == JsSyntaxKind::JS_IDENTIFIER_BINDING)
-        .and_then(|binding| binding.first_token())
-        .is_some_and(|token| unescape_js_string(token.token_text_trimmed()) == name)
 }
 
 fn export_named_specifier_is_type_only(specifier: &AnyJsExportNamedSpecifier) -> bool {

@@ -2,24 +2,28 @@
 source: crates/astro2tsx/tests/snapshots.rs
 info:
   has_parse_errors: false
-  frontmatter_status: DoesntExist
+  frontmatter_status: Closed
   frontmatter_source:
     start: 0
-    end: 0
+    end: 39
   frontmatter:
     start: 30
-    end: 30
+    end: 64
   body:
-    start: 41
-    end: 54
+    start: 79
+    end: 111
   scripts: []
   styles: []
-input_file: crates/astro2tsx/tests/fixtures/component_name_global_date.astro
+input_file: crates/astro2tsx/tests/fixtures/component_name_used_global.astro
 ---
 /* @jsxImportSource astro */
 
-<Fragment>
-<div></div>
+
+const today: Date = new Date();
+
+;{};<Fragment>
+
+<p>{today.toDateString()}</p>
 
 </Fragment>
 export default function DateAstroComponent(_props: Record<string, any>): any {}
