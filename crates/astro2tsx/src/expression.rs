@@ -102,6 +102,7 @@ fn emit_token(printer: &mut Printer, token: &JsToken, base: u32, in_children: bo
     for piece in token.leading_trivia().pieces() {
         emit_trivia(printer, &piece, base, in_children);
     }
+    printer.note_js_token(token);
     printer.write_with_mapping(
         token.text_trimmed(),
         abs(base, token.text_trimmed_range().start()),

@@ -1,6 +1,5 @@
 ---
 source: crates/astro2tsx/tests/snapshots.rs
-assertion_line: 134
 info:
   has_parse_errors: false
   frontmatter_status: DoesntExist
@@ -23,6 +22,4 @@ input_file: crates/astro2tsx/tests/fixtures/named_component_export.astro
 <div></div>
 
 </Fragment>
-export default function MyPageAstroComponent(_props: Record<string, any>): any {}
-
-export { MyPageAstroComponent as MyPage };
+export default function MyPage(_props: Record<string, any>): any {}

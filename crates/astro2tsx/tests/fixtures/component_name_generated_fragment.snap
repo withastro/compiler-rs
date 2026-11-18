@@ -1,0 +1,34 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+info:
+  has_parse_errors: false
+  frontmatter_status: DoesntExist
+  frontmatter_source:
+    start: 0
+    end: 0
+  frontmatter:
+    start: 30
+    end: 30
+  body:
+    start: 41
+    end: 54
+  scripts: []
+  styles: []
+input_file: crates/astro2tsx/tests/fixtures/component_name_generated_fragment.astro
+---
+/* @jsxImportSource astro */
+
+<Fragment>
+<div></div>
+
+</Fragment>
+export default function FragmentAstroComponent(_props: Record<string, any>): any {}
+declare const Fragment: any;
+/**
+ * Astro global available in all contexts in .astro files
+ *
+ * [Astro documentation](https://docs.astro.build/reference/api-reference/#astro-global)
+*/
+declare const Astro: Readonly<import('astro').AstroGlobal<Record<string, any>, typeof FragmentAstroComponent>>;
+
+export { FragmentAstroComponent as Fragment };

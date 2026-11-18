@@ -42,6 +42,8 @@ fn parse_fixture(raw: &str) -> (String, ConvertOptions) {
         };
         if let Some(value) = config.strip_prefix("filename=") {
             options.filename = Some(value.trim().to_string());
+        } else if let Some(value) = config.strip_prefix("ambientTypes=") {
+            options.ambient_types = value.trim().eq_ignore_ascii_case("true");
         }
         remaining = remaining[line.len()..].trim_start_matches('\n');
     }

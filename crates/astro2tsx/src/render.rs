@@ -36,6 +36,8 @@ pub(crate) fn render_root(
             Some(GeneratedRange::new(insertion_start, printer.position()));
     }
     let (component_name, alias) = tsx_component_names(options.filename.as_deref());
+    let public_name = alias.as_deref().unwrap_or(&component_name);
+    printer.watch_name(public_name);
     let frontmatter = frontmatter::render(printer, frontmatter_node.as_ref(), alias.as_deref());
     let body = root.html();
     let body_text_start = frontmatter.body_text_start;
@@ -101,22 +103,34 @@ pub(crate) fn render_root(
         printer.body_range = GeneratedRange::new(printer.position(), printer.position());
     }
 
+    // Frontmatter and template share a scope with the default-export function, so naming it
+    // after an identifier emitted in either would shadow or redeclare that identifier.
+    let has_public_name_collision = printer.watched_name_seen
+        || (public_name == "Astro"
+            && (frontmatter.props_analysis.has_props
+                || frontmatter.props_analysis.has_get_static_paths
+                || options.ambient_types))
+        || (public_name == "Fragment" && (has_body_children || options.ambient_types));
+    let default_component_name = if frontmatter.has_component_export || has_public_name_collision {
+        &component_name
+    } else {
+        public_name
+    };
     let component_name_range = frontmatter::emit_default_export(
         printer,
-        &component_name,
+        default_component_name,
         &frontmatter.props_analysis,
         options.ambient_types,
     );
-    let generated_component_export =
-        alias
-            .filter(|_| !frontmatter.has_component_export)
-            .map(|alias| {
-                printer.map_nil();
-                printer.write("\n");
-                let start = printer.position();
-                printer.write(&format!("export {{ {component_name} as {alias} }};\n"));
-                GeneratedRange::new(start, printer.position())
-            });
+    let generated_component_export = alias
+        .filter(|_| has_public_name_collision && !frontmatter.has_component_export)
+        .map(|alias| {
+            printer.map_nil();
+            printer.write("\n");
+            let start = printer.position();
+            printer.write(&format!("export {{ {component_name} as {alias} }};\n"));
+            GeneratedRange::new(start, printer.position())
+        });
     (
         component_name_range,
         generated_component_export,

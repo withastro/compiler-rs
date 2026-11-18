@@ -151,7 +151,7 @@ fn module_items(root: &AnyJsRoot) -> Vec<JsNode> {
     }
 }
 
-pub(crate) fn exports_name(root: &AnyJsRoot, name: &str) -> bool {
+pub(crate) fn exports_value_name(root: &AnyJsRoot, name: &str) -> bool {
     module_items(root).iter().any(|item| {
         let Some(export) = JsExport::cast_ref(item) else {
             return false;
@@ -159,36 +159,77 @@ pub(crate) fn exports_name(root: &AnyJsRoot, name: &str) -> bool {
         let Ok(clause) = export.export_clause() else {
             return false;
         };
-        match clause {
-            AnyJsExportClause::AnyJsDeclarationClause(declaration) => {
-                declaration_exports_name(&declaration, name)
+        export_clause_exports_value_name(&clause, name)
+    })
+}
+
+fn namespace_is_instantiated(namespace: &JsNode) -> bool {
+    let walk = namespace.preorder();
+    for event in walk {
+        let WalkEvent::Enter(node) = event else {
+            continue;
+        };
+        if node_is_value_declaration(&node) {
+            return true;
+        }
+    }
+    false
+}
+
+fn node_is_value_declaration(node: &JsNode) -> bool {
+    match node.kind() {
+        JsSyntaxKind::JS_VARIABLE_DECLARATION
+        | JsSyntaxKind::JS_FUNCTION_DECLARATION
+        | JsSyntaxKind::JS_CLASS_DECLARATION
+        | JsSyntaxKind::TS_ENUM_DECLARATION
+        | JsSyntaxKind::TS_DECLARE_FUNCTION_DECLARATION => true,
+        JsSyntaxKind::TS_DECLARE_STATEMENT => node
+            .children()
+            .any(|child| node_is_value_declaration(&child)),
+        _ => false,
+    }
+}
+
+fn export_clause_exports_value_name(clause: &AnyJsExportClause, name: &str) -> bool {
+    match clause {
+        AnyJsExportClause::AnyJsDeclarationClause(declaration) => {
+            declaration_exports_value_name(declaration, name)
+        }
+        AnyJsExportClause::TsExportDeclareClause(clause) => {
+            if first_token_is_type_keyword(clause.syntax()) {
+                return false;
             }
-            AnyJsExportClause::TsExportDeclareClause(clause) => clause
+            clause
                 .declaration()
-                .is_ok_and(|declaration| declaration_exports_name(&declaration, name)),
-            AnyJsExportClause::JsExportNamedClause(clause) => clause
+                .is_ok_and(|declaration| declaration_exports_value_name(&declaration, name))
+        }
+        AnyJsExportClause::JsExportNamedClause(clause) => {
+            if first_token_is_type_keyword(clause.syntax()) {
+                return false;
+            }
+            clause
                 .specifiers()
                 .iter()
                 .filter_map(Result::ok)
-                .any(|specifier| match specifier {
-                    AnyJsExportNamedSpecifier::JsExportNamedShorthandSpecifier(specifier) => {
-                        specifier
-                            .name()
-                            .and_then(|name| name.value_token())
-                            .is_ok_and(|token| {
-                                unescape_js_string(token.token_text_trimmed()) == name
-                            })
-                    }
-                    AnyJsExportNamedSpecifier::JsExportNamedSpecifier(specifier) => specifier
-                        .exported_name()
-                        .and_then(|name| name.inner_string_text())
-                        .is_ok_and(|text| unescape_js_string(text) == name),
-                }),
-            AnyJsExportClause::JsExportNamedFromClause(clause) => clause
+                .filter(|specifier| !export_named_specifier_is_type_only(specifier))
+                .any(|specifier| export_named_specifier_exports_name(specifier, name))
+        }
+        AnyJsExportClause::JsExportNamedFromClause(clause) => {
+            if first_token_is_type_keyword(clause.syntax()) {
+                return false;
+            }
+            clause
                 .specifiers()
                 .iter()
                 .filter_map(Result::ok)
                 .any(|specifier| {
+                    if specifier
+                        .syntax()
+                        .first_token()
+                        .is_some_and(|t| t.token_text_trimmed() == "type")
+                    {
+                        return false;
+                    }
                     let exported = match specifier.export_as() {
                         Some(alias) => alias.exported_name(),
                         None => specifier.source_name(),
@@ -196,21 +237,30 @@ pub(crate) fn exports_name(root: &AnyJsRoot, name: &str) -> bool {
                     exported
                         .and_then(|name| name.inner_string_text())
                         .is_ok_and(|text| unescape_js_string(text) == name)
-                }),
-            AnyJsExportClause::JsExportFromClause(clause) => {
-                clause.export_as().is_some_and(|alias| {
-                    alias
-                        .exported_name()
-                        .and_then(|name| name.inner_string_text())
-                        .is_ok_and(|text| unescape_js_string(text) == name)
                 })
-            }
-            _ => false,
         }
-    })
+        AnyJsExportClause::JsExportFromClause(clause) => {
+            if first_token_is_type_keyword(clause.syntax()) {
+                return false;
+            }
+            clause.export_as().is_some_and(|alias| {
+                alias
+                    .exported_name()
+                    .and_then(|name| name.inner_string_text())
+                    .is_ok_and(|text| unescape_js_string(text) == name)
+            })
+        }
+        _ => false,
+    }
 }
 
-fn declaration_exports_name(declaration: &AnyJsDeclarationClause, name: &str) -> bool {
+fn declaration_exports_value_name(declaration: &AnyJsDeclarationClause, name: &str) -> bool {
+    if matches!(
+        declaration.syntax().kind(),
+        JsSyntaxKind::TS_INTERFACE_DECLARATION | JsSyntaxKind::TS_TYPE_ALIAS_DECLARATION
+    ) {
+        return false;
+    }
     match declaration {
         AnyJsDeclarationClause::JsVariableDeclarationClause(clause) => {
             clause.declaration().is_ok_and(|declaration| {
@@ -225,11 +275,14 @@ fn declaration_exports_name(declaration: &AnyJsDeclarationClause, name: &str) ->
                     })
             })
         }
-        AnyJsDeclarationClause::TsModuleDeclaration(declaration) => declaration
-            .name()
-            .ok()
-            .and_then(|name| name.syntax().first_token())
-            .is_some_and(|token| unescape_js_string(token.token_text_trimmed()) == name),
+        AnyJsDeclarationClause::TsModuleDeclaration(declaration) => {
+            declaration
+                .name()
+                .ok()
+                .and_then(|name| name.syntax().first_token())
+                .is_some_and(|token| unescape_js_string(token.token_text_trimmed()) == name)
+                && namespace_is_instantiated(declaration.syntax())
+        }
         _ => declaration
             .syntax()
             .children()
@@ -241,6 +294,31 @@ fn declaration_exports_name(declaration: &AnyJsDeclarationClause, name: &str) ->
             })
             .filter_map(|binding| binding.first_token())
             .any(|token| unescape_js_string(token.token_text_trimmed()) == name),
+    }
+}
+
+fn first_token_is_type_keyword(node: &JsNode) -> bool {
+    node.first_token()
+        .is_some_and(|token| token.token_text_trimmed() == "type")
+}
+
+fn export_named_specifier_is_type_only(specifier: &AnyJsExportNamedSpecifier) -> bool {
+    specifier
+        .syntax()
+        .first_token()
+        .is_some_and(|token| token.token_text_trimmed() == "type")
+}
+
+fn export_named_specifier_exports_name(specifier: AnyJsExportNamedSpecifier, name: &str) -> bool {
+    match specifier {
+        AnyJsExportNamedSpecifier::JsExportNamedShorthandSpecifier(specifier) => specifier
+            .name()
+            .and_then(|name| name.value_token())
+            .is_ok_and(|token| unescape_js_string(token.token_text_trimmed()) == name),
+        AnyJsExportNamedSpecifier::JsExportNamedSpecifier(specifier) => specifier
+            .exported_name()
+            .and_then(|name| name.inner_string_text())
+            .is_ok_and(|text| unescape_js_string(text) == name),
     }
 }
 

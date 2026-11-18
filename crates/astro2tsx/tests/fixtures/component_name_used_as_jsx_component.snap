@@ -1,0 +1,37 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+info:
+  has_parse_errors: false
+  frontmatter_status: Closed
+  frontmatter_source:
+    start: 0
+    end: 41
+  frontmatter:
+    start: 30
+    end: 66
+  body:
+    start: 81
+    end: 149
+  scripts: []
+  styles: []
+input_file: crates/astro2tsx/tests/fixtures/component_name_used_as_jsx_component.astro
+---
+/* @jsxImportSource astro */
+
+
+interface Props { depth: number }
+
+;{};<Fragment>
+
+{Astro.props.depth > 0 && <Tree depth={Astro.props.depth - 1} />}
+
+</Fragment>
+export default function TreeAstroComponent(_props: Props): any {}
+/**
+ * Astro global available in all contexts in .astro files
+ *
+ * [Astro documentation](https://docs.astro.build/reference/api-reference/#astro-global)
+*/
+declare const Astro: Readonly<import('astro').AstroGlobal<Props, typeof TreeAstroComponent>>;
+
+export { TreeAstroComponent as Tree };
