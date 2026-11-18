@@ -1,3 +1,4 @@
+use biome_js_syntax::{JsSyntaxKind, JsSyntaxToken, unescape_js_string};
 use biome_rowan::TextRange;
 
 use crate::types::{
@@ -22,9 +23,10 @@ pub(crate) struct Printer<'a> {
     pub(crate) frontmatter_info: FrontmatterInfo,
     pub(crate) has_embedded_parse_errors: bool,
     pub(crate) expressions_disabled: bool,
-    /// Public component name being watched for collisions in the template.
+    /// Public component name that the default-export function would take, watched so that
+    /// any frontmatter or template use of it can be detected during emission.
     pub(crate) watched_name: Option<String>,
-    /// Whether an identifier token matching `watched_name` was emitted.
+    /// Whether an identifier matching `watched_name` was emitted.
     pub(crate) watched_name_seen: bool,
 }
 
@@ -51,6 +53,33 @@ impl<'a> Printer<'a> {
 
     pub(crate) fn watch_name(&mut self, name: &str) {
         self.watched_name = Some(name.to_string());
+    }
+
+    /// Records an emitted identifier, flagging it when it matches the watched name.
+    /// JavaScript identifiers must be unescaped by the caller.
+    pub(crate) fn note_identifier(&mut self, identifier: &str) {
+        if self.watched_name.as_deref() == Some(identifier) {
+            self.watched_name_seen = true;
+        }
+    }
+
+    /// Records an emitted JavaScript token if it references a value by name. Covers
+    /// plain identifiers and JSX component names (`<Tree />`), which Biome lexes as
+    /// `JSX_IDENT` inside a reference identifier.
+    pub(crate) fn note_js_token(&mut self, token: &JsSyntaxToken) {
+        if self.watched_name.is_none() {
+            return;
+        }
+        let is_reference = match token.kind() {
+            JsSyntaxKind::IDENT => true,
+            JsSyntaxKind::JSX_IDENT => token
+                .parent()
+                .is_some_and(|parent| parent.kind() == JsSyntaxKind::JSX_REFERENCE_IDENTIFIER),
+            _ => false,
+        };
+        if is_reference {
+            self.note_identifier(&unescape_js_string(token.token_text_trimmed()));
+        }
     }
 
     pub(crate) fn position(&self) -> u32 {

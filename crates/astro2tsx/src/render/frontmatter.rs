@@ -5,7 +5,7 @@ use biome_js_syntax::{
     TsTypeAssertionExpression,
 };
 use biome_languages::JsFileSource;
-use biome_rowan::{AstNode, AstSeparatedList, TextRange, WalkEvent};
+use biome_rowan::{AstNode, AstSeparatedList, Direction, NodeOrToken, TextRange, WalkEvent};
 
 use crate::printer::{Printer, range_start};
 use crate::props::{PropsAnalysis, analyze as analyze_props};
@@ -16,7 +16,6 @@ use crate::types::{
 pub(super) struct RenderedFrontmatter {
     pub(super) props_analysis: PropsAnalysis,
     pub(super) has_component_export: bool,
-    pub(super) has_public_name_collision: bool,
     pub(super) body_text_start: u32,
     pub(super) needs_terminator: bool,
     pub(super) terminator_anchor: Option<u32>,
@@ -43,7 +42,6 @@ pub(super) fn render(
     let content = frontmatter.and_then(frontmatter_content);
     let mut props_analysis = PropsAnalysis::default();
     let mut has_component_export = false;
-    let mut has_public_name_collision = false;
     let mut rewritten = None;
     if let Some((text, start)) = &content
         && !text.is_empty()
@@ -70,8 +68,6 @@ pub(super) fn render(
         props_analysis = analyze_props(&js_root);
         has_component_export =
             component_alias.is_some_and(|name| crate::props::exports_value_name(&js_root, name));
-        has_public_name_collision =
-            component_alias.is_some_and(|name| crate::props::name_used_in_module(&js_root, name));
         rewritten = Some((js_root, *start));
     }
 
@@ -83,7 +79,6 @@ pub(super) fn render(
     RenderedFrontmatter {
         props_analysis,
         has_component_export,
-        has_public_name_collision,
         body_text_start: body_text_start_offset(frontmatter),
         terminator_anchor: frontmatter_terminator_anchor(frontmatter),
         needs_terminator: match frontmatter {
@@ -294,9 +289,12 @@ fn emit_tsx_frontmatter(printer: &mut Printer, root: &AnyJsRoot, start: u32) {
             })],
         })
         .collect();
-    for event in root.syntax().preorder() {
+    // Also visits tokens so a use of the component's public name is noted without another walk.
+    for event in root.syntax().preorder_with_tokens(Direction::Next) {
         match event {
-            WalkEvent::Enter(node) => {
+            WalkEvent::Enter(NodeOrToken::Token(token)) => printer.note_js_token(&token),
+            WalkEvent::Leave(NodeOrToken::Token(_)) => {}
+            WalkEvent::Enter(NodeOrToken::Node(node)) => {
                 if let Some(arrow) = JsArrowFunctionExpression::cast_ref(&node)
                     && let Some(parameters) = arrow.type_parameters()
                     && parameters.items().len() == 1
@@ -321,7 +319,7 @@ fn emit_tsx_frontmatter(printer: &mut Printer, root: &AnyJsRoot, start: u32) {
                     });
                 }
             }
-            WalkEvent::Leave(node) => {
+            WalkEvent::Leave(NodeOrToken::Node(node)) => {
                 if let Some(assertion) = TsTypeAssertionExpression::cast(node)
                     && let (Ok(left), Ok(right)) =
                         (assertion.l_angle_token(), assertion.r_angle_token())

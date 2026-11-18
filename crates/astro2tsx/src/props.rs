@@ -163,22 +163,6 @@ pub(crate) fn exports_value_name(root: &AnyJsRoot, name: &str) -> bool {
     })
 }
 
-/// Returns whether any identifier token in the frontmatter matches `name`.
-/// This detects both user declarations and references to globals (e.g. `Date`)
-/// so the renderer can avoid shadowing them with the default-export function.
-pub(crate) fn name_used_in_module(root: &AnyJsRoot, name: &str) -> bool {
-    root.syntax()
-        .descendants_with_tokens(biome_rowan::Direction::Next)
-        .filter_map(|element| match element {
-            biome_rowan::NodeOrToken::Token(token) => Some(token),
-            _ => None,
-        })
-        .any(|token| {
-            token.kind() == JsSyntaxKind::IDENT
-                && unescape_js_string(token.token_text_trimmed()) == name
-        })
-}
-
 fn namespace_is_instantiated(namespace: &JsNode) -> bool {
     let walk = namespace.preorder();
     for event in walk {
