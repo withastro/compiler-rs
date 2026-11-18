@@ -69,14 +69,16 @@ pub(crate) fn tsx_component_names(filename: Option<&str>) -> (String, Option<Str
     (format!("{pascal}AstroComponent"), alias)
 }
 
-/// Returns whether `name` is a JavaScript built-in or common DOM constructor
-/// whose value should not be shadowed by the generated default-export function.
+/// Returns whether `name` is a JavaScript built-in, common DOM constructor, or
+/// an identifier that the TSX renderer itself declares as a value, and that
+/// should not be shadowed by the generated default-export function.
 pub(crate) fn is_reserved_global_name(name: &str) -> bool {
     const RESERVED: &[&str] = &[
         "AggregateError",
         "Array",
         "ArrayBuffer",
         "Atomics",
+        "Astro",
         "Audio",
         "BigInt",
         "BigInt64Array",
@@ -93,6 +95,7 @@ pub(crate) fn is_reserved_global_name(name: &str) -> bool {
         "Float32Array",
         "Float64Array",
         "FormData",
+        "Fragment",
         "Function",
         "Headers",
         "Image",
