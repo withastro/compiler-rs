@@ -1,7 +1,7 @@
 use biome_js_syntax::{
     AnyJsxAttribute, AnyJsxAttributeValue, AnyJsxElementName, AstroImplicitFragment, JsLanguage,
     JsSyntaxKind, JsxAttribute, JsxAttributeList, JsxElement, JsxFragment, JsxSelfClosingElement,
-    JsxString, JsxText,
+    JsxString, JsxText, unescape_js_string,
 };
 use biome_rowan::{
     AstNode, AstNodeList, SyntaxNode, SyntaxToken, SyntaxTriviaPiece, TextSize, WalkEvent,
@@ -101,6 +101,12 @@ fn emit_special_node(printer: &mut Printer, node: &JsNode, base: u32) -> bool {
 fn emit_token(printer: &mut Printer, token: &JsToken, base: u32, in_children: bool) {
     for piece in token.leading_trivia().pieces() {
         emit_trivia(printer, &piece, base, in_children);
+    }
+    if token.kind() == JsSyntaxKind::IDENT
+        && let Some(watched) = printer.watched_name.as_deref()
+        && unescape_js_string(token.token_text_trimmed()) == watched
+    {
+        printer.watched_name_seen = true;
     }
     printer.write_with_mapping(
         token.text_trimmed(),

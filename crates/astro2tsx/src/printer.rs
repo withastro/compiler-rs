@@ -22,6 +22,10 @@ pub(crate) struct Printer<'a> {
     pub(crate) frontmatter_info: FrontmatterInfo,
     pub(crate) has_embedded_parse_errors: bool,
     pub(crate) expressions_disabled: bool,
+    /// Public component name being watched for collisions in the template.
+    pub(crate) watched_name: Option<String>,
+    /// Whether an identifier token matching `watched_name` was emitted.
+    pub(crate) watched_name_seen: bool,
 }
 
 impl<'a> Printer<'a> {
@@ -40,7 +44,13 @@ impl<'a> Printer<'a> {
             frontmatter_info: FrontmatterInfo::default(),
             has_embedded_parse_errors: false,
             expressions_disabled: false,
+            watched_name: None,
+            watched_name_seen: false,
         }
+    }
+
+    pub(crate) fn watch_name(&mut self, name: &str) {
+        self.watched_name = Some(name.to_string());
     }
 
     pub(crate) fn position(&self) -> u32 {
