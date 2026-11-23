@@ -8,10 +8,10 @@ info:
     end: 46
   frontmatter:
     start: 30
-    end: 71
+    end: 361
   body:
-    start: 86
-    end: 120
+    start: 376
+    end: 410
   scripts: []
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/crlf_frontmatter.astro
@@ -20,6 +20,13 @@ input_file: crates/astro2tsx/tests/fixtures/crlf_frontmatter.astro
 
 
 import { Meta } from './Meta.astro';
+;({ async AstroComponent() {
+/**
+ * Astro global available in all contexts in .astro files
+ *
+ * [Astro documentation](https://docs.astro.build/reference/api-reference/#astro-global)
+*/
+const Astro: Readonly<import('astro').AstroGlobal<Record<string, any>, typeof AstroComponent>> = null!;
 
 ;{};<Fragment>
 
@@ -28,4 +35,5 @@ import { Meta } from './Meta.astro';
 </div>
 
 </Fragment>
+}});
 export default function AstroComponent(_props: Record<string, any>): any {}

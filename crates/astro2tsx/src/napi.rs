@@ -13,6 +13,9 @@ const SPAN_MAP_KIND_ATOM: u32 = 1;
 const SPAN_MAP_FEATURE_COMPLETION: u32 = 1 << 2;
 const SPAN_MAP_FEATURE_DEFINITION: u32 = 1 << 3;
 const SPAN_MAP_FEATURE_REFERENCES: u32 = 1 << 6;
+const SPAN_MAP_FEATURE_CODE_ACTIONS: u32 = 1 << 10;
+const SPAN_MAP_FEATURE_DOCUMENT_SYMBOLS: u32 = 1 << 18;
+const SPAN_MAP_FEATURE_NONE: u32 = 0;
 
 #[napi(object)]
 pub struct Range {
@@ -129,6 +132,16 @@ pub fn convert_to_tsx(source: String, options: Option<ConvertToTsxOptions>) -> C
             SPAN_MAP_FEATURE_COMPLETION,
         ]);
     }
+    let featureless: Vec<(u32, u32)> = result
+        .featureless
+        .iter()
+        .map(|range| {
+            (
+                generated_index.convert(range.start),
+                generated_index.convert(range.end),
+            )
+        })
+        .collect();
     for (index, mapping) in result.mappings.iter().enumerate() {
         let Some(original) = mapping.original else {
             continue;
@@ -146,12 +159,61 @@ pub fn convert_to_tsx(source: String, options: Option<ConvertToTsxOptions>) -> C
         if length == 0 {
             continue;
         }
+        let end = generated + length;
+        let mut cursor = generated;
+        for &(from, to) in featureless
+            .iter()
+            .filter(|&&(from, to)| from >= generated && to <= end)
+        {
+            if from > cursor {
+                mappings.push(vec![
+                    cursor,
+                    from - cursor,
+                    source + (cursor - generated),
+                    from - cursor,
+                    SPAN_MAP_KIND_VERBATIM,
+                ]);
+            }
+            mappings.push(vec![
+                from,
+                to - from,
+                source + (from - generated),
+                to - from,
+                SPAN_MAP_KIND_VERBATIM,
+                SPAN_MAP_FEATURE_NONE,
+            ]);
+            cursor = to;
+        }
+        if cursor < end {
+            mappings.push(vec![
+                cursor,
+                end - cursor,
+                source + (cursor - generated),
+                end - cursor,
+                SPAN_MAP_KIND_VERBATIM,
+            ]);
+        }
+    }
+    for &(generated, original) in &result.edit_anchors {
+        mappings.push(vec![
+            generated_index.convert(generated),
+            0,
+            source_index.convert(original),
+            0,
+            SPAN_MAP_KIND_VERBATIM,
+            SPAN_MAP_FEATURE_CODE_ACTIONS,
+        ]);
+    }
+    if let Some((label, fence)) = result.scope_label {
+        let generated = generated_index.convert(label.start);
+        let source = source_index.convert(fence.start);
         mappings.push(vec![
             generated,
-            length,
+            generated_index.convert(label.end) - generated,
             source,
-            length,
-            SPAN_MAP_KIND_VERBATIM,
+            source_index.convert(fence.end) - source,
+            SPAN_MAP_KIND_ATOM,
+            SPAN_MAP_FEATURE_DOCUMENT_SYMBOLS,
         ]);
     }
 

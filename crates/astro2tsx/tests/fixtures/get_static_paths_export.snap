@@ -8,10 +8,10 @@ info:
     end: 53
   frontmatter:
     start: 30
-    end: 78
+    end: 469
   body:
-    start: 93
-    end: 107
+    start: 484
+    end: 498
   scripts: []
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/get_static_paths_export.astro
@@ -20,12 +20,20 @@ input_file: crates/astro2tsx/tests/fixtures/get_static_paths_export.astro
 
 
 export const getStaticPaths = async () => [];
+;({ async AstroComponent() {
+/**
+ * Astro global available in all contexts in .astro files
+ *
+ * [Astro documentation](https://docs.astro.build/reference/api-reference/#astro-global)
+*/
+const Astro: Readonly<import('astro').AstroGlobal<ASTRO__MergeUnion<ASTRO__Get<ASTRO__InferredGetStaticPath, 'props'>>, typeof AstroComponent, ASTRO__Get<ASTRO__InferredGetStaticPath, 'params'>>> = null!;
 
 ;{};<Fragment>
 
 <div></div>
 
 </Fragment>
+}});
 export default function AstroComponent(_props: ASTRO__MergeUnion<ASTRO__Get<ASTRO__InferredGetStaticPath, 'props'>>): any {}
 type ASTRO__ArrayElement<ArrayType extends readonly unknown[]> = ArrayType extends readonly (infer ElementType)[] ? ElementType : never;
 type ASTRO__Flattened<T> = T extends Array<infer U> ? ASTRO__Flattened<U> : T;

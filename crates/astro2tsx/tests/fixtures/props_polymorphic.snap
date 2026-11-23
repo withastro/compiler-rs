@@ -8,10 +8,10 @@ info:
     end: 108
   frontmatter:
     start: 30
-    end: 287
+    end: 455
   body:
-    start: 302
-    end: 311
+    start: 470
+    end: 479
   scripts: []
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/props_polymorphic.astro
@@ -22,15 +22,20 @@ input_file: crates/astro2tsx/tests/fixtures/props_polymorphic.astro
 interface Props<Tag extends keyof JSX.IntrinsicElements> extends HTMLAttributes<Tag> {
   as?: Tag;
 }
-;(async function<Tag extends keyof JSX.IntrinsicElements>(Astro: Readonly<import('astro').AstroGlobal<Props<Tag>, typeof AstroComponent>>) { void Astro;
-
+;({ async AstroComponent<Tag extends keyof JSX.IntrinsicElements>() {
+/**
+ * Astro global available in all contexts in .astro files
+ *
+ * [Astro documentation](https://docs.astro.build/reference/api-reference/#astro-global)
+*/
+const Astro: Readonly<import('astro').AstroGlobal<Props<Tag>, typeof AstroComponent>> = null!;
 
 ;{};<Fragment>
 
 <div/>
 
 </Fragment>
-});
+}});
 export default function AstroComponent<Tag extends keyof JSX.IntrinsicElements>(_props: Props<Tag>): any {}
 /**
  * Astro global available in all contexts in .astro files

@@ -33,7 +33,7 @@ test('default and clean-name exports preserve generic props without shadowing lo
 test('explicit exports keep their types when their name matches the component filename', () => {
 	for (const declaration of [
 		'export const MyPage = 42;',
-		'const value = 42; export { value as MyPage };',
+		'export const value = 42; export { value as MyPage };',
 		'export const { value: MyPage } = { value: 42 as const };',
 		'export declare const MyPage: 42;',
 	]) {

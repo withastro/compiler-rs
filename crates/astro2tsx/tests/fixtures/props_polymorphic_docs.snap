@@ -8,10 +8,10 @@ info:
     end: 169
   frontmatter:
     start: 30
-    end: 328
+    end: 496
   body:
-    start: 368
-    end: 390
+    start: 511
+    end: 533
   scripts: []
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/props_polymorphic_docs.astro
@@ -22,18 +22,23 @@ input_file: crates/astro2tsx/tests/fixtures/props_polymorphic_docs.astro
 import type { HTMLTag, Polymorphic } from 'astro/types';
 
 type Props<Tag extends HTMLTag> = Polymorphic<{ as: Tag }>;
-;(async function<Tag extends HTMLTag>(Astro: Readonly<import('astro').AstroGlobal<Props<Tag>, typeof AstroComponent>>) { void Astro;
 
-
+;({ async AstroComponent<Tag extends HTMLTag>() {
+/**
+ * Astro global available in all contexts in .astro files
+ *
+ * [Astro documentation](https://docs.astro.build/reference/api-reference/#astro-global)
+*/
+const Astro: Readonly<import('astro').AstroGlobal<Props<Tag>, typeof AstroComponent>> = null!;
 const { as: Tag, ...props } = Astro.props;
 
-;{};if (Tag == null) throw 0;<Fragment>
+;{};<Fragment>
 
 
 <Tag {...props} />
 
 </Fragment>
-});
+}});
 export default function AstroComponent<Tag extends HTMLTag>(_props: Props<Tag>): any {}
 /**
  * Astro global available in all contexts in .astro files

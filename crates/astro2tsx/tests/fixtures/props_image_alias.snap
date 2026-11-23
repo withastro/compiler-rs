@@ -1,6 +1,5 @@
 ---
 source: crates/astro2tsx/tests/snapshots.rs
-assertion_line: 134
 info:
   has_parse_errors: false
   frontmatter_status: Closed
@@ -9,10 +8,10 @@ info:
     end: 786
   frontmatter:
     start: 30
-    end: 811
+    end: 1087
   body:
-    start: 812
-    end: 812
+    start: 1088
+    end: 1088
   scripts: []
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/props_image_alias.astro
@@ -43,8 +42,16 @@ interface RemoteImageProps
   background: TransformOptions['background'];
 }
 export type Props = LocalImageProps | RemoteImageProps;
+;({ async AstroComponent() {
+/**
+ * Astro global available in all contexts in .astro files
+ *
+ * [Astro documentation](https://docs.astro.build/reference/api-reference/#astro-global)
+*/
+const Astro: Readonly<import('astro').AstroGlobal<Props, typeof AstroComponent>> = null!;
 
 
+}});
 export default function AstroComponent(_props: Props): any {}
 /**
  * Astro global available in all contexts in .astro files

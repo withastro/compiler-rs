@@ -8,10 +8,10 @@ info:
     end: 124
   frontmatter:
     start: 30
-    end: 149
+    end: 425
   body:
-    start: 164
-    end: 173
+    start: 440
+    end: 449
   scripts: []
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/props_exported_alias_union.astro
@@ -22,12 +22,20 @@ input_file: crates/astro2tsx/tests/fixtures/props_exported_alias_union.astro
 interface LocalProps { a: string }
 interface RemoteProps { b: string }
 export type Props = LocalProps | RemoteProps;
+;({ async AstroComponent() {
+/**
+ * Astro global available in all contexts in .astro files
+ *
+ * [Astro documentation](https://docs.astro.build/reference/api-reference/#astro-global)
+*/
+const Astro: Readonly<import('astro').AstroGlobal<Props, typeof AstroComponent>> = null!;
 
 ;{};<Fragment>
 
 <div/>
 
 </Fragment>
+}});
 export default function AstroComponent(_props: Props): any {}
 /**
  * Astro global available in all contexts in .astro files

@@ -8,10 +8,10 @@ info:
     end: 62
   frontmatter:
     start: 30
-    end: 87
+    end: 377
   body:
-    start: 102
-    end: 117
+    start: 392
+    end: 407
   scripts: []
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/unclosed_member_tag.astro
@@ -19,6 +19,13 @@ input_file: crates/astro2tsx/tests/fixtures/unclosed_member_tag.astro
 /* @jsxImportSource astro */
 
 
+;({ async AstroComponent() {
+/**
+ * Astro global available in all contexts in .astro files
+ *
+ * [Astro documentation](https://docs.astro.build/reference/api-reference/#astro-global)
+*/
+const Astro: Readonly<import('astro').AstroGlobal<Record<string, any>, typeof AstroComponent>> = null!;
 const myMarkdown = await import("../content/post.md");
 
 ;{};<Fragment>
@@ -26,4 +33,5 @@ const myMarkdown = await import("../content/post.md");
 
 <myMarkdown.
 </Fragment>
+}});
 export default function AstroComponent(_props: Record<string, any>): any {}

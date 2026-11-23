@@ -1,5 +1,5 @@
 ---
-"@astrojs/astro2tsx": patch
+"@astrojs/astro2tsx": minor
 ---
 
-Fixes `astro check` and TypeScript errors when using the `Polymorphic` type, without weakening the types of `Astro.props` in components with generic `Props`. The frontmatter and template of these components are now checked inside a scope where the type parameters stay generic.
+Fixes type checking of components with generic `Props`, such as components using the `Polymorphic` type.

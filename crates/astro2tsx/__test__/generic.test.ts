@@ -110,17 +110,19 @@ const polymorphic = (tag: string, binding = 'as: Tag') =>
 
 test('polymorphic components correlate their tag and attributes', () => {
 	for (const [frontmatter, body] of [
-		[polymorphic('HTMLTag'), '<Tag {...props} />'],
-		[polymorphic("'a' | 'button'"), '<Tag {...props}><slot /></Tag>'],
+		[polymorphic('HTMLTag', "as: Tag = 'div'"), '<Tag {...props} />'],
 		[polymorphic("'a' | 'button'", "as: Tag = 'button'"), '<Tag {...props}><slot /></Tag>'],
-		[polymorphic('HTMLTag') + '\nconst xs = [1];', '{xs.map(() => <Tag {...props} />)}'],
+		[
+			polymorphic('HTMLTag', "as: Tag = 'div'") + '\nconst xs = [1];',
+			'{xs.map(() => <Tag {...props} />)}',
+		],
 	]) {
 		const diagnostics = typecheckAstro(frontmatter, body, strictElements);
 		assert.deepEqual(codes(diagnostics), [], `${frontmatter}\n${body}`);
 	}
 
 	const invalid = typecheckAstro(
-		`${polymorphic("'a' | 'button'")}\nprops.nonexistent;`,
+		`${polymorphic("'a' | 'button'", "as: Tag = 'button'")}\nprops.nonexistent;`,
 		'<Tag {...props} type="bogus" href={42} disabled={{}} />',
 		strictElements,
 	);
@@ -132,7 +134,13 @@ test('polymorphic components correlate their tag and attributes', () => {
 	]);
 });
 
-test('only render-scope component tags are narrowed', () => {
+test('a polymorphic tag without a default is reported', () => {
+	// Astro throws when it renders an undefined component, so an omitted `as` needs a default.
+	const diagnostics = typecheckAstro(polymorphic('HTMLTag'), '<Tag {...props} />', strictElements);
+	assert.deepEqual(codes(diagnostics), [[2604, 'Tag']]);
+});
+
+test('optional and non-component tags are reported', () => {
 	const nonGeneric = typecheckAstro(
 		"interface Props { as?: 'a' }\nconst { as: Tag } = Astro.props;",
 		'<Tag />',
@@ -149,7 +157,7 @@ test('only render-scope component tags are narrowed', () => {
 });
 
 test('polymorphic callers keep tag-specific attribute checks', () => {
-	const source = `---\n${polymorphic("'a' | 'button'")}\n---\n<Tag {...props} />`;
+	const source = `---\n${polymorphic("'a' | 'button'", "as: Tag = 'button'")}\n---\n<Tag {...props} />`;
 	const { code } = convertToTsx(source, { ambientTypes: true });
 	assert.deepEqual(
 		typecheck(
@@ -185,14 +193,16 @@ test('values queried by hoisted types stay declared at module scope', () => {
 });
 
 test('runtime exports cannot read render-scope values', () => {
-	// Astro hoists exports out of the render function, so this throws at runtime.
-	const diagnostics = typecheckAstro(
+	// Astro hoists exports out of the render function, so these fail at runtime.
+	for (const frontmatter of [
+		'const local = 1;\nexport const leaked = local;',
 		'interface Props<T> { value: T }\nconst local = 1;\nexport const leaked = local;',
-	);
-	assert.deepEqual(codes(diagnostics), [[2304, 'local']]);
+	]) {
+		assert.deepEqual(codes(typecheckAstro(frontmatter)), [[2304, 'local']], frontmatter);
+	}
 });
 
-test('narrowed polymorphic tags still allow explicit undefined checks', () => {
+test('polymorphic tags without a default can be guarded explicitly', () => {
 	const diagnostics = typecheckAstro(
 		polymorphic('HTMLTag'),
 		'{Tag !== undefined ? <Tag {...props} /> : <div />}{Tag === undefined && <p />}',
@@ -201,7 +211,7 @@ test('narrowed polymorphic tags still allow explicit undefined checks', () => {
 	assert.deepEqual(codes(diagnostics), []);
 });
 
-test('member tags are not narrowed', () => {
+test('optional member tags are reported', () => {
 	const diagnostics = typecheckAstro(
 		'interface Props<T> { ns?: { Item: (props: { value?: T }) => any } }\nconst { ns } = Astro.props;',
 		'<ns.Item />',

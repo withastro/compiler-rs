@@ -1,33 +1,32 @@
-//! Generic render scope for components whose `Props` declare type parameters.
+//! Render scope that the frontmatter body and template are checked in.
 //!
-//! A generic `Props<T>` only stays generic while the frontmatter and template are
-//! checked inside a scope that declares `T`. Mirroring Astro's runtime output, imports
-//! and exports (plus erased type declarations) stay at module scope while the other
-//! statements and the template move into a generic render function.
+//! Mirroring Astro's runtime output, imports and exports (plus erased type declarations)
+//! stay at module scope while the other statements and the template move into an async
+//! render function. That function declares the type parameters of a generic `Props<T>`,
+//! which only stays generic inside a scope that declares `T`.
 
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 
-use biome_js_parser::{JsParserOptions, parse};
 use biome_js_syntax::{
-    AnyJsRoot, AnyJsxElementName, JsClassDeclaration, JsExport, JsFunctionDeclaration, JsLanguage,
-    JsReferenceIdentifier, JsSyntaxKind, JsVariableStatement, JsxOpeningElement,
-    JsxSelfClosingElement, TsEnumDeclaration, unescape_js_string,
+    AnyJsRoot, JsClassDeclaration, JsExport, JsFunctionDeclaration, JsLanguage,
+    JsReferenceIdentifier, JsSyntaxKind, JsVariableStatement, TsEnumDeclaration,
+    unescape_js_string,
 };
-use biome_languages::JsFileSource;
-use biome_rowan::{AstNode, AstSeparatedList, SyntaxNode, TextRange};
+use biome_rowan::{AstNode, AstSeparatedList, SyntaxKind, SyntaxNode, TextRange, TextSize};
 
-use crate::props::{PropsAnalysis, binding_names, module_items};
+use crate::props::{binding_names, module_items};
 
 type JsNode = SyntaxNode<JsLanguage>;
 
+/// Line-aligned chunks of the frontmatter that tile it from `lead` to its end.
 #[derive(Debug, Default)]
 pub(crate) struct ScopePlan {
-    /// Module items emitted before the render function, in source order.
+    /// Lines before the first item, emitted first so top-of-file insertions land under the fence.
+    pub lead: TextRange,
+    /// Chunks emitted before the render function, in source order.
     pub hoisted: Vec<TextRange>,
-    /// Module items emitted inside the render function, in source order.
+    /// Chunks emitted inside the render function, in source order.
     pub body: Vec<TextRange>,
-    /// Value names bound by statements inside the render function.
-    pub body_bindings: HashSet<String>,
 }
 
 /// Whether a module item must stay at module scope.
@@ -42,21 +41,14 @@ enum Placement {
 
 /// Plans the render scope, or `None` to keep the module layout.
 ///
-/// Frontmatter with parse errors keeps the module layout: recovered items may be unfinished
-/// imports or exports, and moving them into a function would break their completions.
-pub(crate) fn plan(
-    root: &AnyJsRoot,
-    analysis: &PropsAnalysis,
-    has_parse_errors: bool,
-) -> Option<ScopePlan> {
-    if has_parse_errors || !analysis.has_props || analysis.generics_args.is_empty() {
-        return None;
-    }
-    if !matches!(root, AnyJsRoot::JsModule(_)) {
-        return None;
-    }
+/// Unfinished imports, exports, and declarations keep it, since TypeScript recovers them from
+/// the code that follows; errors elsewhere keep the render scope so diagnostics stay stable.
+pub(crate) fn plan(root: &AnyJsRoot, errors: &[TextRange]) -> Option<ScopePlan> {
     let items = module_items(root);
     let mut placements: Vec<Placement> = items.iter().map(placement).collect();
+    if has_unfinished_declaration(&items, &placements, errors) {
+        return None;
+    }
 
     // Body declarations that hoisted code can name, by namespace.
     let mut values: HashMap<String, usize> = HashMap::new();
@@ -95,17 +87,72 @@ pub(crate) fn plan(
         }
     }
 
-    let mut plan = ScopePlan::default();
-    for (item, placement) in items.iter().zip(placements) {
-        let range = item.text_range_with_trivia();
+    // Overload signatures stay with the implementation that follows them.
+    for index in (0..items.len().saturating_sub(1)).rev() {
+        if items[index].kind() == JsSyntaxKind::TS_DECLARE_FUNCTION_DECLARATION {
+            placements[index] = placements[index + 1];
+        }
+    }
+
+    let root_range = root.syntax().text_range_with_trivia();
+    let starts: Vec<TextSize> = items.iter().map(chunk_start).collect();
+    let mut plan = ScopePlan {
+        lead: TextRange::new(
+            root_range.start(),
+            starts.first().copied().unwrap_or(root_range.end()),
+        ),
+        ..ScopePlan::default()
+    };
+    for (index, placement) in placements.into_iter().enumerate() {
+        let end = starts.get(index + 1).copied().unwrap_or(root_range.end());
+        let chunk = TextRange::new(starts[index], end);
         if placement == Placement::Body {
-            plan.body_bindings.extend(declared_names(item).0);
-            plan.body.push(range);
+            plan.body.push(chunk);
         } else {
-            plan.hoisted.push(range);
+            plan.hoisted.push(chunk);
         }
     }
     Some(plan)
+}
+
+fn has_unfinished_declaration(
+    items: &[JsNode],
+    placements: &[Placement],
+    errors: &[TextRange],
+) -> bool {
+    errors.iter().any(|error| {
+        let Some(index) = items
+            .iter()
+            .rposition(|item| item.text_trimmed_range().start() <= error.start())
+        else {
+            return false;
+        };
+        // An error at an item's first token usually reports the unfinished item before it.
+        let previous = (items[index].text_trimmed_range().start() == error.start())
+            .then(|| index.checked_sub(1))
+            .flatten();
+        [Some(index), previous]
+            .into_iter()
+            .flatten()
+            .any(|index| placements[index] != Placement::Body || items[index].kind().is_bogus())
+    })
+}
+
+/// Start of the line holding an item's first comment or token, so comments move with their
+/// item while blank lines stay with the chunk before it.
+fn chunk_start(item: &JsNode) -> TextSize {
+    let mut start = item.text_range_with_trivia().start();
+    if let Some(token) = item.first_token() {
+        for piece in token.leading_trivia().pieces() {
+            if piece.is_comments() {
+                break;
+            }
+            if piece.is_newline() {
+                start = piece.text_range().end();
+            }
+        }
+    }
+    start
 }
 
 fn placement(item: &JsNode) -> Placement {
@@ -122,7 +169,6 @@ fn placement(item: &JsNode) -> Placement {
         | JsSyntaxKind::TS_INTERFACE_DECLARATION
         | JsSyntaxKind::TS_TYPE_ALIAS_DECLARATION
         | JsSyntaxKind::TS_DECLARE_STATEMENT
-        | JsSyntaxKind::TS_DECLARE_FUNCTION_DECLARATION
         | JsSyntaxKind::TS_MODULE_DECLARATION
         | JsSyntaxKind::TS_GLOBAL_DECLARATION
         | JsSyntaxKind::TS_EXTERNAL_MODULE_DECLARATION => Placement::Declaration,
@@ -213,57 +259,43 @@ fn references(item: &JsNode) -> Vec<Reference> {
         .collect()
 }
 
-/// Render-scope bindings that the generated template opens as JSX tags, in first-use order.
-///
-/// A polymorphic `as` is optional, so its binding is possibly `undefined`, which TypeScript
-/// rejects as a JSX tag. Only plain identifiers are returned; member tags keep their checks.
-pub(crate) fn template_tag_bindings(template: &str, bindings: &HashSet<String>) -> Vec<String> {
-    if bindings.is_empty() {
-        return Vec::new();
-    }
-    let source = format!("<>{template}</>");
-    let parsed = parse(&source, JsFileSource::tsx(), JsParserOptions::default());
-    let mut seen = HashSet::new();
-    let mut tags = Vec::new();
-    for node in parsed.syntax().descendants() {
-        let name = if let Some(element) = JsxOpeningElement::cast_ref(&node) {
-            element.name().ok()
-        } else if let Some(element) = JsxSelfClosingElement::cast_ref(&node) {
-            element.name().ok()
-        } else {
-            None
-        };
-        let token = match name {
-            Some(AnyJsxElementName::JsxReferenceIdentifier(name)) => name.value_token().ok(),
-            Some(AnyJsxElementName::JsxName(name)) => name.value_token().ok(),
-            _ => None,
-        };
-        let Some(token) = token else { continue };
-        let name = token.text_trimmed();
-        if !is_intrinsic_jsx_name(name) && bindings.contains(name) && seen.insert(name.to_string())
-        {
-            tags.push(name.to_string());
-        }
-    }
-    tags
-}
-
-/// TypeScript's rule for JSX tags that name intrinsic elements rather than values.
-fn is_intrinsic_jsx_name(name: &str) -> bool {
-    name.starts_with(|ch: char| ch.is_ascii_lowercase()) || name.contains('-')
-}
-
 #[cfg(test)]
 mod tests {
     use crate::test_utils::convert;
 
-    const OPENER: &str = ";(async function<";
+    const OPENER: &str = ";({ async ";
 
     fn split(code: &str) -> (&str, &str) {
         let at = code
             .find(OPENER)
             .unwrap_or_else(|| panic!("no render scope:\n{code}"));
         code.split_at(at)
+    }
+
+    #[test]
+    fn frontmatter_and_template_render_inside_the_scope() {
+        let result = convert(
+            "---\ninterface Props { value: string }\nconst { value } = Astro.props;\n---\n<p>{value}</p>",
+        );
+        let (module, scope) = split(&result.code);
+        assert!(module.contains("interface Props {"), "{}", result.code);
+        assert!(
+            scope.starts_with(";({ async AstroComponent() {\n/**\n"),
+            "{}",
+            result.code
+        );
+        assert!(
+            scope.contains(
+                "const Astro: Readonly<import('astro').AstroGlobal<Props, typeof AstroComponent>> = null!;\nconst { value } = Astro.props;"
+            ),
+            "{}",
+            result.code
+        );
+        assert!(
+            scope.contains("<p>{value}</p>\n</Fragment>\n}});\nexport default function"),
+            "{}",
+            result.code
+        );
     }
 
     #[test]
@@ -278,34 +310,17 @@ mod tests {
             result.code
         );
         assert!(
-            scope.starts_with(
-                ";(async function<T extends string, U = T>(Astro: Readonly<import('astro').AstroGlobal<Props<T, U>, typeof AstroComponent>>) { void Astro;\n"
+            scope.starts_with(";({ async AstroComponent<T extends string, U = T>() {"),
+            "{}",
+            result.code
+        );
+        assert!(
+            scope.contains(
+                "const Astro: Readonly<import('astro').AstroGlobal<Props<T, U>, typeof AstroComponent>> = null!;"
             ),
             "{}",
             result.code
         );
-        assert!(
-            scope.contains("const { value } = Astro.props;"),
-            "{}",
-            result.code
-        );
-        assert!(
-            scope.contains("<p>{value}</p>\n</Fragment>\n});\nexport default function"),
-            "{}",
-            result.code
-        );
-    }
-
-    #[test]
-    fn non_generic_props_stay_at_module_scope() {
-        for source in [
-            "---\ninterface Props { value: string }\nconst { value } = Astro.props;\n---\n<p>{value}</p>",
-            "---\nconst x = 1;\n---\n<p>{x}</p>",
-        ] {
-            let result = convert(source);
-            assert!(!result.code.contains(OPENER), "{}", result.code);
-            assert!(!result.code.contains("throw 0"), "{}", result.code);
-        }
     }
 
     #[test]
@@ -331,7 +346,7 @@ mod tests {
         assert!(scope.contains("const a = 1;"), "{}", result.code);
         assert!(scope.contains("const b = a;"), "{}", result.code);
         assert!(
-            scope.contains("ASTRO__Get<ASTRO__InferredGetStaticPath, 'params'>>>) {"),
+            scope.contains("ASTRO__Get<ASTRO__InferredGetStaticPath, 'params'>>> = null!;"),
             "{}",
             result.code
         );
@@ -380,21 +395,71 @@ mod tests {
 
     #[test]
     fn runtime_exports_do_not_hoist_render_scope_values() {
-        let result = convert(
-            "---\ninterface Props<T> { value: T }\nconst a = 1;\nexport const b = a;\n---\n<p/>",
-        );
+        let result = convert("---\nconst a = 1;\nexport const b = a;\n---\n<p/>");
         let (_, scope) = split(&result.code);
         assert!(scope.contains("const a = 1;"), "{}", result.code);
     }
 
     #[test]
-    fn frontmatter_with_parse_errors_keeps_the_module_layout() {
+    fn overload_signatures_stay_with_their_implementation() {
+        for (source, hoisted) in [
+            (
+                "---\nfunction pick(v: string): string;\nfunction pick(v: string) { return v; }\n---\n<p/>",
+                false,
+            ),
+            (
+                "---\nfunction pick(v: string): string;\nfunction pick(v: string) { return v; }\ntype Picked = ReturnType<typeof pick>;\n---\n<p/>",
+                true,
+            ),
+        ] {
+            let result = convert(source);
+            let (module, scope) = split(&result.code);
+            let side = if hoisted { module } else { scope };
+            assert!(
+                side.contains("function pick(v: string): string;\nfunction pick(v: string) {"),
+                "{}",
+                result.code
+            );
+        }
+    }
+
+    #[test]
+    fn chunks_carry_leading_comments_but_not_blank_lines() {
+        let result = convert(
+            "---\nconst a = 1;\n\n/** Documented. */\ninterface Props { value: string }\n---\n<p/>",
+        );
+        let (module, scope) = split(&result.code);
+        assert!(
+            module.contains("\n/** Documented. */\ninterface Props { value: string }\n"),
+            "{}",
+            result.code
+        );
+        assert!(scope.contains("const a = 1;\n\n"), "{}", result.code);
+    }
+
+    #[test]
+    fn frontmatter_with_parse_errors_keeps_the_render_scope() {
         let result = crate::convert_to_tsx(
-            "---\ninterface Props<T> { value: T }\nconst a = 1;\nimport {\n---\n<p/>",
+            "---\ninterface Props<T> { value: T }\nconst a = Astro.props.\n---\n<p/>",
             crate::ConvertOptions::default(),
         );
         assert!(result.has_parse_errors);
-        assert!(!result.code.contains(OPENER), "{}", result.code);
+        assert!(result.code.contains(OPENER), "{}", result.code);
+    }
+
+    #[test]
+    fn unfinished_imports_and_exports_keep_the_module_layout() {
+        for source in [
+            "---\nimport { formatTh\ninterface Props<T> { as?: T }\n---\n<p/>",
+            "---\nconst { as } = Astro.props;\nimport { formatTh\n---\n<p/>",
+            "---\nimport { formatTh }\nconst { as } = Astro.props;\n---\n<p/>",
+            "---\nimport { formatThing } from './ut\nconst { as } = Astro.props;\n---\n<p/>",
+            "---\nconst { as } = Astro.props;\nexport const\n---\n<p/>",
+        ] {
+            let result = crate::convert_to_tsx(source, crate::ConvertOptions::default());
+            assert!(result.has_parse_errors, "{source}");
+            assert!(!result.code.contains(OPENER), "{}", result.code);
+        }
     }
 
     #[test]
@@ -417,29 +482,62 @@ mod tests {
             "{}",
             result.code
         );
+        // Top-level returns end the render function, as they do at runtime.
         assert!(
-            scope.contains("throw  Astro.redirect('/')"),
+            scope.contains("if (!v) return Astro.redirect('/')"),
             "{}",
             result.code
         );
     }
 
     #[test]
-    fn component_tag_bindings_are_narrowed_before_the_template() {
-        let source = "---\nimport Imported from './I.astro';\ntype Props<Tag extends string> = { as?: Tag };\nconst { as: Tag } = Astro.props;\nconst Other = Tag;\nconst Member = { Item: Tag };\nconst Unused = Tag;\nconst xs = [1];\nconst _lower = Tag;\n---\n<Tag /><Imported />{xs.map(() => <Other>{xs.length <Unused}</Other>)}<Member.Item /><_lower/>\n<!-- <Unused /> --><code>{'<Unused />'}</code>";
+    fn render_scope_label_names_the_opening_fence() {
+        let source = "---\nconst a = 1;\n---\n<p>{a}</p>";
+        let result = crate::convert_to_tsx(
+            source,
+            crate::ConvertOptions {
+                filename: Some("Card.astro".to_string()),
+                ..Default::default()
+            },
+        );
+        let (label, fence) = result.scope_label.expect("no render scope label");
+        assert_eq!(
+            &result.code[label.start as usize..label.end as usize],
+            "async Card"
+        );
+        assert_eq!(&source[fence.start as usize..fence.end as usize], "---");
+    }
+
+    #[test]
+    fn detached_chunks_hand_their_shared_offset_to_an_anchor() {
+        let source = "---\nimport X from './X.astro';\nconst a = 1;\ninterface Props { value: string }\n---\n<X />";
         let result = convert(source);
-        assert!(
-            result
-                .code
-                .contains(";{};if (Tag == null) throw 0;if (Other == null) throw 0;<Fragment>"),
+        let starts = |text: &str| source.find(text).unwrap() as u32;
+        let anchored: Vec<u32> = result
+            .edit_anchors
+            .iter()
+            .map(|&(_, original)| original)
+            .collect();
+        assert_eq!(
+            anchored,
+            [starts("const a"), starts("interface Props")],
             "{}",
             result.code
         );
-        // `<_lower/>` is text in Astro, and the others are not tags at all.
-        for name in ["Imported", "Member", "Unused", "xs", "_lower"] {
+        let quiet: Vec<&str> = result
+            .featureless
+            .iter()
+            .map(|range| &result.code[range.start as usize..range.end as usize])
+            .collect();
+        // In emission order: the hoisted `interface` comes first.
+        assert_eq!(quiet, ["i", "c"], "{}", result.code);
+        for &(generated, _) in &result.edit_anchors {
             assert!(
-                !result.code.contains(&format!("if ({name} == null)")),
-                "{name} was narrowed:\n{}",
+                !result
+                    .mappings
+                    .iter()
+                    .any(|mapping| mapping.generated == generated && mapping.original.is_some()),
+                "anchor at {generated} shares its offset with a mapped run:\n{}",
                 result.code
             );
         }

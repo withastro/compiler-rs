@@ -8,10 +8,10 @@ info:
     end: 45
   frontmatter:
     start: 30
-    end: 70
+    end: 346
   body:
-    start: 85
-    end: 99
+    start: 361
+    end: 375
   scripts: []
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/props_imported.astro
@@ -20,12 +20,20 @@ input_file: crates/astro2tsx/tests/fixtures/props_imported.astro
 
 
 import type { Props } from './types';
+;({ async AstroComponent() {
+/**
+ * Astro global available in all contexts in .astro files
+ *
+ * [Astro documentation](https://docs.astro.build/reference/api-reference/#astro-global)
+*/
+const Astro: Readonly<import('astro').AstroGlobal<Props, typeof AstroComponent>> = null!;
 
 ;{};<Fragment>
 
 <div></div>
 
 </Fragment>
+}});
 export default function AstroComponent(_props: Props): any {}
 /**
  * Astro global available in all contexts in .astro files
