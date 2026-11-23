@@ -8,10 +8,10 @@ info:
     end: 20
   frontmatter:
     start: 30
-    end: 335
+    end: 85
   body:
-    start: 336
-    end: 336
+    start: 86
+    end: 86
   scripts: []
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/frontmatter_only.astro
@@ -19,15 +19,9 @@ input_file: crates/astro2tsx/tests/fixtures/frontmatter_only.astro
 /* @jsxImportSource astro */
 
 
-;({ async AstroComponent() {
-/**
- * Astro global available in all contexts in .astro files
- *
- * [Astro documentation](https://docs.astro.build/reference/api-reference/#astro-global)
-*/
-const Astro: Readonly<import('astro').AstroGlobal<Record<string, any>, typeof AstroComponent>> = null!;
+switch ({ AstroComponent: async () => {
 const a = 1;
 
 
-}});
+}}) {}
 export default function AstroComponent(_props: Record<string, any>): any {}

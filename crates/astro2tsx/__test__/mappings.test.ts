@@ -55,10 +55,10 @@ test('returns TypeScript Content Mapper span mappings', () => {
 	assert.equal(originalAt(result.code.indexOf('<Fragment>')), null);
 	assert.equal(originalAt(result.code.indexOf('export default function')), null);
 
-	const label = result.code.indexOf('async AstroComponent');
+	const label = result.code.indexOf('AstroComponent: async');
 	assert.deepEqual(
 		result.mappings.find((mapping) => mapping[0] === label),
-		[label, 'async AstroComponent'.length, 0, 3, 1, 1 << 18],
+		[label, 'AstroComponent'.length, 0, 3, 1, 1 << 18],
 		'the render scope label names the opening fence in outlines',
 	);
 

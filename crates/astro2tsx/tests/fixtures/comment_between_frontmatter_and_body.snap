@@ -8,10 +8,10 @@ info:
     end: 20
   frontmatter:
     start: 30
-    end: 335
+    end: 85
   body:
-    start: 350
-    end: 382
+    start: 100
+    end: 132
   scripts: []
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/comment_between_frontmatter_and_body.astro
@@ -19,13 +19,7 @@ input_file: crates/astro2tsx/tests/fixtures/comment_between_frontmatter_and_body
 /* @jsxImportSource astro */
 
 
-;({ async AstroComponent() {
-/**
- * Astro global available in all contexts in .astro files
- *
- * [Astro documentation](https://docs.astro.build/reference/api-reference/#astro-global)
-*/
-const Astro: Readonly<import('astro').AstroGlobal<Record<string, any>, typeof AstroComponent>> = null!;
+switch ({ AstroComponent: async () => {
 const a = 1;
 
 ;{};<Fragment>
@@ -34,5 +28,5 @@ const a = 1;
 <div>x</div>
 
 </Fragment>
-}});
+}}) {}
 export default function AstroComponent(_props: Record<string, any>): any {}

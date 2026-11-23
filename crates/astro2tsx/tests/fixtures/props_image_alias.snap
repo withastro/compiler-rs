@@ -8,10 +8,10 @@ info:
     end: 786
   frontmatter:
     start: 30
-    end: 1087
+    end: 851
   body:
-    start: 1088
-    end: 1088
+    start: 852
+    end: 852
   scripts: []
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/props_image_alias.astro
@@ -42,16 +42,10 @@ interface RemoteImageProps
   background: TransformOptions['background'];
 }
 export type Props = LocalImageProps | RemoteImageProps;
-;({ async AstroComponent() {
-/**
- * Astro global available in all contexts in .astro files
- *
- * [Astro documentation](https://docs.astro.build/reference/api-reference/#astro-global)
-*/
-const Astro: Readonly<import('astro').AstroGlobal<Props, typeof AstroComponent>> = null!;
+switch ({ AstroComponent: async () => {
 
 
-}});
+}}) {}
 export default function AstroComponent(_props: Props): any {}
 /**
  * Astro global available in all contexts in .astro files

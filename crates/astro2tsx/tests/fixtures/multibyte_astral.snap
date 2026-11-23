@@ -8,10 +8,10 @@ info:
     end: 27
   frontmatter:
     start: 30
-    end: 342
+    end: 92
   body:
-    start: 357
-    end: 376
+    start: 107
+    end: 126
   scripts: []
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/multibyte_astral.astro
@@ -19,13 +19,7 @@ input_file: crates/astro2tsx/tests/fixtures/multibyte_astral.astro
 /* @jsxImportSource astro */
 
 
-;({ async AstroComponent() {
-/**
- * Astro global available in all contexts in .astro files
- *
- * [Astro documentation](https://docs.astro.build/reference/api-reference/#astro-global)
-*/
-const Astro: Readonly<import('astro').AstroGlobal<Record<string, any>, typeof AstroComponent>> = null!;
+switch ({ AstroComponent: async () => {
 const π = Math.PI;
 
 ;{};<Fragment>
@@ -33,5 +27,5 @@ const π = Math.PI;
 <p>🦄 {π}</p>
 
 </Fragment>
-}});
+}}) {}
 export default function AstroComponent(_props: Record<string, any>): any {}

@@ -247,7 +247,7 @@ mod tests {
     use crate::test_utils::convert;
     use crate::{ConvertOptions, ConvertResult, convert_to_tsx};
 
-    const OPENER: &str = ";({ async ";
+    const OPENER: &str = "switch ({ ";
 
     #[track_caller]
     fn assert_layout(result: &ConvertResult, module: &[&str], scope: &[&str]) {
@@ -279,9 +279,8 @@ mod tests {
             &result,
             &["interface Props {"],
             &[
-                ";({ async AstroComponent() {\n/**\n",
-                "const Astro: Readonly<import('astro').AstroGlobal<Props, typeof AstroComponent>> = null!;\nconst { value } = Astro.props;",
-                "<p>{value}</p>\n</Fragment>\n}});\nexport default function",
+                "switch ({ AstroComponent: async () => {\nconst { value } = Astro.props;",
+                "<p>{value}</p>\n</Fragment>\n}}) {}\nexport default function",
             ],
         );
     }
@@ -295,8 +294,8 @@ mod tests {
             &result,
             &["interface Props<T extends string, U = T>"],
             &[
-                ";({ async AstroComponent<T extends string, U = T>() {",
-                "AstroGlobal<Props<T, U>, typeof AstroComponent>> = null!;",
+                "switch ({ AstroComponent: async <T extends string, U = T,>(/**",
+                "Astro: Readonly<import('astro').AstroGlobal<Props<T, U>, typeof AstroComponent>>) => {\nconst { value } = Astro.props;",
             ],
         );
     }
@@ -320,7 +319,7 @@ mod tests {
             &[
                 "const a = 1;",
                 "const b = a;",
-                "ASTRO__Get<ASTRO__InferredGetStaticPath, 'params'>>> = null!;",
+                "ASTRO__Get<ASTRO__InferredGetStaticPath, 'params'>>>) => {",
             ],
         );
     }
@@ -435,7 +434,7 @@ mod tests {
         let (label, fence) = result.outline_label.expect("no outline label");
         assert_eq!(
             &result.code[label.start as usize..label.end as usize],
-            "async Card"
+            "Card"
         );
         assert_eq!(&source[fence.start as usize..fence.end as usize], "---");
     }

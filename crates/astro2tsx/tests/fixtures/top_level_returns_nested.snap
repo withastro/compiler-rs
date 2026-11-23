@@ -8,10 +8,10 @@ info:
     end: 165
   frontmatter:
     start: 30
-    end: 480
+    end: 230
   body:
-    start: 495
-    end: 504
+    start: 245
+    end: 254
   scripts: []
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/top_level_returns_nested.astro
@@ -19,13 +19,7 @@ input_file: crates/astro2tsx/tests/fixtures/top_level_returns_nested.astro
 /* @jsxImportSource astro */
 
 
-;({ async AstroComponent() {
-/**
- * Astro global available in all contexts in .astro files
- *
- * [Astro documentation](https://docs.astro.build/reference/api-reference/#astro-global)
-*/
-const Astro: Readonly<import('astro').AstroGlobal<Record<string, any>, typeof AstroComponent>> = null!;
+switch ({ AstroComponent: async () => {
 if (broken) {
   return Astro.redirect("/");
 }
@@ -39,5 +33,5 @@ return "top";
 <div/>
 
 </Fragment>
-}});
+}}) {}
 export default function AstroComponent(_props: Record<string, any>): any {}

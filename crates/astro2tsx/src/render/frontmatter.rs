@@ -85,7 +85,10 @@ pub(super) fn render(
             outline_label: component_alias.unwrap_or(component),
             fence: fence_range(node),
             generics: &props_analysis.generics_decl,
-            astro_type: astro_global_type(component, &props_type(&props_analysis), &props_analysis),
+            // A module-scope `Astro` cannot see the type parameters of a generic `Props`.
+            astro_type: (!props_analysis.generics_args.is_empty()).then(|| {
+                astro_global_type(component, &props_type(&props_analysis), &props_analysis)
+            }),
         };
         emit_frontmatter(printer, node, rewritten.as_ref(), &opener);
     }
@@ -135,7 +138,7 @@ pub(super) struct ScopeOpener<'a> {
     fence: SourceRange,
     /// Type parameters of a generic `Props`, which only stay generic inside a scope declaring them.
     generics: &'a str,
-    astro_type: String,
+    astro_type: Option<String>,
 }
 
 fn fence_range(frontmatter: &AnyAstroFrontmatterElement) -> SourceRange {
@@ -149,27 +152,36 @@ fn fence_range(frontmatter: &AnyAstroFrontmatterElement) -> SourceRange {
     })
 }
 
-/// Opens the render function as an object method, whose name binds nothing in its body.
+/// Opens the render function as an arrow property, which binds no name, `this`, or `arguments`.
 fn open_render_scope(printer: &mut Printer, opener: &ScopeOpener) {
     printer.map_nil();
     if !printer.output.ends_with('\n') {
         printer.write("\n");
     }
-    printer.write(";({ ");
+    // TypeScript guesses a file's semicolon style from statements, and skips `switch`.
+    printer.write("switch ({ ");
     let label_start = printer.position();
-    printer.write(&format!("async {}", opener.outline_label));
+    printer.write(opener.outline_label);
     printer.outline_label = Some((
         GeneratedRange::new(label_start, printer.position()),
         opener.fence,
     ));
-    printer.write(&format!("{}() {{\n", opener.generics));
-    printer.write(ASTRO_GLOBAL_DOCS);
-    printer.write(&format!("const Astro: {} = null!;\n", opener.astro_type));
+    printer.write(": async ");
+    // A trailing comma keeps the type parameter list from parsing as a JSX tag.
+    if let Some(parameters) = opener.generics.strip_suffix('>') {
+        printer.write(&format!("{parameters},>"));
+    }
+    printer.write("(");
+    if let Some(astro_type) = &opener.astro_type {
+        printer.write(ASTRO_GLOBAL_DOCS);
+        printer.write(&format!("Astro: {astro_type}"));
+    }
+    printer.write(") => {\n");
 }
 
 pub(super) fn close_render_scope(printer: &mut Printer) {
     printer.map_nil();
-    printer.write("}});\n");
+    printer.write("}}) {}\n");
 }
 
 pub(super) fn emit_default_export(
