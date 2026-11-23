@@ -136,7 +136,7 @@ fn import_binds_props(import: &JsNode) -> bool {
     })
 }
 
-fn module_items(root: &AnyJsRoot) -> Vec<JsNode> {
+pub(crate) fn module_items(root: &AnyJsRoot) -> Vec<JsNode> {
     match root {
         AnyJsRoot::JsModule(module) => module.items().iter().map(|i| i.into_syntax()).collect(),
         AnyJsRoot::JsScript(script) => script
@@ -394,6 +394,12 @@ fn binding_has_get_static_paths(binding: &JsNode) -> bool {
 }
 
 fn binding_has_name(binding: &JsNode, name: &str) -> bool {
+    binding_names(binding).iter().any(|bound| bound == name)
+}
+
+/// Names bound by a declaration's binding pattern, without entering default values.
+pub(crate) fn binding_names(binding: &JsNode) -> Vec<String> {
+    let mut names = Vec::new();
     let mut walk = binding.preorder();
     while let Some(event) = walk.next() {
         let WalkEvent::Enter(node) = event else {
@@ -401,12 +407,10 @@ fn binding_has_name(binding: &JsNode, name: &str) -> bool {
         };
         match node.kind() {
             JsSyntaxKind::JS_IDENTIFIER_BINDING => {
-                if JsIdentifierBinding::cast(node).is_some_and(|binding| {
-                    binding
-                        .name_token()
-                        .is_ok_and(|token| unescape_js_string(token.token_text_trimmed()) == name)
-                }) {
-                    return true;
+                if let Some(token) =
+                    JsIdentifierBinding::cast(node).and_then(|binding| binding.name_token().ok())
+                {
+                    names.push(unescape_js_string(token.token_text_trimmed()).to_string());
                 }
             }
             JsSyntaxKind::JS_ARRAY_BINDING_PATTERN
@@ -421,7 +425,7 @@ fn binding_has_name(binding: &JsNode, name: &str) -> bool {
             _ => walk.skip_subtree(),
         }
     }
-    false
+    names
 }
 
 fn identifier_token_is_get_static_paths(token: JsSyntaxToken) -> bool {

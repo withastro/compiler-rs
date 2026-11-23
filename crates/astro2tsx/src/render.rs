@@ -2,6 +2,7 @@ mod attribute;
 mod element;
 mod extracted;
 mod frontmatter;
+mod scope;
 mod text;
 
 use element::render_element;
@@ -38,7 +39,12 @@ pub(crate) fn render_root(
     let (component_name, alias) = tsx_component_names(options.filename.as_deref());
     let public_name = alias.as_deref().unwrap_or(&component_name);
     printer.watch_name(public_name);
-    let frontmatter = frontmatter::render(printer, frontmatter_node.as_ref(), alias.as_deref());
+    let frontmatter = frontmatter::render(
+        printer,
+        frontmatter_node.as_ref(),
+        &component_name,
+        alias.as_deref(),
+    );
     let body = root.html();
     let body_text_start = frontmatter.body_text_start;
     // A childless body still needs its `<Fragment>` when comment trivia remains.
@@ -59,31 +65,19 @@ pub(crate) fn render_root(
         } else {
             None
         };
+        if let Some(plan) = &frontmatter.scope {
+            // Find the tags TypeScript will see by rendering the template once without keeping it.
+            let mut scratch = Printer::new(printer.source);
+            scratch.comment_ranges = printer.comment_ranges.clone();
+            render_template(&mut scratch, &root, body_text_start);
+            let tags = scope::template_tag_bindings(&scratch.output, &plan.body_bindings);
+            frontmatter::emit_tag_narrowing(printer, tags.iter().map(String::as_str));
+        }
         printer.map_nil();
         printer.write("<Fragment>\n");
         body_start = printer.position();
 
-        let mut prev_end = body_text_start;
-        if let Some(instruction) = root.processing_instruction() {
-            let instruction_range = instruction.range();
-            emit_source_gap(printer, prev_end, range_start(instruction_range));
-            render_element(printer, instruction.into());
-            prev_end = u32::from(instruction_range.end());
-        }
-        // TSX has no doctype syntax, so the directive must not reach the output.
-        // Its surrounding source gaps remain mapped, including their line breaks.
-        if let Some(directive) = root.directive() {
-            let directive_range = directive.range();
-            emit_source_gap(printer, prev_end, range_start(directive_range));
-            prev_end = prev_end.max(u32::from(directive_range.end()));
-        }
-        for element in body.iter() {
-            let element_range = element.range();
-            emit_source_gap(printer, prev_end, range_start(element_range));
-            render_element(printer, element);
-            prev_end = u32::from(element_range.end());
-        }
-        emit_source_gap(printer, prev_end, printer.source.len() as u32);
+        render_template(printer, &root, body_text_start);
         // Keep the closing wrapper on its own line. A trailing source newline
         // therefore produces an intentional blank line before `</Fragment>`.
         printer.map_to_offset(printer.source.len() as u32);
@@ -101,6 +95,9 @@ pub(crate) fn render_root(
             printer.write("\n");
         }
         printer.body_range = GeneratedRange::new(printer.position(), printer.position());
+    }
+    if frontmatter.scope.is_some() {
+        frontmatter::close_render_scope(printer);
     }
 
     // Frontmatter and template share a scope with the default-export function, so naming it
@@ -136,4 +133,29 @@ pub(crate) fn render_root(
         generated_component_export,
         terminator_anchor,
     )
+}
+
+/// Emits the template children; the caller owns the surrounding `<Fragment>`.
+fn render_template(printer: &mut Printer, root: &HtmlRoot, body_text_start: u32) {
+    let mut prev_end = body_text_start;
+    if let Some(instruction) = root.processing_instruction() {
+        let instruction_range = instruction.range();
+        emit_source_gap(printer, prev_end, range_start(instruction_range));
+        render_element(printer, instruction.into());
+        prev_end = u32::from(instruction_range.end());
+    }
+    // TSX has no doctype syntax, so the directive must not reach the output.
+    // Its surrounding source gaps remain mapped, including their line breaks.
+    if let Some(directive) = root.directive() {
+        let directive_range = directive.range();
+        emit_source_gap(printer, prev_end, range_start(directive_range));
+        prev_end = prev_end.max(u32::from(directive_range.end()));
+    }
+    for element in root.html().iter() {
+        let element_range = element.range();
+        emit_source_gap(printer, prev_end, range_start(element_range));
+        render_element(printer, element);
+        prev_end = u32::from(element_range.end());
+    }
+    emit_source_gap(printer, prev_end, printer.source.len() as u32);
 }

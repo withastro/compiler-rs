@@ -1,6 +1,5 @@
 ---
 source: crates/astro2tsx/tests/snapshots.rs
-assertion_line: 134
 info:
   has_parse_errors: false
   frontmatter_status: Closed
@@ -9,10 +8,10 @@ info:
     end: 55
   frontmatter:
     start: 30
-    end: 80
+    end: 209
   body:
-    start: 95
-    end: 109
+    start: 224
+    end: 238
   scripts: []
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/props_generic.astro
@@ -23,12 +22,15 @@ input_file: crates/astro2tsx/tests/fixtures/props_generic.astro
 interface Props<T extends string> {
 	item: T;
 }
+;(async function<T extends string>(Astro: Readonly<import('astro').AstroGlobal<Props<T>, typeof AstroComponent>>) { void Astro;
+
 
 ;{};<Fragment>
 
 <div></div>
 
 </Fragment>
+});
 export default function AstroComponent<T extends string>(_props: Props<T>): any {}
 /**
  * Astro global available in all contexts in .astro files

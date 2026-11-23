@@ -1,0 +1,43 @@
+---
+source: crates/astro2tsx/tests/snapshots.rs
+info:
+  has_parse_errors: false
+  frontmatter_status: Closed
+  frontmatter_source:
+    start: 0
+    end: 169
+  frontmatter:
+    start: 30
+    end: 328
+  body:
+    start: 368
+    end: 390
+  scripts: []
+  styles: []
+input_file: crates/astro2tsx/tests/fixtures/props_polymorphic_docs.astro
+---
+/* @jsxImportSource astro */
+
+
+import type { HTMLTag, Polymorphic } from 'astro/types';
+
+type Props<Tag extends HTMLTag> = Polymorphic<{ as: Tag }>;
+;(async function<Tag extends HTMLTag>(Astro: Readonly<import('astro').AstroGlobal<Props<Tag>, typeof AstroComponent>>) { void Astro;
+
+
+const { as: Tag, ...props } = Astro.props;
+
+;{};if (Tag == null) throw 0;<Fragment>
+
+
+<Tag {...props} />
+
+</Fragment>
+});
+export default function AstroComponent<Tag extends HTMLTag>(_props: Props<Tag>): any {}
+/**
+ * Astro global available in all contexts in .astro files
+ *
+ * [Astro documentation](https://docs.astro.build/reference/api-reference/#astro-global)
+*/
+declare const Astro: Readonly<import('astro').AstroGlobal<Parameters<typeof AstroComponent>[0], typeof AstroComponent>>;
