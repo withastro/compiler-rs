@@ -57,7 +57,7 @@ pub struct ConvertResult {
     pub(crate) frontmatter_insertion_range: Option<GeneratedRange>,
     /// Generated range of the render scope's outline label and the fence it names.
     pub(crate) scope_label: Option<(GeneratedRange, SourceRange)>,
-    /// Zero-length `(generated, original)` anchors for offsets shared by detached chunks.
+    /// Zero-length `(generated, original)` anchors that give each detached chunk boundary one edit.
     pub(crate) edit_anchors: Vec<(u32, u32)>,
     /// Generated ranges whose mapped text opts out of editor features.
     pub(crate) featureless: Vec<GeneratedRange>,

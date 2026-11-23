@@ -1,9 +1,4 @@
-//! Render scope that the frontmatter body and template are checked in.
-//!
-//! Mirroring Astro's runtime output, imports and exports (plus erased type declarations)
-//! stay at module scope while the other statements and the template move into an async
-//! render function. That function declares the type parameters of a generic `Props<T>`,
-//! which only stays generic inside a scope that declares `T`.
+//! Splits frontmatter between module scope and a render function, as Astro's runtime does.
 
 use std::collections::HashMap;
 
@@ -29,7 +24,6 @@ pub(crate) struct ScopePlan {
     pub body: Vec<TextRange>,
 }
 
-/// Whether a module item must stay at module scope.
 #[derive(Clone, Copy, PartialEq)]
 enum Placement {
     /// Imports and erased declarations: hoisted, and may reference render-scope values in types.
@@ -40,9 +34,6 @@ enum Placement {
 }
 
 /// Plans the render scope, or `None` to keep the module layout.
-///
-/// Unfinished imports, exports, and declarations keep it, since TypeScript recovers them from
-/// the code that follows; errors elsewhere keep the render scope so diagnostics stay stable.
 pub(crate) fn plan(root: &AnyJsRoot, errors: &[TextRange]) -> Option<ScopePlan> {
     let items = module_items(root);
     let mut placements: Vec<Placement> = items.iter().map(placement).collect();
@@ -50,23 +41,21 @@ pub(crate) fn plan(root: &AnyJsRoot, errors: &[TextRange]) -> Option<ScopePlan> 
         return None;
     }
 
-    // Body declarations that hoisted code can name, by namespace.
-    let mut values: HashMap<String, usize> = HashMap::new();
-    let mut types: HashMap<String, usize> = HashMap::new();
+    let mut body_values: HashMap<String, usize> = HashMap::new();
+    let mut body_types: HashMap<String, usize> = HashMap::new();
     for (index, item) in items.iter().enumerate() {
         if placements[index] == Placement::Body {
             let (bound_values, bound_types) = declared_names(item);
             for name in bound_values {
-                values.entry(name).or_insert(index);
+                body_values.entry(name).or_insert(index);
             }
             for name in bound_types {
-                types.entry(name).or_insert(index);
+                body_types.entry(name).or_insert(index);
             }
         }
     }
 
-    // Types are erased, so hoisted types may query render-scope values (`typeof defaults`).
-    // Hoist those declarations and their dependencies instead of leaving the names unbound.
+    // Hoisted types may query render-scope values (`typeof defaults`), so those move with them.
     let mut pending: Vec<usize> = (0..items.len())
         .filter(|&index| placements[index] != Placement::Body)
         .collect();
@@ -74,10 +63,14 @@ pub(crate) fn plan(root: &AnyJsRoot, errors: &[TextRange]) -> Option<ScopePlan> 
         let only_erased = placements[index] == Placement::Export;
         for reference in references(&items[index]) {
             if only_erased && !reference.erased {
-                // A runtime export that reads a render-scope value fails at runtime too.
+                // Runtime reads in an export fail at runtime, so they stay type errors.
                 continue;
             }
-            let namespace = if reference.is_type { &types } else { &values };
+            let namespace = if reference.is_type {
+                &body_types
+            } else {
+                &body_values
+            };
             if let Some(&dependency) = namespace.get(&reference.name)
                 && placements[dependency] == Placement::Body
             {
@@ -87,7 +80,7 @@ pub(crate) fn plan(root: &AnyJsRoot, errors: &[TextRange]) -> Option<ScopePlan> 
         }
     }
 
-    // Overload signatures stay with the implementation that follows them.
+    // TypeScript requires overload signatures right before their implementation.
     for index in (0..items.len().saturating_sub(1)).rev() {
         if items[index].kind() == JsSyntaxKind::TS_DECLARE_FUNCTION_DECLARATION {
             placements[index] = placements[index + 1];
@@ -115,6 +108,7 @@ pub(crate) fn plan(root: &AnyJsRoot, errors: &[TextRange]) -> Option<ScopePlan> 
     Some(plan)
 }
 
+/// TypeScript recovers these from the code that follows, which the render function would move.
 fn has_unfinished_declaration(
     items: &[JsNode],
     placements: &[Placement],
@@ -138,8 +132,7 @@ fn has_unfinished_declaration(
     })
 }
 
-/// Start of the line holding an item's first comment or token, so comments move with their
-/// item while blank lines stay with the chunk before it.
+/// Start of an item's first line, counting its leading comments but not blank lines.
 fn chunk_start(item: &JsNode) -> TextSize {
     let mut start = item.text_range_with_trivia().start();
     if let Some(token) = item.first_token() {
@@ -266,7 +259,6 @@ mod tests {
 
     const OPENER: &str = ";({ async ";
 
-    /// Asserts where snippets are emitted: before the render scope opens, or inside it.
     #[track_caller]
     fn assert_layout(result: &ConvertResult, module: &[&str], scope: &[&str]) {
         let code = &result.code;

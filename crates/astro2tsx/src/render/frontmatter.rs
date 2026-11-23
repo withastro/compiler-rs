@@ -121,7 +121,6 @@ fn astro_global_type(component: &str, props: &str, analysis: &PropsAnalysis) -> 
 
 const ASTRO_GLOBAL_DOCS: &str = "/**\n * Astro global available in all contexts in .astro files\n *\n * [Astro documentation](https://docs.astro.build/reference/api-reference/#astro-global)\n*/\n";
 
-/// The type components declare their props with, as the default export receives them.
 fn props_type(analysis: &PropsAnalysis) -> String {
     if analysis.has_props {
         format!("Props{}", analysis.generics_args)
@@ -137,6 +136,7 @@ pub(super) struct ScopeOpener<'a> {
     label: &'a str,
     /// The opening fence, which the label maps to.
     fence: SourceRange,
+    /// Type parameters of a generic `Props`, which only stay generic inside a scope declaring them.
     generics: &'a str,
     astro_type: String,
 }
@@ -497,9 +497,7 @@ fn emit_tsx_frontmatter(
     }
 }
 
-/// Chunks paired with their source successor when the two are emitted apart.
-///
-/// The earlier chunk owns their shared offset, so editors map an insertion there to one place.
+/// Chunks whose source successor is emitted somewhere else, paired with that successor.
 fn detached_chunks(segments: &[Segment]) -> Vec<(TextRange, TextRange)> {
     let chunks: Vec<TextRange> = segments
         .iter()
