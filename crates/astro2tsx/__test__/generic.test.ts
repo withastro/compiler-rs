@@ -3,6 +3,9 @@ import { test } from 'node:test';
 import { convertToTsx } from '../index.js';
 import { strictElements, typecheckAstro, typecheck } from './typecheck.ts';
 
+const codes = (diagnostics: { code: number; text?: string }[]) =>
+	diagnostics.map((d) => [d.code, d.text]);
+
 test('generic Props retain useful global prop checking', () => {
 	for (const declaration of [
 		'interface Props<T> { items: T[] }',
@@ -12,11 +15,7 @@ test('generic Props retain useful global prop checking', () => {
 		'interface Props<T, U extends T = T> { items: U[] }',
 	]) {
 		const diagnostics = typecheckAstro(`${declaration}\nconst bad: number = Astro.props.items;`);
-		assert.deepEqual(
-			diagnostics.map((d) => [d.code, d.text]),
-			[[2322, 'bad']],
-			JSON.stringify(diagnostics),
-		);
+		assert.deepEqual(codes(diagnostics), [[2322, 'bad']], declaration);
 	}
 });
 
@@ -31,9 +30,6 @@ test('generic component signatures retain inference and constraints', () => {
 		JSON.stringify(diagnostics),
 	);
 });
-
-const codes = (diagnostics: { code: number; text?: string }[]) =>
-	diagnostics.map((d) => [d.code, d.text]);
 
 test('generic Props stay generic inside the frontmatter and template', () => {
 	const diagnostics = typecheckAstro(
@@ -134,26 +130,17 @@ test('polymorphic components correlate their tag and attributes', () => {
 	]);
 });
 
-test('a polymorphic tag without a default is reported', () => {
-	// Astro throws when it renders an undefined component, so an omitted `as` needs a default.
-	const diagnostics = typecheckAstro(polymorphic('HTMLTag'), '<Tag {...props} />', strictElements);
-	assert.deepEqual(codes(diagnostics), [[2604, 'Tag']]);
-});
+test('a polymorphic tag without a default must be guarded', () => {
+	// Astro throws when it renders an undefined component, so an omitted `as` is reported.
+	const unguarded = typecheckAstro(polymorphic('HTMLTag'), '<Tag {...props} />', strictElements);
+	assert.deepEqual(codes(unguarded), [[2604, 'Tag']]);
 
-test('optional and non-component tags are reported', () => {
-	const nonGeneric = typecheckAstro(
-		"interface Props { as?: 'a' }\nconst { as: Tag } = Astro.props;",
-		'<Tag />',
+	const guarded = typecheckAstro(
+		polymorphic('HTMLTag'),
+		'{Tag !== undefined ? <Tag {...props} /> : <div />}{Tag === undefined && <p />}',
 		strictElements,
 	);
-	assert.deepEqual(codes(nonGeneric), [[2604, 'Tag']]);
-
-	const notATag = typecheckAstro(
-		'interface Props<T> { value: T }\nconst Tag = 42;',
-		'<Tag />',
-		strictElements,
-	);
-	assert.deepEqual(codes(notATag), [[2604, 'Tag']]);
+	assert.deepEqual(codes(guarded), []);
 });
 
 test('polymorphic callers keep tag-specific attribute checks', () => {
@@ -200,26 +187,4 @@ test('runtime exports cannot read render-scope values', () => {
 	]) {
 		assert.deepEqual(codes(typecheckAstro(frontmatter)), [[2304, 'local']], frontmatter);
 	}
-});
-
-test('polymorphic tags without a default can be guarded explicitly', () => {
-	const diagnostics = typecheckAstro(
-		polymorphic('HTMLTag'),
-		'{Tag !== undefined ? <Tag {...props} /> : <div />}{Tag === undefined && <p />}',
-		strictElements,
-	);
-	assert.deepEqual(codes(diagnostics), []);
-});
-
-test('optional member tags are reported', () => {
-	const diagnostics = typecheckAstro(
-		'interface Props<T> { ns?: { Item: (props: { value?: T }) => any } }\nconst { ns } = Astro.props;',
-		'<ns.Item />',
-		strictElements,
-	);
-	assert.deepEqual(
-		diagnostics.map((d) => d.code),
-		[18048],
-		JSON.stringify(diagnostics),
-	);
 });

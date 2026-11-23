@@ -262,14 +262,30 @@ fn references(item: &JsNode) -> Vec<Reference> {
 #[cfg(test)]
 mod tests {
     use crate::test_utils::convert;
+    use crate::{ConvertOptions, ConvertResult, convert_to_tsx};
 
     const OPENER: &str = ";({ async ";
 
-    fn split(code: &str) -> (&str, &str) {
+    /// Asserts where snippets are emitted: before the render scope opens, or inside it.
+    #[track_caller]
+    fn assert_layout(result: &ConvertResult, module: &[&str], scope: &[&str]) {
+        let code = &result.code;
         let at = code
             .find(OPENER)
             .unwrap_or_else(|| panic!("no render scope:\n{code}"));
-        code.split_at(at)
+        let (before, after) = code.split_at(at);
+        for snippet in module {
+            assert!(
+                before.contains(snippet),
+                "{snippet:?} is not at module scope:\n{code}"
+            );
+        }
+        for snippet in scope {
+            assert!(
+                after.contains(snippet),
+                "{snippet:?} is not in the render scope:\n{code}"
+            );
+        }
     }
 
     #[test]
@@ -277,24 +293,14 @@ mod tests {
         let result = convert(
             "---\ninterface Props { value: string }\nconst { value } = Astro.props;\n---\n<p>{value}</p>",
         );
-        let (module, scope) = split(&result.code);
-        assert!(module.contains("interface Props {"), "{}", result.code);
-        assert!(
-            scope.starts_with(";({ async AstroComponent() {\n/**\n"),
-            "{}",
-            result.code
-        );
-        assert!(
-            scope.contains(
-                "const Astro: Readonly<import('astro').AstroGlobal<Props, typeof AstroComponent>> = null!;\nconst { value } = Astro.props;"
-            ),
-            "{}",
-            result.code
-        );
-        assert!(
-            scope.contains("<p>{value}</p>\n</Fragment>\n}});\nexport default function"),
-            "{}",
-            result.code
+        assert_layout(
+            &result,
+            &["interface Props {"],
+            &[
+                ";({ async AstroComponent() {\n/**\n",
+                "const Astro: Readonly<import('astro').AstroGlobal<Props, typeof AstroComponent>> = null!;\nconst { value } = Astro.props;",
+                "<p>{value}</p>\n</Fragment>\n}});\nexport default function",
+            ],
         );
     }
 
@@ -303,124 +309,85 @@ mod tests {
         let result = convert(
             "---\ninterface Props<T extends string, U = T> { value: T }\nconst { value } = Astro.props;\n---\n<p>{value}</p>",
         );
-        let (module, scope) = split(&result.code);
-        assert!(
-            module.contains("interface Props<T extends string, U = T>"),
-            "{}",
-            result.code
-        );
-        assert!(
-            scope.starts_with(";({ async AstroComponent<T extends string, U = T>() {"),
-            "{}",
-            result.code
-        );
-        assert!(
-            scope.contains(
-                "const Astro: Readonly<import('astro').AstroGlobal<Props<T, U>, typeof AstroComponent>> = null!;"
-            ),
-            "{}",
-            result.code
+        assert_layout(
+            &result,
+            &["interface Props<T extends string, U = T>"],
+            &[
+                ";({ async AstroComponent<T extends string, U = T>() {",
+                "AstroGlobal<Props<T, U>, typeof AstroComponent>> = null!;",
+            ],
         );
     }
 
     #[test]
     fn module_items_are_hoisted_out_of_the_render_scope() {
-        let source = "---\nconst a = 1;\nimport X from './X.astro';\nexport const prerender = true;\ntype Local = string;\ninterface Props<T extends Local> { value: T }\ndeclare global { interface Window { x: 1 } }\nexport function getStaticPaths() { return []; }\nexport type { Local as Exported };\nconst b = a;\n---\n<X />";
-        let result = convert(source);
-        let (module, scope) = split(&result.code);
-        for hoisted in [
-            "import X from './X.astro';",
-            "export const prerender = true;",
-            "type Local = string;",
-            "interface Props<T extends Local>",
-            "declare global",
-            "export function getStaticPaths()",
-            "export type { Local as Exported };",
-        ] {
-            assert!(
-                module.contains(hoisted),
-                "{hoisted} was not hoisted:\n{}",
-                result.code
-            );
-        }
-        assert!(scope.contains("const a = 1;"), "{}", result.code);
-        assert!(scope.contains("const b = a;"), "{}", result.code);
-        assert!(
-            scope.contains("ASTRO__Get<ASTRO__InferredGetStaticPath, 'params'>>> = null!;"),
-            "{}",
-            result.code
-        );
-    }
-
-    #[test]
-    fn values_queried_by_hoisted_types_are_hoisted_with_them() {
         let result = convert(
-            "---\nconst base = { size: 1 };\nconst defaults = { ...base };\nconst { value } = Astro.props;\nenum Size { S }\nclass Model {}\ninterface Props<T> { value: T; opts: typeof defaults; size: Size; model: Model }\n---\n<p/>",
+            "---\nconst a = 1;\nimport X from './X.astro';\nexport const prerender = true;\ntype Local = string;\ninterface Props<T extends Local> { value: T }\ndeclare global { interface Window { x: 1 } }\nexport function getStaticPaths() { return []; }\nexport type { Local as Exported };\nconst b = a;\n---\n<X />",
         );
-        let (module, scope) = split(&result.code);
-        for hoisted in [
-            "const base = { size: 1 };",
-            "const defaults = { ...base };",
-            "enum Size { S }",
-            "class Model {}",
-        ] {
-            assert!(
-                module.contains(hoisted),
-                "{hoisted} was not hoisted:\n{}",
-                result.code
-            );
+        assert_layout(
+            &result,
+            &[
+                "import X from './X.astro';",
+                "export const prerender = true;",
+                "type Local = string;",
+                "interface Props<T extends Local>",
+                "declare global",
+                "export function getStaticPaths()",
+                "export type { Local as Exported };",
+            ],
+            &[
+                "const a = 1;",
+                "const b = a;",
+                "ASTRO__Get<ASTRO__InferredGetStaticPath, 'params'>>> = null!;",
+            ],
+        );
+    }
+
+    #[test]
+    fn values_queried_by_hoisted_code_are_hoisted_with_it() {
+        let cases: [(&str, &[&str], &[&str]); 3] = [
+            // Queries reach through other values, enums, and classes.
+            (
+                "---\nconst base = { size: 1 };\nconst defaults = { ...base };\nconst { value } = Astro.props;\nenum Size { S }\nclass Model {}\ninterface Props<T> { value: T; opts: typeof defaults; size: Size; model: Model }\n---\n<p/>",
+                &[
+                    "const base = { size: 1 };",
+                    "const defaults = { ...base };",
+                    "enum Size { S }",
+                    "class Model {}",
+                ],
+                &["const { value } = Astro.props;"],
+            ),
+            // `Tag` is a type parameter in `Props` and a value in the render scope.
+            (
+                "---\ntype Props<Tag extends string> = { as?: Tag };\nconst { as: Tag } = Astro.props;\n---\n<Tag />",
+                &[],
+                &["const { as: Tag } = Astro.props;"],
+            ),
+            // A runtime export's types may query the render scope, but its runtime reads fail.
+            (
+                "---\nconst queried = 1;\nconst read = 1;\nexport function f(x: typeof queried) { return read; }\n---\n<p/>",
+                &["const queried = 1;"],
+                &["const read = 1;"],
+            ),
+        ];
+        for (source, module, scope) in cases {
+            assert_layout(&convert(source), module, scope);
         }
-        assert!(
-            scope.contains("const { value } = Astro.props;"),
-            "{}",
-            result.code
-        );
-    }
-
-    #[test]
-    fn type_and_value_namespaces_are_kept_apart() {
-        // `Tag` is a type parameter in `Props` and a value in the render scope.
-        let result = convert(
-            "---\ntype Props<Tag extends string> = { as?: Tag };\nconst { as: Tag } = Astro.props;\nconst queried = 1;\nexport function f(x: typeof queried) {}\n---\n<Tag />",
-        );
-        let (module, scope) = split(&result.code);
-        assert!(
-            scope.contains("const { as: Tag } = Astro.props;"),
-            "{}",
-            result.code
-        );
-        // Erased reads from a runtime export still need the declaration at module scope.
-        assert!(module.contains("const queried = 1;"), "{}", result.code);
-    }
-
-    #[test]
-    fn runtime_exports_do_not_hoist_render_scope_values() {
-        let result = convert("---\nconst a = 1;\nexport const b = a;\n---\n<p/>");
-        let (_, scope) = split(&result.code);
-        assert!(scope.contains("const a = 1;"), "{}", result.code);
     }
 
     #[test]
     fn overload_signatures_stay_with_their_implementation() {
-        for (source, hoisted) in [
-            (
-                "---\nfunction pick(v: string): string;\nfunction pick(v: string) { return v; }\n---\n<p/>",
-                false,
-            ),
-            (
-                "---\nfunction pick(v: string): string;\nfunction pick(v: string) { return v; }\ntype Picked = ReturnType<typeof pick>;\n---\n<p/>",
-                true,
-            ),
-        ] {
-            let result = convert(source);
-            let (module, scope) = split(&result.code);
-            let side = if hoisted { module } else { scope };
-            assert!(
-                side.contains("function pick(v: string): string;\nfunction pick(v: string) {"),
-                "{}",
-                result.code
-            );
-        }
+        let overloads = "function pick(v: string): string;\nfunction pick(v: string) {";
+        let source =
+            "---\nfunction pick(v: string): string;\nfunction pick(v: string) { return v; }\n";
+        assert_layout(&convert(&format!("{source}---\n<p/>")), &[], &[overloads]);
+        assert_layout(
+            &convert(&format!(
+                "{source}type Picked = ReturnType<typeof pick>;\n---\n<p/>"
+            )),
+            &[overloads],
+            &[],
+        );
     }
 
     #[test]
@@ -428,27 +395,25 @@ mod tests {
         let result = convert(
             "---\nconst a = 1;\n\n/** Documented. */\ninterface Props { value: string }\n---\n<p/>",
         );
-        let (module, scope) = split(&result.code);
-        assert!(
-            module.contains("\n/** Documented. */\ninterface Props { value: string }\n"),
-            "{}",
-            result.code
+        assert_layout(
+            &result,
+            &["\n/** Documented. */\ninterface Props { value: string }\n"],
+            &["const a = 1;\n\n"],
         );
-        assert!(scope.contains("const a = 1;\n\n"), "{}", result.code);
     }
 
     #[test]
-    fn frontmatter_with_parse_errors_keeps_the_render_scope() {
-        let result = crate::convert_to_tsx(
+    fn only_unfinished_imports_and_exports_drop_the_render_scope() {
+        let unfinished_statement = convert_to_tsx(
             "---\ninterface Props<T> { value: T }\nconst a = Astro.props.\n---\n<p/>",
-            crate::ConvertOptions::default(),
+            ConvertOptions::default(),
         );
-        assert!(result.has_parse_errors);
-        assert!(result.code.contains(OPENER), "{}", result.code);
-    }
-
-    #[test]
-    fn unfinished_imports_and_exports_keep_the_module_layout() {
+        assert!(unfinished_statement.has_parse_errors);
+        assert!(
+            unfinished_statement.code.contains(OPENER),
+            "{}",
+            unfinished_statement.code
+        );
         for source in [
             "---\nimport { formatTh\ninterface Props<T> { as?: T }\n---\n<p/>",
             "---\nconst { as } = Astro.props;\nimport { formatTh\n---\n<p/>",
@@ -456,7 +421,7 @@ mod tests {
             "---\nimport { formatThing } from './ut\nconst { as } = Astro.props;\n---\n<p/>",
             "---\nconst { as } = Astro.props;\nexport const\n---\n<p/>",
         ] {
-            let result = crate::convert_to_tsx(source, crate::ConvertOptions::default());
+            let result = convert_to_tsx(source, ConvertOptions::default());
             assert!(result.has_parse_errors, "{source}");
             assert!(!result.code.contains(OPENER), "{}", result.code);
         }
@@ -464,42 +429,29 @@ mod tests {
 
     #[test]
     fn frontmatter_rewrites_survive_reordering() {
-        let source = "---\nconst v = <string>Astro.props.value\nimport X from './X.astro'\nconst id = <T>(x: T) => x\nif (!v) return Astro.redirect('/')\ninterface Props<T> { value: T }\n---\n<X />";
-        let result = convert(source);
-        let (module, scope) = split(&result.code);
-        assert!(
-            module.contains("import X from './X.astro'"),
-            "{}",
-            result.code
+        let result = convert(
+            "---\nconst v = <string>Astro.props.value\nimport X from './X.astro'\nconst id = <T>(x: T) => x\nif (!v) return Astro.redirect('/')\ninterface Props<T> { value: T }\n---\n<X />",
         );
-        assert!(
-            scope.contains("const v = (Astro.props.value as string)\n"),
-            "{}",
-            result.code
-        );
-        assert!(
-            scope.contains("const id = <T,>(x: T) => x"),
-            "{}",
-            result.code
-        );
-        // Top-level returns end the render function, as they do at runtime.
-        assert!(
-            scope.contains("if (!v) return Astro.redirect('/')"),
-            "{}",
-            result.code
+        assert_layout(
+            &result,
+            &["import X from './X.astro'"],
+            &[
+                "const v = (Astro.props.value as string)\n",
+                "const id = <T,>(x: T) => x",
+                // Top-level returns end the render function, as they do at runtime.
+                "if (!v) return Astro.redirect('/')",
+            ],
         );
     }
 
     #[test]
     fn render_scope_label_names_the_opening_fence() {
         let source = "---\nconst a = 1;\n---\n<p>{a}</p>";
-        let result = crate::convert_to_tsx(
-            source,
-            crate::ConvertOptions {
-                filename: Some("Card.astro".to_string()),
-                ..Default::default()
-            },
-        );
+        let options = ConvertOptions {
+            filename: Some("Card.astro".to_string()),
+            ..Default::default()
+        };
+        let result = convert_to_tsx(source, options);
         let (label, fence) = result.scope_label.expect("no render scope label");
         assert_eq!(
             &result.code[label.start as usize..label.end as usize],
@@ -512,7 +464,7 @@ mod tests {
     fn detached_chunks_hand_their_shared_offset_to_an_anchor() {
         let source = "---\nimport X from './X.astro';\nconst a = 1;\ninterface Props { value: string }\n---\n<X />";
         let result = convert(source);
-        let starts = |text: &str| source.find(text).unwrap() as u32;
+        let offset = |text: &str| source.find(text).unwrap() as u32;
         let anchored: Vec<u32> = result
             .edit_anchors
             .iter()
@@ -520,7 +472,7 @@ mod tests {
             .collect();
         assert_eq!(
             anchored,
-            [starts("const a"), starts("interface Props")],
+            [offset("const a"), offset("interface Props")],
             "{}",
             result.code
         );
