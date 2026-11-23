@@ -25,7 +25,6 @@ fn generated_section_ranges_exclude_fences_and_fragment_wrappers() {
         let result = convert_to_tsx(source, ConvertOptions::default());
         let range = result.frontmatter_range;
         let frontmatter = &result.code[range.start as usize..range.end as usize];
-        // The render scope opens between the leading line and the code, so only the ends are fixed.
         if frontmatter_code.is_empty() {
             assert_eq!(frontmatter, "");
         } else {

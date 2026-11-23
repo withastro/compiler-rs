@@ -28,11 +28,8 @@ pub(crate) struct Printer<'a> {
     pub(crate) watched_name: Option<String>,
     /// Whether an identifier matching `watched_name` was emitted.
     pub(crate) watched_name_seen: bool,
-    /// Generated range of the render scope's outline label and the fence it names.
-    pub(crate) scope_label: Option<(GeneratedRange, SourceRange)>,
-    /// Zero-length `(generated, original)` anchors that give each detached chunk boundary one edit.
+    pub(crate) outline_label: Option<(GeneratedRange, SourceRange)>,
     pub(crate) edit_anchors: Vec<(u32, u32)>,
-    /// Generated ranges whose mapped text opts out of editor features.
     pub(crate) featureless: Vec<GeneratedRange>,
 }
 
@@ -54,7 +51,7 @@ impl<'a> Printer<'a> {
             expressions_disabled: false,
             watched_name: None,
             watched_name_seen: false,
-            scope_label: None,
+            outline_label: None,
             edit_anchors: Vec::new(),
             featureless: Vec::new(),
         }

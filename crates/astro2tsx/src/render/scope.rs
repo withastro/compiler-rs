@@ -13,27 +13,21 @@ use crate::props::{binding_names, module_items};
 
 type JsNode = SyntaxNode<JsLanguage>;
 
-/// Line-aligned chunks of the frontmatter that tile it from `lead` to its end.
 #[derive(Debug, Default)]
 pub(crate) struct ScopePlan {
     /// Lines before the first item, emitted first so top-of-file insertions land under the fence.
     pub lead: TextRange,
-    /// Chunks emitted before the render function, in source order.
     pub hoisted: Vec<TextRange>,
-    /// Chunks emitted inside the render function, in source order.
     pub body: Vec<TextRange>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
 enum Placement {
-    /// Imports and erased declarations: hoisted, and may reference render-scope values in types.
     Declaration,
-    /// Runtime exports: hoisted by Astro too, so only their types may see render-scope values.
     Export,
     Body,
 }
 
-/// Plans the render scope, or `None` to keep the module layout.
 pub(crate) fn plan(root: &AnyJsRoot, errors: &[TextRange]) -> Option<ScopePlan> {
     let items = module_items(root);
     let mut placements: Vec<Placement> = items.iter().map(placement).collect();
@@ -132,7 +126,6 @@ fn has_unfinished_declaration(
     })
 }
 
-/// Start of an item's first line, counting its leading comments but not blank lines.
 fn chunk_start(item: &JsNode) -> TextSize {
     let mut start = item.text_range_with_trivia().start();
     if let Some(token) = item.first_token() {
@@ -190,7 +183,6 @@ fn is_type_only_export(export: &JsExport) -> bool {
     }
 }
 
-/// Names a body item binds as `(values, types)`.
 fn declared_names(item: &JsNode) -> (Vec<String>, Vec<String>) {
     if let Some(statement) = JsVariableStatement::cast_ref(item) {
         let mut names = Vec::new();
@@ -222,9 +214,7 @@ fn declared_names(item: &JsNode) -> (Vec<String>, Vec<String>) {
 
 struct Reference {
     name: String,
-    /// Resolved in the type namespace rather than the value namespace.
     is_type: bool,
-    /// Inside a type, so it disappears at runtime.
     erased: bool,
 }
 
@@ -338,7 +328,6 @@ mod tests {
     #[test]
     fn values_queried_by_hoisted_code_are_hoisted_with_it() {
         let cases: [(&str, &[&str], &[&str]); 3] = [
-            // Queries reach through other values, enums, and classes.
             (
                 "---\nconst base = { size: 1 };\nconst defaults = { ...base };\nconst { value } = Astro.props;\nenum Size { S }\nclass Model {}\ninterface Props<T> { value: T; opts: typeof defaults; size: Size; model: Model }\n---\n<p/>",
                 &[
@@ -430,21 +419,20 @@ mod tests {
             &[
                 "const v = (Astro.props.value as string)\n",
                 "const id = <T,>(x: T) => x",
-                // Top-level returns end the render function, as they do at runtime.
                 "if (!v) return Astro.redirect('/')",
             ],
         );
     }
 
     #[test]
-    fn render_scope_label_names_the_opening_fence() {
+    fn outline_label_names_the_opening_fence() {
         let source = "---\nconst a = 1;\n---\n<p>{a}</p>";
         let options = ConvertOptions {
             filename: Some("Card.astro".to_string()),
             ..Default::default()
         };
         let result = convert_to_tsx(source, options);
-        let (label, fence) = result.scope_label.expect("no render scope label");
+        let (label, fence) = result.outline_label.expect("no outline label");
         assert_eq!(
             &result.code[label.start as usize..label.end as usize],
             "async Card"

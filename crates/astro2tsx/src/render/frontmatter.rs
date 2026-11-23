@@ -20,7 +20,6 @@ pub(super) struct RenderedFrontmatter {
     pub(super) body_text_start: u32,
     pub(super) needs_terminator: bool,
     pub(super) terminator_anchor: Option<u32>,
-    /// The frontmatter body was emitted into a render function that the template must close.
     pub(super) has_render_scope: bool,
 }
 
@@ -83,7 +82,7 @@ pub(super) fn render(
 
     if let Some(node) = frontmatter {
         let opener = ScopeOpener {
-            label: component_alias.unwrap_or(component),
+            outline_label: component_alias.unwrap_or(component),
             fence: fence_range(node),
             generics: &props_analysis.generics_decl,
             astro_type: astro_global_type(component, &props_type(&props_analysis), &props_analysis),
@@ -132,9 +131,7 @@ fn props_type(analysis: &PropsAnalysis) -> String {
 }
 
 pub(super) struct ScopeOpener<'a> {
-    /// Name shown for the render scope in document outlines.
-    label: &'a str,
-    /// The opening fence, which the label maps to.
+    outline_label: &'a str,
     fence: SourceRange,
     /// Type parameters of a generic `Props`, which only stay generic inside a scope declaring them.
     generics: &'a str,
@@ -160,8 +157,8 @@ fn open_render_scope(printer: &mut Printer, opener: &ScopeOpener) {
     }
     printer.write(";({ ");
     let label_start = printer.position();
-    printer.write(&format!("async {}", opener.label));
-    printer.scope_label = Some((
+    printer.write(&format!("async {}", opener.outline_label));
+    printer.outline_label = Some((
         GeneratedRange::new(label_start, printer.position()),
         opener.fence,
     ));
@@ -497,7 +494,7 @@ fn emit_tsx_frontmatter(
     }
 }
 
-/// Chunks whose source successor is emitted somewhere else, paired with that successor.
+/// An offset shared by chunks emitted apart must map to one generated position for edits.
 fn detached_chunks(segments: &[Segment]) -> Vec<(TextRange, TextRange)> {
     let chunks: Vec<TextRange> = segments
         .iter()

@@ -397,7 +397,6 @@ fn binding_has_name(binding: &JsNode, name: &str) -> bool {
     binding_names(binding).iter().any(|bound| bound == name)
 }
 
-/// Names bound by a declaration's binding pattern, without entering default values.
 pub(crate) fn binding_names(binding: &JsNode) -> Vec<String> {
     let mut names = Vec::new();
     let mut walk = binding.preorder();

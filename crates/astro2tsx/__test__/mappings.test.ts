@@ -12,7 +12,7 @@ test('returns TypeScript Content Mapper span mappings', () => {
 	for (const [i, mapping] of result.mappings.entries()) {
 		const [virtualStart, virtualLength, originalStart, originalLength, kind, features] = mapping;
 		if (virtualLength === 0) {
-			// Edit anchors are the only empty spans: they pin an insertion point to one side.
+			// Edit anchors are the only empty spans.
 			assert.deepEqual([kind, originalLength, features], [0, 0, 1 << 10], `span ${i} is empty`);
 		}
 		if (i > 0) {

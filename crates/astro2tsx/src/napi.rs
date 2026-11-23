@@ -204,7 +204,7 @@ pub fn convert_to_tsx(source: String, options: Option<ConvertToTsxOptions>) -> C
             SPAN_MAP_FEATURE_CODE_ACTIONS,
         ]);
     }
-    if let Some((label, fence)) = result.scope_label {
+    if let Some((label, fence)) = result.outline_label {
         let generated = generated_index.convert(label.start);
         let source = source_index.convert(fence.start);
         mappings.push(vec![

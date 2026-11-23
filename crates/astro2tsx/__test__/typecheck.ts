@@ -19,7 +19,6 @@ declare module 'astro/jsx-runtime' {
 }
 `;
 
-/** Element and `Polymorphic` types shaped like `astro/astro-jsx` and `astro/types`. */
 export const strictElements = `
 declare module 'astro/jsx-runtime' {
   export namespace JSX {
