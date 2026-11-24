@@ -32,6 +32,10 @@ pub(super) fn emit_open_tag(
     printer.write("<");
     printer.map_to_offset(name_start);
     printer.write(tag_name);
+    // `<Tree />` and `<Tree.Leaf />` reference `Tree` as a value.
+    if let Some(object) = tag_name.split('.').next() {
+        printer.note_identifier(object);
+    }
 
     for attr in attrs {
         emit_attribute(printer, attr);
@@ -48,6 +52,8 @@ fn emit_attribute(printer: &mut Printer, attr: &AnyHtmlAttribute) {
             {
                 let trimmed = token.text_trimmed().to_string();
                 let original_start = range_start(token.text_trimmed_range());
+                // Shorthand `{Date}` reads `Date` as a value.
+                printer.note_identifier(&trimmed);
                 printer.map_nil();
                 printer.write(" ");
                 if trimmed.starts_with("/*") && trimmed.ends_with("*/") {

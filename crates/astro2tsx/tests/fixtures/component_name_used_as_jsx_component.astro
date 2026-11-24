@@ -1,0 +1,5 @@
+// @config filename=/src/components/Tree.astro
+---
+interface Props { depth: number }
+---
+{Astro.props.depth > 0 && <Tree depth={Astro.props.depth - 1} />}

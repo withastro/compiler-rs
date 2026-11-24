@@ -113,7 +113,7 @@ test('does not add a Volar completion mapping when frontmatter exists', () => {
 test('component export mappings and metadata use UTF-16 offsets', () => {
 	const source = '---\nconst text = "𝒳";\n---';
 	for (const [filename, name] of [
-		['MyPage.astro', 'MyPageAstroComponent'],
+		['MyPage.astro', 'MyPage'],
 		['Ünicorn.astro', 'ÜnicornAstroComponent'],
 		['[slug].astro', '_Slug_AstroComponent'],
 		['404.astro', 'FourOhFourAstroComponent'],
@@ -125,17 +125,7 @@ test('component export mappings and metadata use UTF-16 offsets', () => {
 			result.mappings.find((mapping) => mapping[0] === start),
 			[start, name.length, 0, 0, 1, (1 << 3) | (1 << 6)],
 		);
-		const range = result.generatedComponentExport;
-		if (filename === 'MyPage.astro') {
-			assert.ok(range);
-			assert.equal(
-				result.code.slice(range.start, range.end),
-				'export { MyPageAstroComponent as MyPage };\n',
-			);
-			assert.equal(range.end, result.code.length);
-		} else {
-			assert.equal(range, undefined);
-		}
+		assert.equal(result.generatedComponentExport, undefined);
 	}
 });
 
