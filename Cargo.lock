@@ -77,7 +77,7 @@ dependencies = [
  "napi",
  "napi-build",
  "napi-derive",
- "napi-derive-backend",
+ "napi-derive-backend 5.0.2",
  "serde",
  "serde_json",
 ]
@@ -674,6 +674,15 @@ name = "convert_case"
 version = "0.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "affbf0190ed2caf063e3def54ff444b449371d55c58e513a95ab98eca50adb49"
+dependencies = [
+ "unicode-segmentation",
+]
+
+[[package]]
+name = "convert_case"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1af709f1f33454bf52eadfc8c78b3b9ef9cb26fb54d16dc9cd9a7299f899fd1b"
 dependencies = [
  "unicode-segmentation",
 ]
@@ -1446,16 +1455,16 @@ checksum = "d376940fd5b723c6893cd1ee3f33abbfd86acb1cd1ec079f3ab04a2a3bc4d3b1"
 
 [[package]]
 name = "napi-derive"
-version = "3.5.2"
+version = "3.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "2c914b5e420182bfb73504e0607592cdb8e2e21437d450883077669fb72a114d"
+checksum = "d3f284288c8a2a4a66519e24dcc0cbfa1b7e0abc37bdd073185c68276f08f3d3"
 dependencies = [
- "convert_case 0.11.0",
- "ctor",
- "napi-derive-backend",
+ "convert_case 0.12.0",
+ "napi-derive-backend 8.0.0",
  "proc-macro2",
  "quote",
- "syn 2.0.117",
+ "syn 3.0.6",
+ "unicode-ident",
 ]
 
 [[package]]
@@ -1467,8 +1476,20 @@ dependencies = [
  "convert_case 0.11.0",
  "proc-macro2",
  "quote",
- "semver",
  "syn 2.0.117",
+]
+
+[[package]]
+name = "napi-derive-backend"
+version = "8.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32477ed34450779386e6aaa3b33bcf3916035b7de0fee68b73716f65a3894003"
+dependencies = [
+ "convert_case 0.12.0",
+ "proc-macro2",
+ "quote",
+ "semver",
+ "syn 3.0.6",
 ]
 
 [[package]]
