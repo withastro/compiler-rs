@@ -156,7 +156,7 @@ mod tests {
             assert!(
                 result
                     .code
-                    .contains(&format!("Parameters<typeof {component}>[0]"))
+                    .contains(&format!("AstroGlobal<Props<any>, typeof {component}"))
             );
             assert!(result.generated_component_export.is_none());
             assert!(!result.code.contains("export {"));

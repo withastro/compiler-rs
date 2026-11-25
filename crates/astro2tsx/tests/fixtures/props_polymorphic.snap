@@ -35,4 +35,4 @@ export default function AstroComponent<Tag extends keyof JSX.IntrinsicElements>(
  *
  * [Astro documentation](https://docs.astro.build/reference/api-reference/#astro-global)
 */
-declare const Astro: Readonly<import('astro').AstroGlobal<Parameters<typeof AstroComponent>[0], typeof AstroComponent>>;
+declare const Astro: Readonly<import('astro').AstroGlobal<Props<any>, typeof AstroComponent>>;
