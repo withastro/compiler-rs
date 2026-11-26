@@ -260,6 +260,7 @@ impl<'a> AstroCodegen<'a> {
                 css_trimmed,
                 &self.source_hash,
                 self.options.scoped_style_strategy(),
+                self.options.css_scope_cache_max_bytes,
             )
         };
 

@@ -76,6 +76,15 @@ pub enum ScopedStyleStrategy {
     Attribute,
 }
 
+/// Process-wide cache of scoped `<style>` text.
+#[napi(object)]
+#[derive(Default, Clone)]
+pub struct CssScopeCacheOptions {
+    /// Byte budget for cached CSS (source plus scoped output). Cleared when exceeded.
+    /// `0` or absent: the cache is off.
+    pub max_bytes: Option<u32>,
+}
+
 /// Options for compiling Astro files to JavaScript.
 #[napi(object)]
 #[derive(Default)]
@@ -153,6 +162,16 @@ pub struct CompileOptions {
     ///
     /// @default false
     pub inline_component_assets: Option<bool>,
+
+    /// Reuse scoped `<style>` text between compiles (off by default).
+    ///
+    /// Scoping is most of the time `transform()` takes for a component with styles. When
+    /// `maxBytes` is set, the scoped result of each style is kept in a process-wide cache keyed by
+    /// its text, the scope hash (from `filename`) and `scopedStyleStrategy`, and the cache is
+    /// cleared once it holds more than `maxBytes`. The output is byte-identical with or without it.
+    ///
+    /// @default undefined (off)
+    pub css_scope_cache: Option<CssScopeCacheOptions>,
 
     /// Whether the caller has a `resolvePath` function.
     ///
@@ -356,6 +375,11 @@ fn compile_astro_impl(source_text: &str, options: &CompileOptions) -> CompileRes
         annotate_source_file: options.annotate_source_file.unwrap_or_default(),
         strip_slot_comments: options.strip_slot_comments.unwrap_or(true),
         inline_component_assets: options.inline_component_assets.unwrap_or_default(),
+        css_scope_cache_max_bytes: options
+            .css_scope_cache
+            .as_ref()
+            .and_then(|c| c.max_bytes)
+            .unwrap_or(0) as usize,
         resolve_path: None,
         resolve_path_provided,
         preprocessed_styles: options.preprocessed_styles.clone(),

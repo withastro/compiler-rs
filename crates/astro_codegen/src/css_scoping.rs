@@ -508,7 +508,60 @@ fn restore_printable_global_universal(css: &str) -> String {
 /// the scope identifier, and returns the CSS.
 ///
 /// If parsing fails, returns the original CSS unchanged.
-pub fn scope_css(css: &str, scope: &str, strategy: ScopedStyleStrategy) -> String {
+pub fn scope_css(
+    css: &str,
+    scope: &str,
+    strategy: ScopedStyleStrategy,
+    cache_max_bytes: usize,
+) -> String {
+    if cache_max_bytes == 0 {
+        return scope_css_uncached(css, scope, strategy);
+    }
+    // Scoping is a pure function of (css, scope, strategy); see `TransformOptions::css_scope_cache_max_bytes`.
+    let key = (css.to_string(), scope.to_string(), strategy as u8);
+    if let Some(hit) = scope_cache()
+        .lock()
+        .ok()
+        .and_then(|c| c.map.get(&key).cloned())
+    {
+        return hit;
+    }
+    let out = scope_css_uncached(css, scope, strategy);
+    if let Ok(mut c) = scope_cache().lock() {
+        let size = key.0.len() + out.len();
+        if c.bytes + size > cache_max_bytes {
+            c.map.clear();
+            c.bytes = 0;
+        }
+        // An entry bigger than the whole budget is not kept.
+        if size <= cache_max_bytes {
+            c.bytes += size;
+            c.map.insert(key, out.clone());
+        }
+    }
+    out
+}
+
+/// Entries and bytes currently cached (for tests and diagnostics).
+pub fn scope_cache_stats() -> (usize, usize) {
+    scope_cache()
+        .lock()
+        .map(|c| (c.map.len(), c.bytes))
+        .unwrap_or((0, 0))
+}
+
+#[derive(Default)]
+struct ScopeCache {
+    map: std::collections::HashMap<(String, String, u8), String>,
+    bytes: usize,
+}
+
+fn scope_cache() -> &'static std::sync::Mutex<ScopeCache> {
+    static CACHE: std::sync::OnceLock<std::sync::Mutex<ScopeCache>> = std::sync::OnceLock::new();
+    CACHE.get_or_init(Default::default)
+}
+
+fn scope_css_uncached(css: &str, scope: &str, strategy: ScopedStyleStrategy) -> String {
     let options = parser_options();
 
     let mut stylesheet = match StyleSheet::parse(css, options) {
@@ -946,19 +999,105 @@ pub fn should_scope_element(name: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    // The cache is process-wide and tests run in parallel: the cache tests take turns.
+    static CACHE_TESTS: Mutex<()> = Mutex::new(());
+
+    fn cached(css: &str, scope: &str, strategy: ScopedStyleStrategy) -> bool {
+        scope_cache().lock().unwrap().map.contains_key(&(
+            css.to_string(),
+            scope.to_string(),
+            strategy as u8,
+        ))
+    }
+
+    #[test]
+    fn cache_is_off_with_a_zero_budget() {
+        let _turn = CACHE_TESTS.lock().unwrap_or_else(|e| e.into_inner());
+        let css = ".off-by-default { color: red }";
+        let out = scope_css(css, "aaaaaa", ScopedStyleStrategy::Where, 0);
+        assert!(!cached(css, "aaaaaa", ScopedStyleStrategy::Where));
+        assert_eq!(
+            out,
+            scope_css_uncached(css, "aaaaaa", ScopedStyleStrategy::Where)
+        );
+    }
+
+    #[test]
+    fn cache_reuses_and_matches_uncached_output() {
+        let _turn = CACHE_TESTS.lock().unwrap_or_else(|e| e.into_inner());
+        let css = ".reused > p:hover, :global(body) .x { color: blue }";
+        let want = scope_css_uncached(css, "bbbbbb", ScopedStyleStrategy::Where);
+        let first = scope_css(css, "bbbbbb", ScopedStyleStrategy::Where, 1 << 20);
+        assert!(cached(css, "bbbbbb", ScopedStyleStrategy::Where));
+        // Plant a marker under the same key: a second call must return the stored text, not recompute.
+        let key = (
+            css.to_string(),
+            "bbbbbb".to_string(),
+            ScopedStyleStrategy::Where as u8,
+        );
+        scope_cache()
+            .lock()
+            .unwrap()
+            .map
+            .insert(key, "MARK".to_string());
+        assert_eq!(
+            scope_css(css, "bbbbbb", ScopedStyleStrategy::Where, 1 << 20),
+            "MARK"
+        );
+        assert_eq!(first, want);
+        // A different scope or strategy is a different entry.
+        let other = scope_css(css, "cccccc", ScopedStyleStrategy::Where, 1 << 20);
+        assert_eq!(
+            other,
+            scope_css_uncached(css, "cccccc", ScopedStyleStrategy::Where)
+        );
+        let class = scope_css(css, "bbbbbb", ScopedStyleStrategy::Class, 1 << 20);
+        assert_eq!(
+            class,
+            scope_css_uncached(css, "bbbbbb", ScopedStyleStrategy::Class)
+        );
+        assert_ne!(other, first);
+    }
+
+    #[test]
+    fn cache_respects_its_budget() {
+        let _turn = CACHE_TESTS.lock().unwrap_or_else(|e| e.into_inner());
+        scope_cache().lock().unwrap().map.clear();
+        scope_cache().lock().unwrap().bytes = 0;
+        let budget = 600;
+        for i in 0..40 {
+            let css = format!(".budget-{i} {{ color: red; margin: {i}px }}");
+            scope_css(&css, "dddddd", ScopedStyleStrategy::Where, budget);
+            let (_, bytes) = scope_cache_stats();
+            assert!(
+                bytes <= budget,
+                "cache holds {bytes} bytes over a budget of {budget}"
+            );
+        }
+        // One style bigger than the whole budget is computed but not kept.
+        let big = format!(".big {{ background: url(\"{}\") }}", "x".repeat(2000));
+        let out = scope_css(&big, "dddddd", ScopedStyleStrategy::Where, budget);
+        assert_eq!(
+            out,
+            scope_css_uncached(&big, "dddddd", ScopedStyleStrategy::Where)
+        );
+        assert!(!cached(&big, "dddddd", ScopedStyleStrategy::Where));
+    }
 
     fn scope(source: &str) -> String {
-        scope_css(source, "xxxxxx", ScopedStyleStrategy::Where)
+        scope_css(source, "xxxxxx", ScopedStyleStrategy::Where, 0)
     }
 
     #[allow(dead_code)]
     fn scope_class(source: &str) -> String {
-        scope_css(source, "xxxxxx", ScopedStyleStrategy::Class)
+        scope_css(source, "xxxxxx", ScopedStyleStrategy::Class, 0)
     }
 
     #[allow(dead_code)]
     fn scope_attribute(source: &str) -> String {
-        scope_css(source, "xxxxxx", ScopedStyleStrategy::Attribute)
+        scope_css(source, "xxxxxx", ScopedStyleStrategy::Attribute, 0)
     }
 
     // Note: lightningcss pretty-prints CSS (spaces around combinators, newlines,
