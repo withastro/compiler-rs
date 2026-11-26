@@ -8,10 +8,10 @@ info:
     end: 39
   frontmatter:
     start: 30
-    end: 64
+    end: 94
   body:
-    start: 79
-    end: 111
+    start: 109
+    end: 141
   scripts: []
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/component_name_used_global.astro
@@ -19,6 +19,7 @@ input_file: crates/astro2tsx/tests/fixtures/component_name_used_global.astro
 /* @jsxImportSource astro */
 
 
+switch ({ Date: async () => {
 const today: Date = new Date();
 
 ;{};<Fragment>
@@ -26,6 +27,7 @@ const today: Date = new Date();
 <p>{today.toDateString()}</p>
 
 </Fragment>
+}}) {}
 export default function DateAstroComponent(_props: Record<string, any>): any {}
 
 export { DateAstroComponent as Date };

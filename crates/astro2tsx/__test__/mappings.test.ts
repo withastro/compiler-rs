@@ -10,8 +10,11 @@ test('returns TypeScript Content Mapper span mappings', () => {
 	assert.ok(result.mappings.length > 0);
 	let previousEnd = 0;
 	for (const [i, mapping] of result.mappings.entries()) {
-		const [virtualStart, virtualLength, originalStart, originalLength, kind] = mapping;
-		assert.ok(virtualLength > 0, `span ${i} is empty`);
+		const [virtualStart, virtualLength, originalStart, originalLength, kind, features] = mapping;
+		if (virtualLength === 0) {
+			// Edit anchors are the only empty spans.
+			assert.deepEqual([kind, originalLength, features], [0, 0, 1 << 10], `span ${i} is empty`);
+		}
 		if (i > 0) {
 			assert.ok(virtualStart >= previousEnd, `span ${i} overlaps its predecessor`);
 		}
@@ -52,7 +55,14 @@ test('returns TypeScript Content Mapper span mappings', () => {
 	assert.equal(originalAt(result.code.indexOf('<Fragment>')), null);
 	assert.equal(originalAt(result.code.indexOf('export default function')), null);
 
-	const exportName = result.code.indexOf('AstroComponent');
+	const label = result.code.indexOf('AstroComponent: async');
+	assert.deepEqual(
+		result.mappings.find((mapping) => mapping[0] === label),
+		[label, 'AstroComponent'.length, 0, 3, 1, 1 << 18],
+		'the render scope label names the opening fence in outlines',
+	);
+
+	const exportName = result.code.indexOf('AstroComponent', result.code.indexOf('export default'));
 	assert.deepEqual(
 		result.mappings.find((mapping) => mapping[0] === exportName),
 		[exportName, 'AstroComponent'.length, 0, 0, 1, (1 << 3) | (1 << 6)],
@@ -142,10 +152,9 @@ test('offsets are UTF-16 code units, not bytes', () => {
 		source.slice(result.frontmatterSource.start, result.frontmatterSource.end),
 		`---\nconst value = '${symbols}';\n---`,
 	);
-	assert.equal(
-		result.code.slice(result.frontmatter.start, result.frontmatter.end),
-		`\nconst value = '${symbols}';\n\n`,
-	);
+	const frontmatter = result.code.slice(result.frontmatter.start, result.frontmatter.end);
+	assert.ok(frontmatter.startsWith('\n'), frontmatter);
+	assert.ok(frontmatter.endsWith(`\nconst value = '${symbols}';\n\n`), frontmatter);
 	assert.equal(
 		result.code.slice(result.body.start, result.body.end),
 		`\n<style></style>${symbols}<script></script><script></script><style></style><div onload="go('${symbols}')"></div>\n`,

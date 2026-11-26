@@ -9,6 +9,7 @@ use biome_rowan::{AstNode, AstSeparatedList, Direction, NodeOrToken, TextRange, 
 
 use crate::printer::{Printer, range_start};
 use crate::props::{PropsAnalysis, analyze as analyze_props};
+use crate::render::scope::{self, ScopePlan};
 use crate::types::{
     Diagnostic, DiagnosticSeverity, FrontmatterInfo, FrontmatterStatus, GeneratedRange, SourceRange,
 };
@@ -19,6 +20,7 @@ pub(super) struct RenderedFrontmatter {
     pub(super) body_text_start: u32,
     pub(super) needs_terminator: bool,
     pub(super) terminator_anchor: Option<u32>,
+    pub(super) has_render_scope: bool,
 }
 
 enum Piece {
@@ -34,6 +36,7 @@ struct Rewrite {
 pub(super) fn render(
     printer: &mut Printer,
     frontmatter: Option<&AnyAstroFrontmatterElement>,
+    component: &str,
     component_alias: Option<&str>,
 ) -> RenderedFrontmatter {
     // Where frontmatter would be inserted, so editors can anchor an edit there.
@@ -68,11 +71,27 @@ pub(super) fn render(
         props_analysis = analyze_props(&js_root);
         has_component_export =
             component_alias.is_some_and(|name| crate::props::exports_value_name(&js_root, name));
-        rewritten = Some((js_root, *start));
+        let errors: Vec<TextRange> = parse
+            .diagnostics()
+            .iter()
+            .filter_map(|diagnostic| biome_diagnostics::Diagnostic::location(diagnostic).span)
+            .collect();
+        let plan = scope::plan(&js_root, &errors);
+        rewritten = Some((js_root, *start, plan));
     }
 
     if let Some(node) = frontmatter {
-        emit_frontmatter(printer, node, rewritten.as_ref());
+        let opener = ScopeOpener {
+            outline_label: component_alias.unwrap_or(component),
+            fence: fence_range(node),
+            generics: &props_analysis.generics_decl,
+            component,
+            // A module-scope `Astro` cannot see the type parameters of a generic `Props`.
+            astro_type: (!props_analysis.generics_args.is_empty()).then(|| {
+                astro_global_type(component, &props_type(&props_analysis), &props_analysis)
+            }),
+        };
+        emit_frontmatter(printer, node, rewritten.as_ref(), &opener);
     }
 
     printer.frontmatter_info = frontmatter_info(frontmatter, printer.source.len() as u32);
@@ -81,6 +100,9 @@ pub(super) fn render(
         has_component_export,
         body_text_start: body_text_start_offset(frontmatter),
         terminator_anchor: frontmatter_terminator_anchor(frontmatter),
+        has_render_scope: rewritten
+            .as_ref()
+            .is_some_and(|(_, _, plan)| plan.is_some()),
         needs_terminator: match frontmatter {
             Some(AnyAstroFrontmatterElement::AstroFrontmatterElement(_)) => content
                 .as_ref()
@@ -91,29 +113,104 @@ pub(super) fn render(
     }
 }
 
+fn astro_global_type(component: &str, props: &str, analysis: &PropsAnalysis) -> String {
+    let params = if analysis.has_get_static_paths {
+        ", ASTRO__Get<ASTRO__InferredGetStaticPath, 'params'>"
+    } else {
+        ""
+    };
+    format!("Readonly<import('astro').AstroGlobal<{props}, typeof {component}{params}>>")
+}
+
+const ASTRO_GLOBAL_DOCS: &str = "/**\n * Astro global available in all contexts in .astro files\n *\n * [Astro documentation](https://docs.astro.build/reference/api-reference/#astro-global)\n*/\n";
+
+fn props_type(analysis: &PropsAnalysis) -> String {
+    if analysis.has_props {
+        format!("Props{}", analysis.generics_args)
+    } else if analysis.has_get_static_paths {
+        "ASTRO__MergeUnion<ASTRO__Get<ASTRO__InferredGetStaticPath, 'props'>>".to_string()
+    } else {
+        "Record<string, any>".to_string()
+    }
+}
+
+pub(super) struct ScopeOpener<'a> {
+    outline_label: &'a str,
+    fence: SourceRange,
+    /// Type parameters of a generic `Props`, which only stay generic inside a scope declaring them.
+    generics: &'a str,
+    component: &'a str,
+    astro_type: Option<String>,
+}
+
+fn fence_range(frontmatter: &AnyAstroFrontmatterElement) -> SourceRange {
+    let fence = match frontmatter {
+        AnyAstroFrontmatterElement::AstroFrontmatterElement(node) => node.l_fence_token().ok(),
+        AnyAstroFrontmatterElement::AstroBogusFrontmatter(_) => None,
+    };
+    fence.map_or(SourceRange::new(0, 0), |token| {
+        let range = token.text_trimmed_range();
+        SourceRange::new(range_start(range), u32::from(range.end()))
+    })
+}
+
+/// Opens the render function as an arrow property, which binds no name, `this`, or `arguments`.
+fn open_render_scope(printer: &mut Printer, opener: &ScopeOpener) {
+    printer.map_nil();
+    if !printer.output.ends_with('\n') {
+        printer.write("\n");
+    }
+    // TypeScript guesses a file's semicolon style from statements, and skips `switch`.
+    printer.write("switch ({ ");
+    let label_start = printer.position();
+    printer.write(opener.outline_label);
+    printer.outline_label = Some((
+        GeneratedRange::new(label_start, printer.position()),
+        opener.fence,
+    ));
+    printer.write(": async ");
+    // A trailing comma keeps the type parameter list from parsing as a JSX tag.
+    if let Some(parameters) = opener.generics.strip_suffix('>') {
+        printer.write(&format!("{parameters},>"));
+    }
+    printer.write("(");
+    if let Some(astro_type) = &opener.astro_type {
+        printer.write(ASTRO_GLOBAL_DOCS);
+        printer.write("Astro: ");
+        let type_start = printer.position();
+        printer.write(astro_type);
+        printer.component_reference = astro_type.rfind(opener.component).map(|offset| {
+            let start = type_start + offset as u32;
+            GeneratedRange::new(start, start + opener.component.len() as u32)
+        });
+    }
+    printer.write(") => {\n");
+}
+
+pub(super) fn close_render_scope(printer: &mut Printer) {
+    printer.map_nil();
+    printer.write("}}) {}\n");
+}
+
 pub(super) fn emit_default_export(
     printer: &mut Printer,
     component: &str,
     analysis: &PropsAnalysis,
     ambient_types: bool,
 ) -> GeneratedRange {
-    let (props_param, props_global) = if analysis.has_props {
-        if analysis.generics_args.is_empty() {
-            ("Props".to_string(), "Props".to_string())
-        } else {
-            (
-                format!("Props{}", analysis.generics_args),
-                format!("Parameters<typeof {component}>[0]"),
-            )
-        }
-    } else if analysis.has_get_static_paths {
-        let inferred = "ASTRO__MergeUnion<ASTRO__Get<ASTRO__InferredGetStaticPath, 'props'>>";
-        (inferred.to_string(), inferred.to_string())
+    // The render scope is emitted before the default export's name is settled.
+    if let Some(reference) = printer.component_reference.take() {
+        let width = (reference.end - reference.start) as usize;
+        let padded = format!("{component}{}", " ".repeat(width - component.len()));
+        printer
+            .output
+            .replace_range(reference.start as usize..reference.end as usize, &padded);
+    }
+    let props_param = props_type(analysis);
+    let props_global = if analysis.has_props && !analysis.generics_args.is_empty() {
+        format!("Parameters<typeof {component}>[0]")
     } else {
-        (
-            "Record<string, any>".to_string(),
-            "Record<string, any>".to_string(),
-        )
+        props_param.clone()
     };
 
     let generics = if analysis.has_props {
@@ -146,16 +243,11 @@ pub(super) fn emit_default_export(
     }
 
     if analysis.has_props || analysis.has_get_static_paths || ambient_types {
-        printer.write(
-            "/**\n * Astro global available in all contexts in .astro files\n *\n * [Astro documentation](https://docs.astro.build/reference/api-reference/#astro-global)\n*/\n",
-        );
+        printer.write(ASTRO_GLOBAL_DOCS);
         printer.write(&format!(
-            "declare const Astro: Readonly<import('astro').AstroGlobal<{props_global}, typeof {component}"
+            "declare const Astro: {};\n",
+            astro_global_type(component, &props_global, analysis)
         ));
-        if analysis.has_get_static_paths {
-            printer.write(", ASTRO__Get<ASTRO__InferredGetStaticPath, 'params'>");
-        }
-        printer.write(">>;\n");
     }
     component_range
 }
@@ -229,7 +321,8 @@ fn frontmatter_anchor(frontmatter: &AnyAstroFrontmatterElement) -> Option<u32> {
 fn emit_frontmatter(
     printer: &mut Printer,
     frontmatter: &AnyAstroFrontmatterElement,
-    rewritten: Option<&(AnyJsRoot, u32)>,
+    rewritten: Option<&(AnyJsRoot, u32, Option<ScopePlan>)>,
+    opener: &ScopeOpener,
 ) {
     let frontmatter_start = printer.position();
 
@@ -237,8 +330,9 @@ fn emit_frontmatter(
         AnyAstroFrontmatterElement::AstroFrontmatterElement(_) => {
             printer.map_to_offset(0);
             let emitted_content = match rewritten {
-                Some((root, start)) => {
-                    emit_tsx_frontmatter(printer, root, *start);
+                Some((root, start, plan)) => {
+                    let layout = plan.as_ref().map(|plan| (plan, opener));
+                    emit_tsx_frontmatter(printer, root, *start, layout);
                     true
                 }
                 None => false,
@@ -277,8 +371,23 @@ fn emit_frontmatter(
     printer.frontmatter_range = GeneratedRange::new(frontmatter_start, frontmatter_end);
 }
 
-fn emit_tsx_frontmatter(printer: &mut Printer, root: &AnyJsRoot, start: u32) {
-    let mut rewrites: Vec<Rewrite> = find_top_level_returns(root)
+enum Segment<'a> {
+    Source(TextRange),
+    Opener(&'a ScopeOpener<'a>),
+}
+
+fn emit_tsx_frontmatter(
+    printer: &mut Printer,
+    root: &AnyJsRoot,
+    start: u32,
+    layout: Option<(&ScopePlan, &ScopeOpener)>,
+) {
+    // Inside the render function a top-level return ends it, as it does at runtime.
+    let returns = match layout {
+        Some(_) => Vec::new(),
+        None => find_top_level_returns(root),
+    };
+    let mut rewrites: Vec<Rewrite> = returns
         .into_iter()
         .map(|(range, has_argument)| Rewrite {
             range,
@@ -345,24 +454,103 @@ fn emit_tsx_frontmatter(printer: &mut Printer, root: &AnyJsRoot, start: u32) {
         let to = start + u32::from(range.end());
         printer.write_with_mapping(&printer.source[from as usize..to as usize], from);
     };
-    let mut cursor = root.syntax().text_range_with_trivia().start();
-    for rewrite in rewrites {
-        write_source(printer, TextRange::new(cursor, rewrite.range.start()));
-        for piece in rewrite.pieces {
-            match piece {
-                Piece::Source(range) => write_source(printer, range),
-                Piece::Insert(text) => {
-                    printer.map_nil();
-                    printer.write(text);
+    let root_range = root.syntax().text_range_with_trivia();
+    let segments = match layout {
+        None => vec![Segment::Source(root_range)],
+        Some((plan, opener)) => {
+            let mut segments = vec![Segment::Source(plan.lead)];
+            segments.extend(plan.hoisted.iter().copied().map(Segment::Source));
+            segments.push(Segment::Opener(opener));
+            segments.extend(plan.body.iter().copied().map(Segment::Source));
+            segments
+        }
+    };
+    let detached = detached_chunks(&segments);
+    for (index, segment) in segments.iter().enumerate() {
+        let range = match segment {
+            Segment::Opener(opener) => {
+                open_render_scope(printer, opener);
+                continue;
+            }
+            Segment::Source(range) => *range,
+        };
+        if detached.iter().any(|(_, successor)| *successor == range)
+            && let Some(first) = printer.source[(start + u32::from(range.start())) as usize..]
+                .chars()
+                .next()
+        {
+            let at = printer.position();
+            printer
+                .featureless
+                .push(GeneratedRange::new(at, at + first.len_utf8() as u32));
+        }
+        let mut cursor = range.start();
+        for rewrite in rewrites
+            .iter()
+            .filter(|rewrite| range.contains_range(rewrite.range))
+        {
+            // An empty insertion on an item boundary closes the preceding item.
+            if rewrite.range.is_empty()
+                && rewrite.range.start() == range.start()
+                && range.start() != root_range.start()
+            {
+                continue;
+            }
+            write_source(printer, TextRange::new(cursor, rewrite.range.start()));
+            for piece in &rewrite.pieces {
+                match piece {
+                    Piece::Source(range) => write_source(printer, *range),
+                    Piece::Insert(text) => {
+                        printer.map_nil();
+                        printer.write(text);
+                    }
                 }
             }
+            cursor = rewrite.range.end();
         }
-        cursor = rewrite.range.end();
+        write_source(printer, TextRange::new(cursor, range.end()));
+        if detached.iter().any(|(chunk, _)| *chunk == range) {
+            printer
+                .edit_anchors
+                .push((printer.position(), start + u32::from(range.end())));
+            // Content mappers sort segments unstably, so the anchor must not share an offset.
+            if !matches!(segments.get(index + 1), Some(Segment::Opener(_))) {
+                printer.map_nil();
+                printer.write("\n");
+            }
+        }
     }
-    write_source(
-        printer,
-        TextRange::new(cursor, root.syntax().text_range_with_trivia().end()),
-    );
+}
+
+/// An offset shared by chunks emitted apart must map to one generated position for edits.
+fn detached_chunks(segments: &[Segment]) -> Vec<(TextRange, TextRange)> {
+    let chunks: Vec<TextRange> = segments
+        .iter()
+        .filter_map(|segment| match segment {
+            Segment::Source(range) if !range.is_empty() => Some(*range),
+            _ => None,
+        })
+        .collect();
+    let mut detached = Vec::new();
+    for (index, chunk) in segments.iter().enumerate() {
+        let Segment::Source(chunk) = chunk else {
+            continue;
+        };
+        let Some(successor) = chunks
+            .iter()
+            .find(|next| !chunk.is_empty() && next.start() == chunk.end())
+        else {
+            continue;
+        };
+        let emitted_next = match segments.get(index + 1) {
+            Some(Segment::Source(next)) => Some(*next),
+            _ => None,
+        };
+        if emitted_next != Some(*successor) {
+            detached.push((*chunk, *successor));
+        }
+    }
+    detached
 }
 
 fn find_top_level_returns(root: &AnyJsRoot) -> Vec<(TextRange, bool)> {
@@ -751,24 +939,33 @@ mod tests {
     }
 
     #[test]
-    fn bare_return_stays_terminal_for_narrowing() {
-        let bare = convert_to_tsx(
-            "---\nif (cond) {\n\treturn;\n}\nreturn\n---\n<p/>",
-            ConvertOptions::default(),
-        )
-        .code;
-        assert!(bare.contains("throw undefined;"), "{bare}");
-        assert!(bare.contains("throw undefined\n"), "{bare}");
-        assert!(!bare.contains("throw ;"), "{bare}");
-        assert!(!bare.contains("void 0"), "{bare}");
+    fn top_level_returns_end_the_render_scope() {
+        let source = "---\nconst é = 1;\nif (é) {\n\treturn;\n}\nif (é) return Astro.redirect('/x');\nreturn\n---\n<p/>";
+        let result = convert_to_tsx(source, ConvertOptions::default());
+        assert!(
+            result
+                .code
+                .contains("\treturn;\n}\nif (é) return Astro.redirect('/x');\nreturn\n"),
+            "{}",
+            result.code
+        );
+        assert!(!result.code.contains("throw"), "{}", result.code);
+        assert_mapped_runs_are_verbatim(source, &result, "top-level returns");
+    }
 
-        let valued = convert_to_tsx(
-            "---\nif (cond) return Astro.redirect('/x');\n---\n<p/>",
-            ConvertOptions::default(),
-        )
-        .code;
-        assert!(valued.contains("throw  Astro.redirect"), "{valued}");
-        assert!(!valued.contains("return Astro"), "{valued}");
+    #[test]
+    fn module_layout_returns_stay_terminal_for_narrowing() {
+        // An unfinished import keeps the module layout, where a return is not allowed.
+        let source = "---\nconst é = 1;\nif (é) {\n\treturn;\n}\nif (é) return Astro.redirect('/x');\nreturn\nimport { a } from\n---\n<p/>";
+        let result = convert_to_tsx(source, ConvertOptions::default());
+        assert!(
+            result.code.contains(
+                "\tthrow undefined;\n}\nif (é) throw  Astro.redirect('/x');\nthrow undefined\n"
+            ),
+            "{}",
+            result.code
+        );
+        assert_mapped_runs_are_verbatim(source, &result, "module layout returns");
     }
 
     #[test]
@@ -780,16 +977,6 @@ mod tests {
         .code;
         assert!(actual.contains("function f() { return 1 }"), "{actual}");
         assert!(!actual.contains("function f() { throw  1 }"), "{actual}");
-    }
-
-    #[test]
-    fn variable_length_return_rewrites_keep_runs_verbatim() {
-        let source =
-            "---\nconst é = 1;\nif (é) {\n\treturn;\n}\nconst after = é;\n---\n<p>{after}</p>";
-        let result = convert_to_tsx(source, ConvertOptions::default());
-        assert!(result.code.contains("throw undefined;"), "{}", result.code);
-        assert!(result.code.contains("const after = é;"), "{}", result.code);
-        assert_mapped_runs_are_verbatim(source, &result, "bare return drift");
     }
 
     #[test]

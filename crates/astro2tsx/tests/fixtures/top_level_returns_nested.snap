@@ -8,10 +8,10 @@ info:
     end: 165
   frontmatter:
     start: 30
-    end: 190
+    end: 230
   body:
-    start: 205
-    end: 214
+    start: 245
+    end: 254
   scripts: []
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/top_level_returns_nested.astro
@@ -19,17 +19,19 @@ input_file: crates/astro2tsx/tests/fixtures/top_level_returns_nested.astro
 /* @jsxImportSource astro */
 
 
+switch ({ AstroComponent: async () => {
 if (broken) {
-  throw  Astro.redirect("/");
+  return Astro.redirect("/");
 }
 const fn = () => { return 1; };
 function inner() { return 2; }
 class C { method() { return 3; } }
-throw  "top";
+return "top";
 
 ;{};<Fragment>
 
 <div/>
 
 </Fragment>
+}}) {}
 export default function AstroComponent(_props: Record<string, any>): any {}

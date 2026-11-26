@@ -8,10 +8,10 @@ info:
     end: 27
   frontmatter:
     start: 30
-    end: 52
+    end: 92
   body:
-    start: 67
-    end: 86
+    start: 107
+    end: 126
   scripts: []
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/multibyte_astral.astro
@@ -19,6 +19,7 @@ input_file: crates/astro2tsx/tests/fixtures/multibyte_astral.astro
 /* @jsxImportSource astro */
 
 
+switch ({ AstroComponent: async () => {
 const π = Math.PI;
 
 ;{};<Fragment>
@@ -26,4 +27,5 @@ const π = Math.PI;
 <p>🦄 {π}</p>
 
 </Fragment>
+}}) {}
 export default function AstroComponent(_props: Record<string, any>): any {}

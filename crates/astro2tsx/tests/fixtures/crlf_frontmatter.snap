@@ -8,10 +8,10 @@ info:
     end: 46
   frontmatter:
     start: 30
-    end: 71
+    end: 111
   body:
-    start: 86
-    end: 120
+    start: 126
+    end: 160
   scripts: []
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/crlf_frontmatter.astro
@@ -20,6 +20,7 @@ input_file: crates/astro2tsx/tests/fixtures/crlf_frontmatter.astro
 
 
 import { Meta } from './Meta.astro';
+switch ({ AstroComponent: async () => {
 
 ;{};<Fragment>
 
@@ -28,4 +29,5 @@ import { Meta } from './Meta.astro';
 </div>
 
 </Fragment>
+}}) {}
 export default function AstroComponent(_props: Record<string, any>): any {}

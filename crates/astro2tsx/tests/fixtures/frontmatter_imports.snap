@@ -8,10 +8,10 @@ info:
     end: 76
   frontmatter:
     start: 30
-    end: 101
+    end: 141
   body:
-    start: 116
-    end: 127
+    start: 156
+    end: 167
   scripts: []
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/frontmatter_imports.astro
@@ -21,10 +21,12 @@ input_file: crates/astro2tsx/tests/fixtures/frontmatter_imports.astro
 
 import Card from './Card.astro';
 import type { Foo } from './types';
+switch ({ AstroComponent: async () => {
 
 ;{};<Fragment>
 
 <Card />
 
 </Fragment>
+}}) {}
 export default function AstroComponent(_props: Record<string, any>): any {}

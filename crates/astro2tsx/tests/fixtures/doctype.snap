@@ -8,10 +8,10 @@ info:
     end: 20
   frontmatter:
     start: 30
-    end: 45
+    end: 85
   body:
-    start: 60
-    end: 107
+    start: 100
+    end: 147
   scripts: []
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/doctype.astro
@@ -19,6 +19,7 @@ input_file: crates/astro2tsx/tests/fixtures/doctype.astro
 /* @jsxImportSource astro */
 
 
+switch ({ AstroComponent: async () => {
 const a = 1;
 
 ;{};<Fragment>
@@ -30,4 +31,5 @@ const a = 1;
 </html>
 
 </Fragment>
+}}) {}
 export default function AstroComponent(_props: Record<string, any>): any {}

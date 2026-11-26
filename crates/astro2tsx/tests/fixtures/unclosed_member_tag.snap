@@ -8,10 +8,10 @@ info:
     end: 62
   frontmatter:
     start: 30
-    end: 87
+    end: 127
   body:
-    start: 102
-    end: 117
+    start: 142
+    end: 157
   scripts: []
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/unclosed_member_tag.astro
@@ -19,6 +19,7 @@ input_file: crates/astro2tsx/tests/fixtures/unclosed_member_tag.astro
 /* @jsxImportSource astro */
 
 
+switch ({ AstroComponent: async () => {
 const myMarkdown = await import("../content/post.md");
 
 ;{};<Fragment>
@@ -26,4 +27,5 @@ const myMarkdown = await import("../content/post.md");
 
 <myMarkdown.
 </Fragment>
+}}) {}
 export default function AstroComponent(_props: Record<string, any>): any {}

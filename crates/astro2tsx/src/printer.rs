@@ -28,6 +28,10 @@ pub(crate) struct Printer<'a> {
     pub(crate) watched_name: Option<String>,
     /// Whether an identifier matching `watched_name` was emitted.
     pub(crate) watched_name_seen: bool,
+    pub(crate) outline_label: Option<(GeneratedRange, SourceRange)>,
+    pub(crate) component_reference: Option<GeneratedRange>,
+    pub(crate) edit_anchors: Vec<(u32, u32)>,
+    pub(crate) featureless: Vec<GeneratedRange>,
 }
 
 impl<'a> Printer<'a> {
@@ -48,6 +52,10 @@ impl<'a> Printer<'a> {
             expressions_disabled: false,
             watched_name: None,
             watched_name_seen: false,
+            outline_label: None,
+            component_reference: None,
+            edit_anchors: Vec::new(),
+            featureless: Vec::new(),
         }
     }
 

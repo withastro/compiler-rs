@@ -2,6 +2,7 @@ mod attribute;
 mod element;
 mod extracted;
 mod frontmatter;
+mod scope;
 mod text;
 
 use element::render_element;
@@ -38,7 +39,12 @@ pub(crate) fn render_root(
     let (component_name, alias) = tsx_component_names(options.filename.as_deref());
     let public_name = alias.as_deref().unwrap_or(&component_name);
     printer.watch_name(public_name);
-    let frontmatter = frontmatter::render(printer, frontmatter_node.as_ref(), alias.as_deref());
+    let frontmatter = frontmatter::render(
+        printer,
+        frontmatter_node.as_ref(),
+        &component_name,
+        alias.as_deref(),
+    );
     let body = root.html();
     let body_text_start = frontmatter.body_text_start;
     // A childless body still needs its `<Fragment>` when comment trivia remains.
@@ -101,6 +107,9 @@ pub(crate) fn render_root(
             printer.write("\n");
         }
         printer.body_range = GeneratedRange::new(printer.position(), printer.position());
+    }
+    if frontmatter.has_render_scope {
+        frontmatter::close_render_scope(printer);
     }
 
     // Frontmatter and template share a scope with the default-export function, so naming it

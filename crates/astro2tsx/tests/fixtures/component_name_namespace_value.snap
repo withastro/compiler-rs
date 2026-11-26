@@ -8,10 +8,10 @@ info:
     end: 46
   frontmatter:
     start: 30
-    end: 71
+    end: 101
   body:
-    start: 86
-    end: 100
+    start: 116
+    end: 130
   scripts: []
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/component_name_namespace_value.astro
@@ -20,12 +20,14 @@ input_file: crates/astro2tsx/tests/fixtures/component_name_namespace_value.astro
 
 
 namespace Card { export const x = 1; }
+switch ({ Card: async () => {
 
 ;{};<Fragment>
 
 <article />
 
 </Fragment>
+}}) {}
 export default function CardAstroComponent(_props: Record<string, any>): any {}
 
 export { CardAstroComponent as Card };

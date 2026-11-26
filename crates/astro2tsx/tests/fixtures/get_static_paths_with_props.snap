@@ -8,10 +8,10 @@ info:
     end: 94
   frontmatter:
     start: 30
-    end: 119
+    end: 159
   body:
-    start: 134
-    end: 148
+    start: 174
+    end: 188
   scripts: []
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/get_static_paths_with_props.astro
@@ -21,12 +21,14 @@ input_file: crates/astro2tsx/tests/fixtures/get_static_paths_with_props.astro
 
 interface Props { slug: string }
 export async function getStaticPaths() { return []; }
+switch ({ AstroComponent: async () => {
 
 ;{};<Fragment>
 
 <div></div>
 
 </Fragment>
+}}) {}
 export default function AstroComponent(_props: Props): any {}
 type ASTRO__ArrayElement<ArrayType extends readonly unknown[]> = ArrayType extends readonly (infer ElementType)[] ? ElementType : never;
 type ASTRO__Flattened<T> = T extends Array<infer U> ? ASTRO__Flattened<U> : T;
