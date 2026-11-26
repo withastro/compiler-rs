@@ -338,7 +338,9 @@ mod tests {
                     .code
                     .contains("export { MyPageAstroComponent as MyPage };")
             );
-            assert!(result.code.contains(declaration), "{}", result.code);
+            for statement in declaration.split_inclusive("; ") {
+                assert!(result.code.contains(statement.trim()), "{}", result.code);
+            }
             assert_mapped_runs_are_verbatim(&source, &result, declaration);
         }
     }

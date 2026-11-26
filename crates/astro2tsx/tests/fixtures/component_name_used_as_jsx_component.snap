@@ -8,10 +8,10 @@ info:
     end: 41
   frontmatter:
     start: 30
-    end: 66
+    end: 96
   body:
-    start: 81
-    end: 149
+    start: 111
+    end: 179
   scripts: []
   styles: []
 input_file: crates/astro2tsx/tests/fixtures/component_name_used_as_jsx_component.astro
@@ -20,12 +20,14 @@ input_file: crates/astro2tsx/tests/fixtures/component_name_used_as_jsx_component
 
 
 interface Props { depth: number }
+switch ({ Tree: async () => {
 
 ;{};<Fragment>
 
 {Astro.props.depth > 0 && <Tree depth={Astro.props.depth - 1} />}
 
 </Fragment>
+}}) {}
 export default function TreeAstroComponent(_props: Props): any {}
 /**
  * Astro global available in all contexts in .astro files

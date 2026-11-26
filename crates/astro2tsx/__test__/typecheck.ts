@@ -8,6 +8,7 @@ declare module 'astro' {
   export type AstroGlobal<Props, Component, Params = unknown> = {
     props: Props;
     params: Params;
+    self: Component;
     redirect(path: string): Response;
   };
 }

@@ -85,6 +85,7 @@ pub(super) fn render(
             outline_label: component_alias.unwrap_or(component),
             fence: fence_range(node),
             generics: &props_analysis.generics_decl,
+            component,
             // A module-scope `Astro` cannot see the type parameters of a generic `Props`.
             astro_type: (!props_analysis.generics_args.is_empty()).then(|| {
                 astro_global_type(component, &props_type(&props_analysis), &props_analysis)
@@ -138,6 +139,7 @@ pub(super) struct ScopeOpener<'a> {
     fence: SourceRange,
     /// Type parameters of a generic `Props`, which only stay generic inside a scope declaring them.
     generics: &'a str,
+    component: &'a str,
     astro_type: Option<String>,
 }
 
@@ -174,7 +176,13 @@ fn open_render_scope(printer: &mut Printer, opener: &ScopeOpener) {
     printer.write("(");
     if let Some(astro_type) = &opener.astro_type {
         printer.write(ASTRO_GLOBAL_DOCS);
-        printer.write(&format!("Astro: {astro_type}"));
+        printer.write("Astro: ");
+        let type_start = printer.position();
+        printer.write(astro_type);
+        printer.component_reference = astro_type.rfind(opener.component).map(|offset| {
+            let start = type_start + offset as u32;
+            GeneratedRange::new(start, start + opener.component.len() as u32)
+        });
     }
     printer.write(") => {\n");
 }
@@ -190,6 +198,14 @@ pub(super) fn emit_default_export(
     analysis: &PropsAnalysis,
     ambient_types: bool,
 ) -> GeneratedRange {
+    // The render scope is emitted before the default export's name is settled.
+    if let Some(reference) = printer.component_reference.take() {
+        let width = (reference.end - reference.start) as usize;
+        let padded = format!("{component}{}", " ".repeat(width - component.len()));
+        printer
+            .output
+            .replace_range(reference.start as usize..reference.end as usize, &padded);
+    }
     let props_param = props_type(analysis);
     let props_global = if analysis.has_props && !analysis.generics_args.is_empty() {
         format!("Parameters<typeof {component}>[0]")

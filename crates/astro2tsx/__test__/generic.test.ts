@@ -31,6 +31,16 @@ test('generic component signatures retain inference and constraints', () => {
 	);
 });
 
+test('Astro.self refers to a generic default export under either of its names', () => {
+	for (const frontmatter of ['', 'const Card = 1;']) {
+		const { code } = convertToTsx(
+			`---\ninterface Props<T> { value: T }\n${frontmatter}\n---\n<Astro.self value={1} />`,
+			{ filename: 'Card.astro', ambientTypes: true },
+		);
+		assert.deepEqual(codes(typecheck(code)), [], code);
+	}
+});
+
 test('generic Props stay generic inside the frontmatter and template', () => {
 	const diagnostics = typecheckAstro(
 		[
