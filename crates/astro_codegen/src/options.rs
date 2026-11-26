@@ -132,6 +132,13 @@ pub struct TransformOptions {
     /// scripts are appended. CSS import statements are omitted.
     pub inline_component_assets: bool,
 
+    /// Byte budget of the process-wide scoped-CSS cache; `0` (default) turns the cache off.
+    ///
+    /// Scoping a `<style>` (parse, visit, print) is a pure function of its text, the scope and the
+    /// strategy. With a budget, results are kept and reused by later compiles; when the cached text
+    /// passes the budget the cache is cleared. Output is byte-identical either way.
+    pub css_scope_cache_max_bytes: usize,
+
     /// Custom path resolver function.
     ///
     /// When provided (`Some`), it is called for each import specifier to
@@ -181,6 +188,7 @@ impl Default for TransformOptions {
             annotate_source_file: false,
             strip_slot_comments: true,
             inline_component_assets: false,
+            css_scope_cache_max_bytes: 0,
             resolve_path: None,
             resolve_path_provided: false,
             preprocessed_styles: None,
@@ -203,6 +211,7 @@ impl std::fmt::Debug for TransformOptions {
             .field("annotate_source_file", &self.annotate_source_file)
             .field("strip_slot_comments", &self.strip_slot_comments)
             .field("inline_component_assets", &self.inline_component_assets)
+            .field("css_scope_cache_max_bytes", &self.css_scope_cache_max_bytes)
             .field(
                 "resolve_path",
                 &self.resolve_path.as_ref().map(|_| "Some(<fn>)"),
@@ -289,6 +298,13 @@ impl TransformOptions {
     #[must_use]
     pub fn with_annotate_source_file(mut self, enabled: bool) -> Self {
         self.annotate_source_file = enabled;
+        self
+    }
+
+    /// Set the byte budget of the scoped-CSS cache (`0`, the default, turns it off).
+    #[must_use]
+    pub fn with_css_scope_cache_max_bytes(mut self, max_bytes: usize) -> Self {
+        self.css_scope_cache_max_bytes = max_bytes;
         self
     }
 

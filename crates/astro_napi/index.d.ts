@@ -136,6 +136,17 @@ export interface CompileOptions {
    */
   inlineComponentAssets?: boolean
   /**
+   * Reuse scoped `<style>` text between compiles (off by default).
+   *
+   * Scoping is most of the time `transform()` takes for a component with styles. When
+   * `maxBytes` is set, the scoped result of each style is kept in a process-wide cache keyed by
+   * its text, the scope hash (from `filename`) and `scopedStyleStrategy`, and the cache is
+   * cleared once it holds more than `maxBytes`. The output is byte-identical with or without it.
+   *
+   * @default undefined (off)
+   */
+  cssScopeCache?: CssScopeCacheOptions
+  /**
    * Whether the caller has a `resolvePath` function.
    *
    * When `true`, the codegen will:
@@ -205,6 +216,15 @@ export interface Component {
   specifier: string
   /** The resolved path (empty string if unresolved). */
   resolvedPath: string
+}
+
+/** Process-wide cache of scoped `<style>` text. */
+export interface CssScopeCacheOptions {
+  /**
+   * Byte budget for cached CSS (source plus scoped output). Cleared when exceeded.
+   * `0` or absent: the cache is off.
+   */
+  maxBytes?: number
 }
 
 /** A labeled source span within a diagnostic. */
